@@ -13,9 +13,9 @@ from torch.utils.data import DataLoader
 from model import Tacotron2
 from data_utils import TextMelLoader, TextMelCollate
 from loss_function import Tacotron2Loss
-from logger import Tacotron2Logger
 from hparams import create_hparams
-from tacotron2.model_specs import ModelSpecs
+from tacotron2.model_specs.model_specs import ModelSpecs
+from tacotron2.utils import fmtl_print
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -37,8 +37,15 @@ if __name__ == '__main__':
                         required=False, help='comma separated name=value pairs')
 
     args = parser.parse_args()
-    model = ModelSpecs(args.hparams)
+    model_trainer_spec = ModelSpecs()
+    fmtl_print("active model", model_trainer_spec.active_model)
+    fmtl_print("active dataset", model_trainer_spec.use_dataset)
 
+    # model_trainer_spec.build_training_set_from_files()
+    # print(model_trainer_spec.dataset_specs['dir'])
+    # training_set, validation_set, test_set = model_trainer_spec.get_audio_ds_files()
+
+    # build_file_list(model_trainer_spec.dataset_specs)
     # hparams = create_hparams(args.hparams)
     # torch.backends.cudnn.enabled = hparams.cudnn_enabled
     # torch.backends.cudnn.benchmark = hparams.cudnn_benchmark
@@ -51,3 +58,11 @@ if __name__ == '__main__':
     #
     # # train(args.output_directory, args.log_directory, args.checkpoint_path,
     # #       args.warm_start, args.n_gpus, args.rank, args.group_name, hparams)
+
+    # print(model.model_files.filename_metrics)
+    # print(model.model_files.filename_train)
+    # print(model.model_files.filename_test)
+    # print(model.model_files.filename_prediction)
+    # print(model.model_files.root_dir)
+    # print(model.model_files.results_dir())
+    # model.model_files.build_dir()

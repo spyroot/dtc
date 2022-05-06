@@ -4,6 +4,7 @@ import torch
 import torch.utils.data
 
 import layers
+from tacotron2.model_specs.model_specs import ModelSpecs
 from utils import load_wav_to_torch, load_filepaths_and_text
 from text import text_to_sequence
 
@@ -14,32 +15,54 @@ class TextMelLoader(torch.utils.data.Dataset):
         2) normalizes text and converts them to sequences of one-hot vectors
         3) computes mel-spectrograms from audio files.
     """
-    def __init__(self, audiopaths_and_text, hparams):
-        self.audiopaths_and_text = load_filepaths_and_text(audiopaths_and_text)
-        self.text_cleaners = hparams.text_cleaners
-        self.max_wav_value = hparams.max_wav_value
-        self.sampling_rate = hparams.sampling_rate
-        self.load_mel_from_disk = hparams.load_mel_from_disk
+    def __init__(self, model_spec: ModelSpecs, data):
+        """
+        """
+
+        self._model_spec = model_spec
+        self.data = data
+
+        # self.audiopaths_and_text = load_filepaths_and_text(audiopaths_and_text)
+        #
+        self.text_cleaners = model_spec.text_cleaner()
+        #
+        self.max_wav_value = model_spec.max_wav_value()
+        #
+        self.sampling_rate = model_spec.sampling_rate()
+        #
+        self.load_mel_from_disk = model_spec.load_mel_from_disk
+        #
         self.stft = layers.TacotronSTFT(
-            hparams.filter_length, hparams.hop_length, hparams.win_length,
-            hparams.n_mel_channels, hparams.sampling_rate, hparams.mel_fmin,
-            hparams.mel_fmax)
-        random.seed(hparams.seed)
-        random.shuffle(self.audiopaths_and_text)
+            model_spec.filter_length(), model_spec.hop_length(), model_spec.win_length(),
+            model_spec.n_mel_channels(), model_spec.sampling_rate(), model_spec.mel_fmin(),
+            model_spec.mel_fmax())
+        #
+        random.seed(model_spec.seed)
+        #
+        # random.shuffle(self.audiopaths_and_text)
 
     def get_mel_text_pair(self, audiopath_and_text):
+        """
+
+        :param audiopath_and_text:
+        :return:
+        """
         # separate filename and text
         audiopath, text = audiopath_and_text[0], audiopath_and_text[1]
-        text = self.get_text(text)
-        mel = self.get_mel(audiopath)
-        return (text, mel)
+        text = self.text_to_tensor(text)
+        mel = self.file_to_mel(audiopath)
+        return text, mel
 
-    def get_mel(self, filename):
+    def file_to_mel(self, filename):
+        """
+
+        :param filename:
+        :return:
+        """
         if not self.load_mel_from_disk:
             audio, sampling_rate = load_wav_to_torch(filename)
             if sampling_rate != self.stft.sampling_rate:
-                raise ValueError("{} {} SR doesn't match target {} SR".format(
-                    sampling_rate, self.stft.sampling_rate))
+                raise ValueError("{} {} SR doesn't match target {} SR".format(sampling_rate, self.stft.sampling_rate))
             audio_norm = audio / self.max_wav_value
             audio_norm = audio_norm.unsqueeze(0)
             audio_norm = torch.autograd.Variable(audio_norm, requires_grad=False)
@@ -53,18 +76,30 @@ class TextMelLoader(torch.utils.data.Dataset):
 
         return melspec
 
-    def get_text(self, text):
+    def text_to_tensor(self, text):
+        """
+
+        :param text:
+        :return:
+        """
         text_norm = torch.IntTensor(text_to_sequence(text, self.text_cleaners))
         return text_norm
 
     def __getitem__(self, index):
-        return self.get_mel_text_pair(self.audiopaths_and_text[index])
+        """
+
+        :param index:
+        :return:
+        """
+        text = self.text_to_tensor(self.data[index]['meta'])
+        mel = self.file_to_mel(self.data[index]['path'])
+        return mel, text
 
     def __len__(self):
-        return len(self.audiopaths_and_text)
+        return len(self.dataset)
 
 
-class TextMelCollate():
+class TextMelCollate:
     """ Zero-pads model inputs and targets based on number of frames per setep
     """
     def __init__(self, n_frames_per_step):

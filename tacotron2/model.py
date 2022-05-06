@@ -455,7 +455,14 @@ class Decoder(nn.Module):
 
 
 class Tacotron2(nn.Module):
+    """
+
+    """
     def __init__(self, hparams):
+        """
+
+        :param hparams:
+        """
         super(Tacotron2, self).__init__()
         self.mask_padding = hparams.mask_padding
         self.fp16_run = hparams.fp16_run
@@ -471,6 +478,11 @@ class Tacotron2(nn.Module):
         self.postnet = Postnet(hparams)
 
     def parse_batch(self, batch):
+        """
+
+        :param batch:
+        :return:
+        """
         text_padded, input_lengths, mel_padded, gate_padded, \
             output_lengths = batch
         text_padded = to_gpu(text_padded).long()

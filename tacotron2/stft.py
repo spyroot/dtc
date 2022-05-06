@@ -43,6 +43,13 @@ class STFT(torch.nn.Module):
     """adapted from Prem Seetharaman's https://github.com/pseeth/pytorch-stft"""
     def __init__(self, filter_length=800, hop_length=200, win_length=800,
                  window='hann'):
+        """
+
+        :param filter_length:
+        :param hop_length:
+        :param win_length:
+        :param window:
+        """
         super(STFT, self).__init__()
         self.filter_length = filter_length
         self.hop_length = hop_length
@@ -75,6 +82,11 @@ class STFT(torch.nn.Module):
         self.register_buffer('inverse_basis', inverse_basis.float())
 
     def transform(self, input_data):
+        """
+
+        :param input_data:
+        :return:
+        """
         num_batches = input_data.size(0)
         num_samples = input_data.size(1)
 
@@ -105,6 +117,12 @@ class STFT(torch.nn.Module):
         return magnitude, phase
 
     def inverse(self, magnitude, phase):
+        """
+
+        :param magnitude:
+        :param phase:
+        :return:
+        """
         recombine_magnitude_phase = torch.cat(
             [magnitude*torch.cos(phase), magnitude*torch.sin(phase)], dim=1)
 
@@ -136,6 +154,11 @@ class STFT(torch.nn.Module):
         return inverse_transform
 
     def forward(self, input_data):
+        """
+
+        :param input_data:
+        :return:
+        """
         self.magnitude, self.phase = self.transform(input_data)
         reconstruction = self.inverse(self.magnitude, self.phase)
         return reconstruction

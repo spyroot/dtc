@@ -1,4 +1,3 @@
-import tensorflow as tf
 from text import symbols
 from tensorboard.plugins.hparams import api as hp
 import shutil
