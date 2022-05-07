@@ -145,10 +145,10 @@ class TextMelCollate:
             t = time.process_time()
             start = timer()
 
-        input_lengths, ids_sorted_decreasing = torch.sort(torch.LongTensor([len(x[0]) for x in batch]), dim=0,
+        input_lengths, ids_sorted_decreasing = torch.sort(torch.LongTensor([len(x[0]) for x in batch]),
+                                                          dim=0,
                                                           descending=True)
         max_input_len = input_lengths[0]
-
         text_padded = torch.LongTensor(len(batch), max_input_len)
         text_padded.zero_()
         for i in range(len(ids_sorted_decreasing)):

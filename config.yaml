@@ -108,7 +108,7 @@ settings:
     # early stopping
     early_stopping: True
     # when to log to console
-    epochs_log: 10
+    epochs_log: 1
     # when to start run a test
     start_test: 20
     # predict to start predict , validate

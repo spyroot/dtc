@@ -577,9 +577,9 @@ class Trainer(GeneratorTrainer, ABC):
             #                         shuffle=False, batch_size=batch_size,
             #                         pin_memory=False, collate_fn=collate_fn)
 
-            val_loss = 0.0
+            total_prediction_loss = 0.0
+            print("validation batch", len(self.validation_loader))
             for i, batch in enumerate(self.validation_loader):
-                print("validation batch", i)
                 x, y = model.parse_batch(batch)
                 y_pred = model(x)
                 loss = self.criterion(y_pred, y)
@@ -587,14 +587,16 @@ class Trainer(GeneratorTrainer, ABC):
                     reduced_val_loss = self.split_tensor(loss.data, self.n_gpus).item()
                 else:
                     reduced_val_loss = loss.item()
-                val_loss += reduced_val_loss
-            val_loss = val_loss / (i + 1)
+                total_prediction_loss += reduced_val_loss
+            total_prediction_loss = total_prediction_loss / (i + 1)
 
         model.train()
         if self.rank == 0:
             # t_writer.add_scalar('val_loss_' + model_name, loss.item(), it)
-            print("Validation loss {}: {:9f}  ".format(it, val_loss))
-            self.logger.log_validation(val_loss, model, y, y_pred, it)
+            print("Validation loss {}: {:9f}  ".format(it, total_prediction_loss))
+            self.logger.log_validation(total_prediction_loss, model, y, y_pred, it)
+
+        return total_prediction_loss
 
     def train(self, model_name='encoder'):
         """Training and validation logging results to tensorboard and stdout
@@ -619,9 +621,7 @@ class Trainer(GeneratorTrainer, ABC):
             fmtl_print("Epoch saved out of", self.last_epochs[model_name], self.experiment_specs.epochs())
             fmtl_print("Last iter saved", self.iters[model_name])
 
-        if self.last_epochs[model_name] == self.experiment_specs.epochs():
-            fmtl_print("Model \"{}\" trained file".format(model_name),
-                       self.experiment_specs.model_files.get_model_filename(model_name))
+
         #
         model = self.models[model_name].to(self.device)
         tqdm_iter = self.trainer_iterator(model_name)
@@ -635,13 +635,18 @@ class Trainer(GeneratorTrainer, ABC):
         if self.experiment_specs.is_distributed_run():
             model = apply_gradient_allreduce(model)
 
-        it = 0
+        it = self.iters[model_name]
+        if self.last_epochs[model_name] == self.experiment_specs.epochs():
+            total_prediction_loss = self.validate(model, model_name, it)
+
         model.train()
+        tqdm_iter.set_postfix({'run': it})
+        saved_run = it
         for epoch in tqdm_iter:
             total_epoch_loss = 0
-            print("Total batches", len(self.train_loader))
+            total_prediction_loss = 0
+            total_batches = len(self.train_loader)
             for batch_idx, batch in enumerate(self.train_loader):
-                print("batch id {} it {} validate at {}".format(batch_idx, it, self.experiment_specs.predict()))
                 start = time.perf_counter()
                 # for param_group in self.optimizer[model_name].param_groups:
                 #     param_group['lr'] = learning_rate
@@ -664,31 +669,31 @@ class Trainer(GeneratorTrainer, ABC):
                 duration = time.perf_counter() - start
                 # self.log_if_needed(it, loss, grad_norm, duration)
                 if self.rank == 0 and it % self.experiment_specs.epochs_log() == 0:
-                    tqdm_iter.set_postfix({'total_epoch_loss': total_epoch_loss,
+                    tqdm_iter.set_postfix({'run': it,
+                                           'total_loss': total_epoch_loss,
+                                           'accuracy': total_prediction_loss,
                                            'grad_norm': grad_norm.item(),
                                            'device': str(grad_norm.device),
                                            'batch': batch_idx,
-                                           'saved iter': it})
+                                           'batches': total_batches,
+                                           'saved run': saved_run})
 
                 if it != 0 and it % self.experiment_specs.predict() == 0:
-                    self.validate(model, model_name, it)
+                    total_prediction_loss = self.validate(model, model_name, it)
 
                 # save model checkpoint
                 if self.save_if_need(model_name, it, epoch):
-                    tqdm_iter.set_postfix({'total_epoch_loss': total_epoch_loss,
+                    tqdm_iter.set_postfix({'run': it,
+                                           'total_loss': total_epoch_loss,
+                                           'accuracy': total_prediction_loss,
                                            'grad_norm': grad_norm.item(),
                                            'device': str(grad_norm.device),
                                            'batch': batch_idx,
-                                           'saved iter': it})
-
-                # if batch_idx != 0 and batch_idx % 10 == 0:
-                #     break
+                                           'batches': total_batches,
+                                           'saved run': it})
+                    saved_run = it
 
                 self.logger.log_training(loss.item(), grad_norm, optimizer.param_groups[0]['lr'], it)
-                # t_writer.add_scalar('loss_' + model_name, loss.item(), it)
-                # total_epoch_loss /= batch_idx + 1
-                # t_writer.add_scalar('total_loss_' + model_name, total_epoch_loss, it)
-
                 metrics = {'accuracy/accuracy': None, 'loss/loss': None}
 
                 # hp.hparams_config(
@@ -701,10 +706,10 @@ class Trainer(GeneratorTrainer, ABC):
                 # with SummaryWriter() as w:
                 #     for i in range(5):
 
-                t_writer.add_hparams({'lr': optimizer.param_groups[0]['lr'],
-                                      'batch_size': self.experiment_specs.batch_size},
-                                     {'hparam/accuracy': total_epoch_loss,
-                                      'hparam/loss': float(loss.item())})
+                t_writer.add_hparams(
+                    {'lr': optimizer.param_groups[0]['lr'], 'batch_size': self.experiment_specs.batch_size},
+                    {'hparam/accuracy': total_epoch_loss,
+                     'hparam/loss': float(loss.item())})
                 # model logs
                 for name, weight in model.named_parameters():
                     t_writer.add_histogram(name, weight, epoch)
