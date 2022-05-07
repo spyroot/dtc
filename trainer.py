@@ -9,6 +9,7 @@ import math
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data import DataLoader
 
+from TrainingLogger import Tacotron2Logger
 from distributed import apply_gradient_allreduce
 from model_loader.mel_dataloader import Mel_Dataloader
 from model_trainer.model_trainer_specs import ExperimentSpecs
@@ -65,6 +66,7 @@ class Trainer(GeneratorTrainer, ABC):
 
         self.init_trainer()
         self.scaler = None
+        self.logger = Tacotron2Logger()
 
     def init_trainer(self):
         """
@@ -555,7 +557,7 @@ class Trainer(GeneratorTrainer, ABC):
 
         return 0
 
-    def validate(self, model,model_name, it):
+    def validate(self, model, model_name, it):
         """
 
         Args:
@@ -590,9 +592,9 @@ class Trainer(GeneratorTrainer, ABC):
 
         model.train()
         if self.rank == 0:
-            t_writer.add_scalar('val_loss_' + model_name, loss.item(), it)
-            # print("Validation loss {}: {:9f}  ".format(it, val_loss))
-            # logger.log_validation(val_loss, model, y, y_pred, iteration)
+            # t_writer.add_scalar('val_loss_' + model_name, loss.item(), it)
+            print("Validation loss {}: {:9f}  ".format(it, val_loss))
+            self.logger.log_validation(val_loss, model, y, y_pred, it)
 
     def train(self, model_name='encoder'):
         """Training and validation logging results to tensorboard and stdout
@@ -640,7 +642,6 @@ class Trainer(GeneratorTrainer, ABC):
             print("Total batches", len(self.train_loader))
             for batch_idx, batch in enumerate(self.train_loader):
                 print("batch id {} it {} validate at {}".format(batch_idx, it, self.experiment_specs.predict()))
-
                 start = time.perf_counter()
                 # for param_group in self.optimizer[model_name].param_groups:
                 #     param_group['lr'] = learning_rate
@@ -670,8 +671,7 @@ class Trainer(GeneratorTrainer, ABC):
                                            'saved iter': it})
 
                 if it != 0 and it % self.experiment_specs.predict() == 0:
-                    print("Validating")
-                    self.validate(model, it)
+                    self.validate(model, model_name, it)
 
                 # save model checkpoint
                 if self.save_if_need(model_name, it, epoch):
@@ -684,9 +684,10 @@ class Trainer(GeneratorTrainer, ABC):
                 # if batch_idx != 0 and batch_idx % 10 == 0:
                 #     break
 
-                t_writer.add_scalar('loss_' + model_name, loss.item(), it)
-                total_epoch_loss /= batch_idx + 1
-                t_writer.add_scalar('total_loss_' + model_name, total_epoch_loss, it)
+                self.logger.log_training(loss.item(), grad_norm, optimizer.param_groups[0]['lr'], it)
+                # t_writer.add_scalar('loss_' + model_name, loss.item(), it)
+                # total_epoch_loss /= batch_idx + 1
+                # t_writer.add_scalar('total_loss_' + model_name, total_epoch_loss, it)
 
                 metrics = {'accuracy/accuracy': None, 'loss/loss': None}
 
