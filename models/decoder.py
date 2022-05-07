@@ -267,7 +267,5 @@ class Decoder(nn.Module):
 
             decoder_input = mel_output
 
-        mel_outputs, gate_outputs, alignments = self.parse_decoder_outputs(
-            mel_outputs, gate_outputs, alignments)
-
+        mel_outputs, gate_outputs, alignments = self.parse_decoder_outputs(mel_outputs, gate_outputs, alignments)
         return mel_outputs, gate_outputs, alignments

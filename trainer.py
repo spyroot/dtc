@@ -28,8 +28,9 @@ from torch.autograd import Variable
 import numpy as np
 from ray import tune
 from ray.tune.schedulers import ASHAScheduler
+import matplotlib.pylab as plt
 
-from text import sequence_to_text
+from text import sequence_to_text, text_to_sequence
 
 
 class Trainer(GeneratorTrainer, ABC):
@@ -575,13 +576,7 @@ class Trainer(GeneratorTrainer, ABC):
 
         model.eval()
         with torch.no_grad():
-            # val_sampler = DistributedSampler(valset) if distributed_run else None
-            # val_loader = DataLoader(valset, sampler=val_sampler, num_workers=1,
-            #                         shuffle=False, batch_size=batch_size,
-            #                         pin_memory=False, collate_fn=collate_fn)
-
             total_prediction_loss = 0.0
-            print("validation batch", len(self.validation_loader))
             for i, batch in enumerate(self.validation_loader):
                 x, y = model.parse_batch(batch)
                 y_pred = model(x)
@@ -596,7 +591,7 @@ class Trainer(GeneratorTrainer, ABC):
         model.train()
         if self.rank == 0:
             # t_writer.add_scalar('val_loss_' + model_name, loss.item(), it)
-            print("Validation loss {}: {:9f}  ".format(it, total_prediction_loss))
+            # print("Validation loss {}: {:9f}  ".format(it, total_prediction_loss))
             self.logger.log_validation(total_prediction_loss, model, y, y_pred, it)
 
         return total_prediction_loss
@@ -608,13 +603,46 @@ class Trainer(GeneratorTrainer, ABC):
             model_name:
 
         Returns:
-
         """
         it = 0
-        if model_name in self.iters[model_name]:
+        if model_name in self.iters:
             it = self.iters[model_name]
-
         return it
+
+    def plot_data(self, data, figsize=(16, 4)):
+        fig, axes = plt.subplots(1, len(data), figsize=figsize)
+        for i in range(len(data)):
+            axes[i].imshow(data[i], aspect='auto', origin='bottom',
+                           interpolation='none')
+
+    def inference(self, sequences, model_name='encoder'):
+        """
+
+        Args:
+            model_name:
+            sequences:
+            lengths:
+
+        Returns:
+
+        """
+
+        # model returns  outputs
+        # [mel_outputs, mel_outputs_postnet, gate_outputs, alignments])
+        self.load_models()
+        model = self.models[model_name]
+        model.eval()
+
+        with torch.no_grad():
+            mel_outputs, mel_outputs_postnet, _, alignments = model.inference(sequence)
+            print(mel_outputs.shape)
+            print(mel_outputs_postnet.shape)
+            print(alignments.shape)
+
+            # self.plot_data((mel_outputs.float().data.cpu().numpy()[0],
+            #                 mel_outputs_postnet.float().data.cpu().numpy()[0],
+            #                 alignments.float().data.cpu().numpy()[0].T))
+            return mel_outputs, mel_outputs_postnet, alignments
 
     def train(self, model_name='encoder'):
         """Training and validation logging results to tensorboard and stdout
@@ -653,23 +681,23 @@ class Trainer(GeneratorTrainer, ABC):
             model = apply_gradient_allreduce(model)
 
         it = self.get_last_iterator(model_name)
-
         if self.last_epochs[model_name] == self.experiment_specs.epochs():
-            total_prediction_loss = self.validate(model, model_name, it)
+            prediction_accuracy = self.validate(model, model_name, it)
 
         model.train()
         tqdm_iter.set_postfix({'run': it})
         saved_run = it
+        total_accuracy = 0
         for epoch in tqdm_iter:
             total_epoch_loss = 0
-            total_prediction_loss = 0
+            prediction_accuracy = 0.0
             total_batches = len(self.train_loader)
             for batch_idx, batch in enumerate(self.train_loader):
-                start = time.perf_counter()
+                # start = time.perf_counter()
                 # for param_group in self.optimizer[model_name].param_groups:
                 #     param_group['lr'] = learning_rate
 
-                model.zero_grad()
+                model.zero_grad(set_to_none=True)
                 x, y = model.parse_batch(batch)
                 y_pred = model(x)
 
@@ -684,26 +712,28 @@ class Trainer(GeneratorTrainer, ABC):
                 if scheduler is not None:
                     scheduler.step()
 
-                duration = time.perf_counter() - start
                 # self.log_if_needed(it, loss, grad_norm, duration)
-                if self.rank == 0 and it % self.experiment_specs.epochs_log() == 0:
+                if self.rank == 0 and it != 0 and it % self.experiment_specs.epochs_log() == 0:
                     tqdm_iter.set_postfix({'run': it,
                                            'total_loss': total_epoch_loss,
-                                           'accuracy': total_prediction_loss,
+                                           'acc': prediction_accuracy,
+                                           'acc_total': prediction_accuracy,
                                            'grad_norm': grad_norm.item(),
                                            'device': str(grad_norm.device),
                                            'batch': batch_idx,
                                            'batches': total_batches,
                                            'saved run': saved_run})
 
+                # run prediction
                 if it != 0 and it % self.experiment_specs.predict() == 0:
-                    total_prediction_loss = self.validate(model, model_name, it)
+                    prediction_accuracy = self.validate(model, model_name, it)
+                    total_accuracy += prediction_accuracy
 
                 # save model checkpoint
                 if self.save_if_need(model_name, it, epoch):
                     tqdm_iter.set_postfix({'run': it,
                                            'total_loss': total_epoch_loss,
-                                           'accuracy': total_prediction_loss,
+                                           'accuracy': prediction_accuracy,
                                            'grad_norm': grad_norm.item(),
                                            'device': str(grad_norm.device),
                                            'batch': batch_idx,
@@ -712,8 +742,7 @@ class Trainer(GeneratorTrainer, ABC):
                     saved_run = it
 
                 self.logger.log_training(loss.item(), grad_norm, optimizer.param_groups[0]['lr'], it)
-                metrics = {'accuracy/accuracy': None, 'loss/loss': None}
-
+                # metrics = {'accuracy/accuracy': None, 'loss/loss': None}
                 # hp.hparams_config(
                 #     hparams=[HP_OPTIMIZER],
                 #     metrics=[hp.Metric(METRIC_ACCURACY, display_name='Accuracy')],
@@ -726,16 +755,19 @@ class Trainer(GeneratorTrainer, ABC):
 
                 t_writer.add_hparams(
                     {'lr': optimizer.param_groups[0]['lr'], 'batch_size': self.experiment_specs.batch_size},
-                    {'hparam/accuracy': total_epoch_loss,
-                     'hparam/loss': float(loss.item())})
-                # model logs
-                for name, weight in model.named_parameters():
-                    t_writer.add_histogram(name, weight, epoch)
-                    t_writer.add_histogram(f'{name}.grad', weight.grad, epoch)
+                    {'hparam/accuracy': prediction_accuracy, 'hparam/loss': float(loss.item())})
 
+                # duration = time.perf_counter() - start
+                # print(duration)
                 # self.detach_hidden()
                 it += 1
-                t_writer.flush()
+
+            # model logs
+            for name, weight in model.named_parameters():
+                t_writer.add_histogram(name, weight, epoch)
+                t_writer.add_histogram(f'{name}.grad', weight.grad, epoch)
+
+            t_writer.flush()
             #  tune.report(loss=(val_loss / val_steps), accuracy=correct / total)
 
         if self.save_if_need(model_name, it, self.experiment_specs.epochs(), last_epoch=True):
@@ -980,7 +1012,6 @@ def create_loader():
     """
     experiment_specs = ExperimentSpecs(verbose=False)
     pk_dataset = experiment_specs.get_audio_dataset()
-    print(pk_dataset.keys())
     # experiment_specs.model_files.build_dir()
     data_loader = Mel_Dataloader(experiment_specs, verbose=True)
 
@@ -1014,6 +1045,7 @@ if __name__ == '__main__':
     is_benchmark_read = False
     is_train = True
     is_convert = False
+    is_inference = True
 
     experiment_specs = ExperimentSpecs(verbose=False)
     experiment_specs.model_files.build_dir()
@@ -1030,9 +1062,54 @@ if __name__ == '__main__':
 
     create_loader()
 
+    torch.backends.cudnn.enabled = True
+    # torch.backends.cudnn.benchmark = True
+
+    print(torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction)
+    print(torch.backends.cudnn.version())
+    print(torch.backends.openmp)
+
+    trainer = Trainer(experiment_specs, dataloader, verbose=True, device=device)
+
     if is_train:
-        trainer = Trainer(experiment_specs, dataloader, verbose=True, device=device)
         trainer.train()
+
+    if is_inference:
+        # trainer = Trainer(experiment_specs, dataloader, verbose=True, device=device)
+        # text = "Hello world, I missed you so much."
+        # utils = torch.hub.load('NVIDIA/DeepLearningExamples:torchhub', 'nvidia_tts_utils')
+        # sequences, lengths = utils.prepare_input_sequence([text])
+
+        text = "artist would have difficulty in doing such accurate work"
+        sequence = np.array(text_to_sequence(text, ['english_cleaners']))[None, :]
+        sequence = torch.autograd.Variable(torch.from_numpy(sequence)).cuda().long()
+
+        # model_math = 'fp16'
+        waveglow = torch.hub.load('NVIDIA/DeepLearningExamples:torchhub', 'nvidia_waveglow')
+        waveglow = waveglow.remove_weightnorm(waveglow)
+        waveglow = waveglow.to('cuda')
+        waveglow.eval()
+
+        with torch.no_grad():
+            print(sequence)
+            mel_outputs, mel_outputs_post_net, alignments = trainer.inference(sequence)
+            audio_from_mel = waveglow.infer(mel_outputs)
+            audio_from_post = waveglow.infer(mel_outputs_post_net)
+            print("waveglow return mel", audio_from_mel.shape)
+            print("waveglow return post", audio_from_post.shape)
+
+            audio_numpy_mel = audio_from_mel[0].data.cpu().numpy()
+            audio_numpy_post = audio_from_post[0].data.cpu().numpy()
+            #
+            rate = 22050
+            from scipy.io.wavfile import write
+            write("audio_mel.wav", rate, audio_numpy_mel)
+            write("audio_from_post.wav", rate, audio_numpy_post)
+
+        # mel_outputs, mel_outputs_postnet, _, alignments = model.inference(sequence)
+        # plot_data((mel_outputs.float().data.cpu().numpy()[0],
+        #            mel_outputs_postnet.float().data.cpu().numpy()[0],
+        #            alignments.float().data.cpu().numpy()[0].T))
 
     # train_loader, val_loader, xx = dataloader.create()
     # for i, batch in enumerate(train_loader):

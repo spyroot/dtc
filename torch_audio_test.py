@@ -32,7 +32,7 @@ print(lengths)
 
 
 bundle = torchaudio.pipelines.TACOTRON2_WAVERNN_PHONE_LJSPEECH
-processor = bundle.get_text_processor()
+processor = bundle.get_text_processor(s)
 tacotron2 = bundle.get_tacotron2().to(device)
 
 text = "Hello world! Text to speech!"

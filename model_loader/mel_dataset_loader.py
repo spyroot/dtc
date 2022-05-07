@@ -23,7 +23,7 @@ class TextMelLoader(torch.utils.data.Dataset):
         3) computes mel-spectrograms from audio files.
     """
 
-    def __init__(self, model_spec: TacotronSpec, data, format,  is_trace_time=False):
+    def __init__(self, model_spec: TacotronSpec, data, format, is_trace_time=False):
         """
         """
 
@@ -35,7 +35,7 @@ class TextMelLoader(torch.utils.data.Dataset):
             raise Exception("Dataset file type format is none or empty")
 
         if 'tensor_mel' in format:
-            self.is_a_tensor  = True
+            self.is_a_tensor = True
         elif 'numpy_mel' in format:
             self.is_a_numpy = True
         elif 'audio_raw' in format:
@@ -45,10 +45,16 @@ class TextMelLoader(torch.utils.data.Dataset):
 
         self._model_spec = model_spec
         # check dataset contain key
-        if 'data' not in data:
-            raise Exception("Dataset dict doesn't contain key data")
+        if self.is_a_raw is False and 'data' not in data:
+            raise Exception("Dataset dict doesn't contain key 'data'")
 
-        self._data = data['data']
+        if self.is_a_tensor:
+            self._data = data['data']
+
+        if self.is_a_raw:
+            print(type(data))
+            self._data = data
+
         self.text_cleaners = model_spec.get_text_cleaner()
         self.max_wav_value = model_spec.max_wav_value()
         self.sampling_rate = model_spec.sampling_rate()

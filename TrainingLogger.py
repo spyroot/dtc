@@ -24,6 +24,7 @@ class Tacotron2Logger(SummaryWriter):
         self.add_scalar("training.loss", reduced_loss, iteration)
         self.add_scalar("grad.norm", grad_norm, iteration)
         self.add_scalar("learning.rate", learning_rate, iteration)
+        self.flush()
         #self.add_scalar("duration", duration, iteration)
 
     def log_validation(self, reduced_loss, model, y, y_pred, iteration):
@@ -56,3 +57,5 @@ class Tacotron2Logger(SummaryWriter):
                 gate_targets[idx].data.cpu().numpy(),
                 torch.sigmoid(gate_outputs[idx]).data.cpu().numpy()),
             iteration, dataformats='HWC')
+        self.flush()
+

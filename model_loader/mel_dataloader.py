@@ -53,7 +53,6 @@ class Mel_Dataloader:
 
         experiment_specs = ExperimentSpecs(verbose=False)
         pk_dataset = experiment_specs.get_audio_dataset()
-        print(pk_dataset.keys())
 
         if pk_dataset['ds_type'] == 'tensor_mel':
             self.train_dataset = TextMelLoader(self.encoder_spec,
@@ -64,9 +63,9 @@ class Mel_Dataloader:
 
         if pk_dataset['ds_type'] == 'audio_raw':
             self.train_dataset = TextMelLoader(self.encoder_spec,
-                                               list(pk_dataset['train_set']), format='audio_raw')
+                                               list(pk_dataset['train_set'].values()), format='audio_raw')
             self.validation_dataset = TextMelLoader(self.encoder_spec,
-                                                    list(pk_dataset['validation_set']), format='audio_raw')
+                                                    list(pk_dataset['validation_set'].values()), format='audio_raw')
             self.collate_fn = TextMelCollate(self.encoder_spec.frames_per_step())
 
         # test_set
