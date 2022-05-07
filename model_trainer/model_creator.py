@@ -1,6 +1,5 @@
-from tacotron2.model_specs.model_trainer import GeneratorTrainer
-
-from tacotron2.model_specs import ModelSpecs
+from .model_specs import ExperimentSpecs
+from .model_trainer import GeneratorTrainer
 from tacotron2.utils import fmtl_print
 
 
@@ -9,7 +8,7 @@ class ModelCreator:
      Create model and model trainer.
     """
 
-    def __init__(self, trainer_spec: ModelSpecs, device='cuda', debug=False, verbose=False):
+    def __init__(self, trainer_spec: ExperimentSpecs, device='cuda', debug=False, verbose=False):
         """
          Construct model creator,  it take trainer spec object and
          create model that indicate as active model.
@@ -37,7 +36,7 @@ class ModelCreator:
         self.model_dispatch, self.trainer_dispatch = self.create_model_dispatch()
         self.create_model_dispatch()
 
-    def create_lstm_rnn(self, trainer_spec: ModelSpecs):
+    def create_lstm_rnn(self, trainer_spec: ExperimentSpecs):
         """
         Factory method create model based https://arxiv.org/abs/1802.08773
         Instead we use LSTM

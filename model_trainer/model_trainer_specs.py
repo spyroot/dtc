@@ -8,9 +8,9 @@ import shutil
 import logging
 from pathlib import Path
 
-from tacotron2.model_files import ModelFiles
-from tacotron2.model_specs.dtc_spec import DTC
-from tacotron2.text.symbols import symbols
+from .model_files import ModelFiles
+from .dtc_spec import DTC
+from text.symbols import symbols
 from tacotron2.utils import fmtl_print, fmt_print
 import torch
 
@@ -23,9 +23,10 @@ from datetime import timedelta
 from typing import Final, List
 from datetime import time
 from datetime import timedelta
+from .model_spec import ModelSpec
 
 
-class ModelSpecs:
+class ExperimentSpecs:
     """
 
     """
@@ -44,7 +45,7 @@ class ModelSpecs:
         if isinstance(template_file_name, str):
             fmtl_print("Loading", template_file_name)
             # a file name or io.string
-            self.config_file_name = Path(current_dir) / Path(template_file_name)
+            self.config_file_name = Path(template_file_name)
 
         self._verbose = None
 
@@ -52,7 +53,7 @@ class ModelSpecs:
         self._setting = None
 
         #
-        self.model_spec = None
+        self._model_spec = None
 
         #
         self.inited = None
@@ -169,7 +170,7 @@ class ModelSpecs:
         @return: list of models.
         """
         models_types = []
-        for k in self.model_spec:
+        for k in self._model_spec:
             if k.find('model') != -1:
                 models_types.append(k)
 
@@ -212,7 +213,7 @@ class ModelSpecs:
         self.models_specs = self.config['models']
         #
         if self.active_model == 'dts':
-            self.model_spec = DTC(self.models_specs, self.dataset_specs)
+            self._model_spec = DTC(self.models_specs[self.active_model], self.dataset_specs)
 
         if self.active_model not in self.models_specs:
             raise Exception("config.yaml doesn't contain model {}.".format(self.active_model))
@@ -291,7 +292,7 @@ class ModelSpecs:
         """
         @return:  Return list of all sub models.
         """
-        keys = self.model_spec.keys()
+        keys = self._model_spec.keys()
         return [k for k in keys]
 
     def text_parser(message):
@@ -389,7 +390,28 @@ class ModelSpecs:
         return self.build_training_set(), self.build_validation_set(), self.build_test_set()
 
     def is_distributed_run(self):
+        """
+
+        :return:
+        """
+        if self._setting is None:
+            raise Exception("Initialize settings first")
+
+        if 'distributed' in self._setting:
+            return self._setting['distributed']
+
         return False
+
+    def tensorboard_sample_update(self):
+        """
+        Return true if early stopping enabled.
+        :return:  default value False
+        """
+        if self._setting is None:
+            raise Exception("Initialize settings first")
+
+        if 'early_stopping' in self._setting:
+            return True
 
     def seed(self):
         return 1234
@@ -403,8 +425,8 @@ class ModelSpecs:
     def dist_url(self):
         pass
 
-    def text_cleaner(self):
-        """
-        :return:
-        """
-        return ['english_cleaners']
+    def get_model_spec(self) -> ModelSpec:
+        return self._model_spec
+
+    def fp16_run(self):
+        pass

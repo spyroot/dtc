@@ -10,7 +10,7 @@ import shutil
 import logging
 from pathlib import Path
 
-from tacotron2.text.symbols import symbols
+# from tacotron2.text.symbols import symbols
 from tacotron2.utils import fmtl_print, fmt_print
 
 import argparse

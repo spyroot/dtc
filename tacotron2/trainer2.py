@@ -260,7 +260,7 @@ if __name__ == '__main__':
     fmtl_print("active model", model_trainer_spec.active_model)
     fmtl_print("active dataset", model_trainer_spec.use_dataset)
 
-    print(model_trainer_spec.model_spec)
+    print(model_trainer_spec._model_spec)
 
     # model_trainer_spec.build_training_set_from_files()
     # print(model_trainer_spec.dataset_specs['dir'])

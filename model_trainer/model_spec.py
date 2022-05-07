@@ -8,3 +8,7 @@ class ModelSpec(ABC, metaclass=ABCMeta):
     @abstractmethod
     def __init__(self, verbose=False):
         self.verbose = verbose
+
+    @abstractmethod
+    def get_model_param(self):
+        pass

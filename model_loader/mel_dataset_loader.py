@@ -1,11 +1,15 @@
 import random
+
 import numpy as np
 import torch
 import torch.utils.data
 
-import layers
-from tacotron2.model_specs.model_specs import ModelSpecs
-from utils import load_wav_to_torch, load_filepaths_and_text
+# import layers
+# from model_specs.model_specs import ModelSpecs
+# from utils import load_wav_to_torch, load_filepaths_and_text
+from model_loader.tacotron_stft import TacotronSTFT
+from model_trainer.tacatron_spec import TacotronSpec
+from tacotron2.utils import load_wav_to_torch
 from text import text_to_sequence
 
 
@@ -15,43 +19,42 @@ class TextMelLoader(torch.utils.data.Dataset):
         2) normalizes text and converts them to sequences of one-hot vectors
         3) computes mel-spectrograms from audio files.
     """
-    def __init__(self, model_spec: ModelSpecs, data):
+    def __init__(self, model_spec: TacotronSpec, data):
         """
         """
 
         self._model_spec = model_spec
-        self.data = data
-
-        # self.audiopaths_and_text = load_filepaths_and_text(audiopaths_and_text)
         #
-        self.text_cleaners = model_spec.text_cleaner()
+        self._data = data
+        #
+        self.text_cleaners = model_spec.get_text_cleaner()
         #
         self.max_wav_value = model_spec.max_wav_value()
         #
         self.sampling_rate = model_spec.sampling_rate()
         #
-        self.load_mel_from_disk = model_spec.load_mel_from_disk
+        self.load_mel_from_disk = model_spec.load_mel_from_disk()
         #
-        self.stft = layers.TacotronSTFT(
+        self.stft = TacotronSTFT(
             model_spec.filter_length(), model_spec.hop_length(), model_spec.win_length(),
             model_spec.n_mel_channels(), model_spec.sampling_rate(), model_spec.mel_fmin(),
             model_spec.mel_fmax())
         #
-        random.seed(model_spec.seed)
+        random.seed(model_spec.get_seed())
         #
         # random.shuffle(self.audiopaths_and_text)
 
-    def get_mel_text_pair(self, audiopath_and_text):
-        """
-
-        :param audiopath_and_text:
-        :return:
-        """
-        # separate filename and text
-        audiopath, text = audiopath_and_text[0], audiopath_and_text[1]
-        text = self.text_to_tensor(text)
-        mel = self.file_to_mel(audiopath)
-        return text, mel
+    # def get_mel_text_pair(self, audiopath_and_text):
+    #     """
+    #
+    #     :param audiopath_and_text:
+    #     :return:
+    #     """
+    #     # separate filename and text
+    #     audiopath, text = audiopath_and_text[0], audiopath_and_text[1]
+    #     text = self.text_to_tensor(text)
+    #     mel = self.file_to_mel(audiopath)
+    #     return text, mel
 
     def file_to_mel(self, filename):
         """
@@ -78,6 +81,7 @@ class TextMelLoader(torch.utils.data.Dataset):
 
     def text_to_tensor(self, text):
         """
+        One hot encoder for text seq
 
         :param text:
         :return:
@@ -91,18 +95,18 @@ class TextMelLoader(torch.utils.data.Dataset):
         :param index:
         :return:
         """
-        text = self.text_to_tensor(self.data[index]['meta'])
-        mel = self.file_to_mel(self.data[index]['path'])
-        return mel, text
+        text = self.text_to_tensor(self._data[index]['meta'])
+        mel = self.file_to_mel(self._data[index]['path'])
+        return text, mel
 
     def __len__(self):
-        return len(self.dataset)
+        return len(self._data)
 
 
 class TextMelCollate:
     """ Zero-pads model inputs and targets based on number of frames per setep
     """
-    def __init__(self, n_frames_per_step):
+    def __init__(self, n_frames_per_step=1):
         self.n_frames_per_step = n_frames_per_step
 
     def __call__(self, batch):
@@ -111,10 +115,10 @@ class TextMelCollate:
         ------
         batch: [text_normalized, mel_normalized]
         """
+        print("BATCH", len(batch))
+
         # Right zero-pad all one-hot text sequences to max input length
-        input_lengths, ids_sorted_decreasing = torch.sort(
-            torch.LongTensor([len(x[0]) for x in batch]),
-            dim=0, descending=True)
+        input_lengths, ids_sorted_decreasing = torch.sort(torch.LongTensor([len(x[0]) for x in batch]), dim=0, descending=True)
         max_input_len = input_lengths[0]
 
         text_padded = torch.LongTensor(len(batch), max_input_len)
@@ -126,6 +130,11 @@ class TextMelCollate:
         # Right zero-pad mel-spec
         num_mels = batch[0][1].size(0)
         max_target_len = max([x[1].size(1) for x in batch])
+
+        print("MAX target len", max_target_len)
+        print("num_mels num_mels len", num_mels)
+        print("num_mels num_mels len",  self.n_frames_per_step)
+
         if max_target_len % self.n_frames_per_step != 0:
             max_target_len += self.n_frames_per_step - max_target_len % self.n_frames_per_step
             assert max_target_len % self.n_frames_per_step == 0
