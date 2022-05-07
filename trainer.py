@@ -45,6 +45,7 @@ class Trainer(GeneratorTrainer, ABC):
         # self.rank = model_spec['model_spec']
         # self.group_name = model_spec['group_name']
 
+        self.n_gpus = 1
         self.device = device
         self.schedulers = {}
         self.optimizers = {}
@@ -54,7 +55,7 @@ class Trainer(GeneratorTrainer, ABC):
             self.init_distributed()
 
         self.dataloader = dataloader
-        self.train_loader, self.val_set, self.collate_fn = data_loader.get_loader()
+        self.train_loader, self.validation_loader, self.collate_fn = data_loader.get_loader()
         self.rank = rank
 
         self.criterion = Tacotron2Loss()
@@ -247,7 +248,7 @@ class Trainer(GeneratorTrainer, ABC):
         max_epochs = self.experiment_specs.epochs()
         # what tqdm to use notebook for colab or normal one.
         if self.verbose:
-            print("Creating tqdm", last_epoch, max_epochs)
+            fmtl_print("Creating tqdm", last_epoch, max_epochs)
 
         if self.is_notebook:
             tqdm_iter = tnrange(last_epoch, max_epochs)
@@ -554,6 +555,45 @@ class Trainer(GeneratorTrainer, ABC):
 
         return 0
 
+    def validate(self, model,model_name, it):
+        """
+
+        Args:
+            model:
+            it:
+            n_gpus:
+
+        Returns:
+
+        """
+        t_writer = self.experiment_specs.get_tensorboard_writer()
+
+        model.eval()
+        with torch.no_grad():
+            # val_sampler = DistributedSampler(valset) if distributed_run else None
+            # val_loader = DataLoader(valset, sampler=val_sampler, num_workers=1,
+            #                         shuffle=False, batch_size=batch_size,
+            #                         pin_memory=False, collate_fn=collate_fn)
+
+            val_loss = 0.0
+            for i, batch in enumerate(self.validation_loader):
+                print("validation batch", i)
+                x, y = model.parse_batch(batch)
+                y_pred = model(x)
+                loss = self.criterion(y_pred, y)
+                if self.experiment_specs.is_distributed_run():
+                    reduced_val_loss = self.split_tensor(loss.data, self.n_gpus).item()
+                else:
+                    reduced_val_loss = loss.item()
+                val_loss += reduced_val_loss
+            val_loss = val_loss / (i + 1)
+
+        model.train()
+        if self.rank == 0:
+            t_writer.add_scalar('val_loss_' + model_name, loss.item(), it)
+            # print("Validation loss {}: {:9f}  ".format(it, val_loss))
+            # logger.log_validation(val_loss, model, y, y_pred, iteration)
+
     def train(self, model_name='encoder'):
         """Training and validation logging results to tensorboard and stdout
 
@@ -597,7 +637,10 @@ class Trainer(GeneratorTrainer, ABC):
         model.train()
         for epoch in tqdm_iter:
             total_epoch_loss = 0
+            print("Total batches", len(self.train_loader))
             for batch_idx, batch in enumerate(self.train_loader):
+                print("batch id {} it {} validate at {}".format(batch_idx, it, self.experiment_specs.predict()))
+
                 start = time.perf_counter()
                 # for param_group in self.optimizer[model_name].param_groups:
                 #     param_group['lr'] = learning_rate
@@ -623,18 +666,23 @@ class Trainer(GeneratorTrainer, ABC):
                     tqdm_iter.set_postfix({'total_epoch_loss': total_epoch_loss,
                                            'grad_norm': grad_norm.item(),
                                            'device': str(grad_norm.device),
+                                           'batch': batch_idx,
                                            'saved iter': it})
+
+                if it != 0 and it % self.experiment_specs.predict() == 0:
+                    print("Validating")
+                    self.validate(model, it)
 
                 # save model checkpoint
                 if self.save_if_need(model_name, it, epoch):
                     tqdm_iter.set_postfix({'total_epoch_loss': total_epoch_loss,
                                            'grad_norm': grad_norm.item(),
                                            'device': str(grad_norm.device),
+                                           'batch': batch_idx,
                                            'saved iter': it})
 
-                it += 1
-                if batch_idx != 0 and batch_idx % 10 == 0:
-                    break
+                # if batch_idx != 0 and batch_idx % 10 == 0:
+                #     break
 
                 t_writer.add_scalar('loss_' + model_name, loss.item(), it)
                 total_epoch_loss /= batch_idx + 1
@@ -652,28 +700,23 @@ class Trainer(GeneratorTrainer, ABC):
                 # with SummaryWriter() as w:
                 #     for i in range(5):
 
-                # print(optimizer.param_groups[0]['lr'])
-                # print(self.experiment_specs.batch_size)
-                # print(total_epoch_loss)
-                # print(float(loss.item()))
-
-                print("Batch size", self.experiment_specs.batch_size)
                 t_writer.add_hparams({'lr': optimizer.param_groups[0]['lr'],
                                       'batch_size': self.experiment_specs.batch_size},
                                      {'hparam/accuracy': total_epoch_loss,
                                       'hparam/loss': float(loss.item())})
-
                 # model logs
                 for name, weight in model.named_parameters():
                     t_writer.add_histogram(name, weight, epoch)
                     t_writer.add_histogram(f'{name}.grad', weight.grad, epoch)
 
                 # self.detach_hidden()
+                it += 1
                 t_writer.flush()
             #  tune.report(loss=(val_loss / val_steps), accuracy=correct / total)
 
-            if self.save_if_need(model_name, it, self.experiment_specs.epochs(), last_epoch=True):
-                fmt_print("Saved last epoch", self.experiment_specs.epochs())
+        if self.save_if_need(model_name, it, self.experiment_specs.epochs(), last_epoch=True):
+            if self.verbose:
+                fmtl_print("Saved last epoch", self.experiment_specs.epochs())
 
         def train_scaled(self, model_name='encoder'):
             """Training and validation logging results to tensorboard and stdout
@@ -775,7 +818,6 @@ def print_optimizer(opt_name):
 
 
 def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
-
     config = {
         "l1": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
         "l2": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
@@ -816,10 +858,12 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
         # We have to make sure it gets executed on the same node that
         # ``tune.run`` is called on.
         from ray.util.ml_utils.node import force_on_current_node
-   #     remote_fn = force_on_current_node(ray.remote(test_best_model))
-      #  ray.get(remote_fn.remote(best_trial))
-   # else:
-       # test_best_model(best_trial)
+
+
+#     remote_fn = force_on_current_node(ray.remote(test_best_model))
+#  ray.get(remote_fn.remote(best_trial))
+# else:
+# test_best_model(best_trial)
 
 
 if __name__ == '__main__':
@@ -849,7 +893,7 @@ if __name__ == '__main__':
     experiment_specs = ExperimentSpecs(verbose=False)
     experiment_specs.model_files.build_dir()
 
-    dataloader = Mel_Dataloader(experiment_specs, verbose=False)
+    dataloader = Mel_Dataloader(experiment_specs, verbose=True)
 
     if is_benchmark_read:
         dataloader.create()

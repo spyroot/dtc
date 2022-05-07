@@ -674,6 +674,14 @@ class ExperimentSpecs:
 
         return 100
 
+    def predict(self) -> int:
+        """
+        Save model at epochs , by default trainer will use early stopping
+        """
+        if 'predict' in self._setting:
+            return int(self._setting['predict'])
+        return 100
+
     def is_train_verbose(self):
         """
         @return: Return true if we do verbose training

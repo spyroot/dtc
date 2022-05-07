@@ -15,11 +15,14 @@ class Mel_Dataloader:
     torch.Size([64, 855])
     torch.Size([64])
     """
+
     def __init__(self, experiment_specs: ExperimentSpecs, verbose=False):
         """
 
         :param experiment_specs:
         """
+        self.val_loader = None
+        self.val_sampler = None
         self.model_trainer_spec = experiment_specs
         self.model_spec = experiment_specs.get_model_spec()
         self.encoder_spec = self.model_spec.get_encoder()
@@ -39,7 +42,7 @@ class Mel_Dataloader:
         if self.train_dataloader is None:
             self.create()
 
-        return self.train_dataloader, self.validation_dataset, self.collate_fn
+        return self.train_dataloader, self.val_loader, self.collate_fn
 
     def create(self):
         """
@@ -61,13 +64,19 @@ class Mel_Dataloader:
 
         if self.verbose:
             fmtl_print("Dataloader train set contains", len(self.train_dataset))
-            fmtl_print("Dataloader Validation set contains", len(self.validation_dataset))
+            fmtl_print("Dataloader validation set contains", len(self.validation_dataset))
 
         self.train_dataloader = DataLoader(self.train_dataset, num_workers=1, shuffle=shuffle,
                                            sampler=train_sampler,
                                            batch_size=self.model_trainer_spec.batch_size,
                                            pin_memory=False,
                                            drop_last=True, collate_fn=self.collate_fn)
+
+        self.val_sampler = DistributedSampler(
+            self.validation_dataset) if self.model_trainer_spec.is_distributed_run() else None
+        self.val_loader = DataLoader(self.validation_dataset, sampler=self.val_sampler, num_workers=1,
+                                     shuffle=False, batch_size=self.model_trainer_spec.batch_size,
+                                     pin_memory=False, collate_fn=self.collate_fn)
 
     def to_gpu(x):
         """

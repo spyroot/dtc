@@ -1,13 +1,13 @@
 train: True                 # train or not,  default is True for generation we only need load pre-trained model
 #active: 'grid_small'       # dataset set generated.
-use_dataset: 'LJSpeech'     # dataset set generated.
+use_dataset: 'LJSpeechSmall'     # dataset set generated.
 use_model: 'dts'            # model to use , it must be defined in models section.
 draw_prediction: True       # at the of training draw.
 load_model: True            # load model or not, and what
 load_epoch: 500             # load model,  last epoch
 save_model: True            # save model,
 regenerate: True            # regenerated,  factor when indicated by epochs_save
-active_setting: medium      # indicate what setting to use, so we can switch from debug to production
+active_setting: small       # indicate what setting to use, so we can switch from debug to production
 evaluate: True              # will run evaluation
 
 root_dir: "."
@@ -26,6 +26,15 @@ datasets:
     dir: "~/Dropbox/Datasets/LJSpeech-1.1"
     training_meta: ljs_audio_text_train_filelist.txt
     validation_meta:  ljs_audio_text_val_filelist.txt
+    test_meta: ljs_audio_text_test_filelist.txt
+    meta: metadata.csv
+    recursive: False
+    file_type: "wav"
+  LJSpeechSmall:
+    ds_type: "audio"
+    dir: "~/Dropbox/Datasets/LJSpeechSmall"
+    training_meta: ljs_audio_text_train_filelist.txt
+    validation_meta: ljs_audio_text_val_filelist.txt
     test_meta: ljs_audio_text_test_filelist.txt
     meta: metadata.csv
     recursive: False
@@ -80,6 +89,42 @@ settings:
     epochs: 2
     #
     iters_per_checkpoint: 10
+    # fp16 or fp32
+    fp16: False
+    # if we distribute
+    distributed: False
+    # what distributed backend uses.
+    backend: "nccl"
+    #
+    url: "tcp://localhost:54321"
+    #
+    cudnn_enabled: True
+    #
+    cudnn_benchmark: False
+  small:
+    batch_size: 64
+    # tensorboard update rate
+    tensorboard_update: 20
+    # early stopping
+    early_stopping: True
+    # when to log to console
+    epochs_log: 10
+    # when to start run a test
+    start_test: 20
+    # predict to start predict , validate
+    predict: 10
+    # use epoch or iteration counter
+    predict_per_iteration: True
+    # when to save
+    epochs_save: 10
+    # if we want save per iteration
+    save_per_iteration: True
+    # fix seed
+    seed: 1234
+    #
+    epochs: 10
+    #
+    iters_per_checkpoint: 100
     # fp16 or fp32
     fp16: False
     # if we distribute
