@@ -49,12 +49,27 @@ class Mel_Dataloader:
 
         :return:
         """
-        training_set, validation_set, test_set = self.model_trainer_spec.get_audio_ds_files()
-        #
-        self.train_dataset = TextMelLoader(self.encoder_spec, list(training_set.values()))
-        self.validation_dataset = TextMelLoader(self.encoder_spec, list(validation_set.values()))
-        self.collate_fn = TextMelCollate(self.encoder_spec.frames_per_step())
+        # training_set, validation_set, test_set = self.model_trainer_spec.get_audio_ds_files()
 
+        experiment_specs = ExperimentSpecs(verbose=False)
+        pk_dataset = experiment_specs.get_audio_dataset()
+        print(pk_dataset.keys())
+
+        if pk_dataset['ds_type'] == 'tensor_mel':
+            self.train_dataset = TextMelLoader(self.encoder_spec,
+                                               pk_dataset['train_set'], format='tensor_mel')
+            self.validation_dataset = TextMelLoader(self.encoder_spec,
+                                                    pk_dataset['validation_set'], format='tensor_mel')
+            self.collate_fn = TextMelCollate(self.encoder_spec.frames_per_step())
+
+        if pk_dataset['ds_type'] == 'audio_raw':
+            self.train_dataset = TextMelLoader(self.encoder_spec,
+                                               list(pk_dataset['train_set']), format='audio_raw')
+            self.validation_dataset = TextMelLoader(self.encoder_spec,
+                                                    list(pk_dataset['validation_set']), format='audio_raw')
+            self.collate_fn = TextMelCollate(self.encoder_spec.frames_per_step())
+
+        # test_set
         if self.model_trainer_spec.is_distributed_run():
             train_sampler = DistributedSampler(self.train_dataset)
             shuffle = False

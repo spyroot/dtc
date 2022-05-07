@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader
 from TrainingLogger import Tacotron2Logger
 from distributed import apply_gradient_allreduce
 from model_loader.mel_dataloader import Mel_Dataloader
+from model_loader.mel_dataset_loader import TextMelLoader
 from model_trainer.model_trainer_specs import ExperimentSpecs
 from models.model import Tacotron2
 from tacotron2.loss_function import Tacotron2Loss
@@ -27,6 +28,8 @@ from torch.autograd import Variable
 import numpy as np
 from ray import tune
 from ray.tune.schedulers import ASHAScheduler
+
+from text import sequence_to_text
 
 
 class Trainer(GeneratorTrainer, ABC):
@@ -598,6 +601,21 @@ class Trainer(GeneratorTrainer, ABC):
 
         return total_prediction_loss
 
+    def get_last_iterator(self, model_name):
+        """
+
+        Args:
+            model_name:
+
+        Returns:
+
+        """
+        it = 0
+        if model_name in self.iters[model_name]:
+            it = self.iters[model_name]
+
+        return it
+
     def train(self, model_name='encoder'):
         """Training and validation logging results to tensorboard and stdout
 
@@ -621,7 +639,6 @@ class Trainer(GeneratorTrainer, ABC):
             fmtl_print("Epoch saved out of", self.last_epochs[model_name], self.experiment_specs.epochs())
             fmtl_print("Last iter saved", self.iters[model_name])
 
-
         #
         model = self.models[model_name].to(self.device)
         tqdm_iter = self.trainer_iterator(model_name)
@@ -635,7 +652,8 @@ class Trainer(GeneratorTrainer, ABC):
         if self.experiment_specs.is_distributed_run():
             model = apply_gradient_allreduce(model)
 
-        it = self.iters[model_name]
+        it = self.get_last_iterator(model_name)
+
         if self.last_epochs[model_name] == self.experiment_specs.epochs():
             total_prediction_loss = self.validate(model, model_name, it)
 
@@ -871,6 +889,105 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
 # else:
 # test_best_model(best_trial)
 
+import dill
+from pathlib import Path
+
+
+def convert_mel_to_data(encoder_spec, target_dir: str, dataset,
+                        dataset_name: str, data_type: str, post_check=True, verbose=True):
+    """
+
+    Args:
+        data_type:
+        verbose:
+        target_dir:
+        encoder_spec:
+        dataset:
+        dataset_name:
+        post_check:
+
+    Returns:
+
+    """
+    meta = dict(filter_length=encoder_spec.filter_length(), hop_length=encoder_spec.hop_length(),
+                win_length=encoder_spec.win_length(), n_mel_channels=encoder_spec.n_mel_channels(),
+                sampling_rate=encoder_spec.sampling_rate(), mel_fmin=encoder_spec.mel_fmin(),
+                mel_fmax=encoder_spec.mel_fmax())
+
+    data = []
+    for i in range(0, len(dataset)):
+        txt, mel = dataset[i]
+        data.append((txt, mel))
+
+    meta['data'] = data
+    file_name = Path(target_dir) / f'{dataset_name}_{data_type}_{encoder_spec.n_mel_channels()}.pt'
+    torch.save(meta, file_name)
+    ds = torch.load(file_name)
+    if verbose:
+        fmtl_print("Dataset saved", file_name)
+        fmtl_print("Dataset filter length", ds['filter_length'])
+        fmtl_print("Dataset mel channels", ds['n_mel_channels'])
+        fmtl_print("Dataset contains records", len(ds['data']))
+
+    if post_check:
+        d = ds['data']
+        for i, (one_hot, mel) in enumerate(d):
+            txt_original, mel_from_ds = dataset[i]
+            if not torch.equal(mel, mel_from_ds):
+                raise Exception("data mismatched.")
+            if not torch.equal(one_hot, txt_original):
+                raise Exception("data mismatched.")
+
+
+def convert(verbose=True):
+    """
+
+    Returns:
+
+    """
+    trainer_spec = ExperimentSpecs(verbose=False)
+    training_set, validation_set, test_set = trainer_spec.get_audio_ds_files()
+    model_spec = trainer_spec.get_model_spec()
+    encoder_spec = model_spec.get_encoder()
+
+    #
+    train_dataset = TextMelLoader(encoder_spec, list(training_set.values()))
+    validation_dataset = TextMelLoader(encoder_spec, list(validation_set.values()))
+    test_dataset = TextMelLoader(encoder_spec, list(test_set.values()))
+
+    if verbose:
+        fmtl_print("filter_length", encoder_spec.filter_length())
+        fmtl_print("hop_length", encoder_spec.hop_length())
+        fmtl_print("win_length", encoder_spec.win_length())
+        fmtl_print("n_mel_channels", encoder_spec.n_mel_channels())
+        fmtl_print("sampling_rate", encoder_spec.sampling_rate())
+        fmtl_print("mel_fmin", encoder_spec.mel_fmin())
+        fmtl_print("mel_fmax", encoder_spec.mel_fmax())
+
+    convert_mel_to_data(encoder_spec, trainer_spec.get_dataset_dir(),
+                        train_dataset, trainer_spec.use_dataset, "train")
+    convert_mel_to_data(encoder_spec, trainer_spec.get_dataset_dir(),
+                        validation_dataset, trainer_spec.use_dataset, "validate")
+    convert_mel_to_data(encoder_spec, trainer_spec.get_dataset_dir(),
+                        test_dataset, trainer_spec.use_dataset, "test")
+
+
+def create_loader():
+    """
+
+    Returns:
+
+    """
+    experiment_specs = ExperimentSpecs(verbose=False)
+    pk_dataset = experiment_specs.get_audio_dataset()
+    print(pk_dataset.keys())
+    # experiment_specs.model_files.build_dir()
+    data_loader = Mel_Dataloader(experiment_specs, verbose=True)
+
+    # for i, batch in enumerate(data_loader):
+    #     print(type(batch))
+    #     break
+
 
 if __name__ == '__main__':
     """
@@ -895,19 +1012,27 @@ if __name__ == '__main__':
                         required=False, help='comma separated name=value pairs')
 
     is_benchmark_read = False
+    is_train = True
+    is_convert = False
 
     experiment_specs = ExperimentSpecs(verbose=False)
     experiment_specs.model_files.build_dir()
 
     dataloader = Mel_Dataloader(experiment_specs, verbose=True)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     if is_benchmark_read:
         dataloader.create()
         dataloader.benchmark_read()
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    trainer = Trainer(experiment_specs, dataloader, verbose=True, device=device)
-    trainer.train()
+    if is_convert:
+        convert()
+
+    create_loader()
+
+    if is_train:
+        trainer = Trainer(experiment_specs, dataloader, verbose=True, device=device)
+        trainer.train()
 
     # train_loader, val_loader, xx = dataloader.create()
     # for i, batch in enumerate(train_loader):

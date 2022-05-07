@@ -166,10 +166,9 @@ class ExperimentSpecs:
                 shutil.rmtree("tensorboard")
         self.writer = SummaryWriter()
 
-        #from tensorboard.plugins.hparams import api as hp
+        # from tensorboard.plugins.hparams import api as hp
         # HP_OPTIMIZER = hp.HParam('optimizer', hp.Discrete(['adam', 'sgd']))
         # METRIC_ACCURACY = 'accuracy'
-
 
         # with SummaryWriter() as w:
         #     for i in range(5):
@@ -453,7 +452,7 @@ class ExperimentSpecs:
         """
         :return:
         """
-        if 'training_meta' in self.dataset_specs:
+        if 'validation_meta' in self.dataset_specs:
             return self.update_meta(self.get_validation_meta_file())
         return {}
 
@@ -461,7 +460,7 @@ class ExperimentSpecs:
         """
         :return:
         """
-        if 'training_meta' in self.dataset_specs:
+        if 'test_meta' in self.dataset_specs:
             return self.update_meta(self.get_test_meta_file())
         return {}
 
@@ -488,7 +487,7 @@ class ExperimentSpecs:
 
         return 0
 
-    def get_audio_ds_files(self):
+    def get_raw_audio_ds_files(self):
         """
         :return:
         """
@@ -508,7 +507,63 @@ class ExperimentSpecs:
             fmtl_print("Validation set metadata contains", val_record)
             fmtl_print("Test set metadata contains", test_record)
 
-        return self.build_training_set(), self.build_validation_set(), self.build_test_set()
+        ds_dict = dict(train_set=self.build_training_set(),
+                       validation_set=self.build_validation_set(),
+                       test_set=self.build_test_set())
+
+        if len(ds_dict) > 0:
+            ds_dict['ds_type'] = 'audio_raw'
+
+        return ds_dict
+
+    def get_tensor_audio_ds_files(self):
+        """
+        :return:
+        """
+        ds_dir = self.resolve_home(self.get_dataset_dir())
+        ds_dict = dict(train_set=Path(ds_dir) / self.get_training_meta_file(),
+                       validation_set=Path(ds_dir) / self.get_validation_meta_file(),
+                       test_set=Path(ds_dir) / self.get_test_meta_file())
+
+        pt_dict = {}
+        for k in ds_dict:
+            # check if  file exists
+            if ds_dict[k].exists():
+                if self._verbose:
+                    fmtl_print("Loading tensor mel from", str(ds_dict[k]))
+                dataset_from_pt = torch.load(ds_dict[k])
+                if self._verbose:
+                    fmtl_print("Dataset filter length", dataset_from_pt['filter_length'])
+                    fmtl_print("Dataset mel channels", dataset_from_pt['n_mel_channels'])
+                    fmtl_print("Dataset contains records", len(dataset_from_pt['data']))
+                pt_dict[k] = dataset_from_pt
+            else:
+                raise Exception("Failed locate {} file.".format(str(ds_dict[k])))
+
+        if len(pt_dict) > 0:
+            pt_dict['ds_type'] = 'tensor_mel'
+
+        return pt_dict
+
+    def get_audio_dataset(self):
+        """
+        :return:
+        """
+        if 'format' not in self.dataset_specs:
+            raise Exception("config.yaml doesn't dataset format entry.")
+
+        self._verbose = True
+
+        data_type = self.dataset_specs['format']
+        file_type = self.dataset_specs['file_type']
+        if data_type == 'raw':
+            print("data type audio raw")
+            return self.get_raw_audio_ds_files()
+        if data_type == 'tensor_mel':
+            print("data type mel audio raw")
+            return self.get_tensor_audio_ds_files()
+
+        return None
 
     def tensorboard_sample_update(self):
         """

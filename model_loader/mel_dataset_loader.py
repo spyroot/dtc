@@ -23,26 +23,43 @@ class TextMelLoader(torch.utils.data.Dataset):
         3) computes mel-spectrograms from audio files.
     """
 
-    def __init__(self, model_spec: TacotronSpec, data, is_trace_time=False):
+    def __init__(self, model_spec: TacotronSpec, data, format,  is_trace_time=False):
         """
         """
 
+        self.is_a_tensor = False
+        self.is_a_numpy = False
+        self.is_a_raw = False
+
+        if format is None or len(format) == 0:
+            raise Exception("Dataset file type format is none or empty")
+
+        if 'tensor_mel' in format:
+            self.is_a_tensor  = True
+        elif 'numpy_mel' in format:
+            self.is_a_numpy = True
+        elif 'audio_raw' in format:
+            self.is_a_raw = True
+        else:
+            raise Exception("Dataset file type format is unsupported.")
+
         self._model_spec = model_spec
-        #
-        self._data = data
-        #
+        # check dataset contain key
+        if 'data' not in data:
+            raise Exception("Dataset dict doesn't contain key data")
+
+        self._data = data['data']
         self.text_cleaners = model_spec.get_text_cleaner()
-        #
         self.max_wav_value = model_spec.max_wav_value()
-        #
         self.sampling_rate = model_spec.sampling_rate()
-        #
         self.load_mel_from_disk = model_spec.load_mel_from_disk()
-        #
-        self.stft = TacotronSTFT(
-            model_spec.filter_length(), model_spec.hop_length(), model_spec.win_length(),
-            model_spec.n_mel_channels(), model_spec.sampling_rate(), model_spec.mel_fmin(),
-            model_spec.mel_fmax())
+
+        # if raw we need transcode to stft's
+        if self.is_a_raw:
+            self.stft = TacotronSTFT(
+                model_spec.filter_length(), model_spec.hop_length(), model_spec.win_length(),
+                model_spec.n_mel_channels(), model_spec.sampling_rate(), model_spec.mel_fmin(),
+                model_spec.mel_fmax())
         #
         random.seed(model_spec.get_seed())
         #
@@ -85,6 +102,22 @@ class TextMelLoader(torch.utils.data.Dataset):
 
         return melspec
 
+    def numpy_to_mel(self, filename):
+        """
+
+        Args:
+            filename:
+
+        Returns:
+
+        """
+        melspec = torch.from_numpy(np.load(filename))
+        assert melspec.size(0) == self.stft.n_mel_channels, (
+            'Mel dimension mismatch: given {}, expected {}'.format(
+                melspec.size(0), self.stft.n_mel_channels))
+
+        return melspec
+
     def text_to_tensor(self, text):
         """
         One hot encoder for text seq
@@ -101,9 +134,15 @@ class TextMelLoader(torch.utils.data.Dataset):
         :param index:
         :return:
         """
-        text = self.text_to_tensor(self._data[index]['meta'])
-        mel = self.file_to_mel(self._data[index]['path'])
-        return text, mel
+        if self.is_a_tensor:
+            text, mel = self._data[index]
+            return text, mel
+        if self.is_a_raw:
+            text = self.text_to_tensor(self._data[index]['meta'])
+            mel = self.file_to_mel(self._data[index]['path'])
+            return text, mel
+
+        return None, None
 
     def __len__(self):
         return len(self._data)
