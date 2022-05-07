@@ -28,8 +28,9 @@ class Postnet(nn.Module):
         - Five 1-d convolution with 512 channels and kernel size 5
     """
 
-    def __init__(self, experiment_specs):
+    def __init__(self, experiment_specs, device):
         super(Postnet, self).__init__()
+        self.device = device
         self.convolutions = nn.ModuleList()
         self.experiment_specs = experiment_specs
         self.model_spec = experiment_specs.get_model_spec()

@@ -11,52 +11,53 @@ from tacotron2.utils import get_mask_from_lengths
 
 
 class Decoder(nn.Module):
-    def __init__(self, experiment_specs: ExperimentSpecs):
+    def __init__(self, specs: ExperimentSpecs, device):
         """
 
-        :param experiment_specs:
+        :param specs:
         """
         super(Decoder, self).__init__()
-        self.experiment_specs = experiment_specs
-        self.model_spec = experiment_specs.get_model_spec()
+        self.experiment_specs = specs
+        self.model_spec = specs.get_model_spec()
         self.encoder_spec = self.model_spec.get_encoder()
+        self.device = device
 
         print("Decode", self.experiment_specs.n_frames_per_step)
 
         self.n_mel_channels = self.encoder_spec.n_mel_channels()
         self.n_frames_per_step = self.experiment_specs.n_frames_per_step
         self.encoder_embedding_dim = self.experiment_specs.encoder_embedding_dim
-        self.attention_rnn_dim = experiment_specs.attention_rnn_dim
-        self.decoder_rnn_dim = experiment_specs.decoder_rnn_dim
-        self.prenet_dim = experiment_specs.prenet_dim
-        self.max_decoder_steps = experiment_specs.max_decoder_steps
-        self.gate_threshold = experiment_specs.gate_threshold
-        self.p_attention_dropout = experiment_specs.p_attention_dropout
-        self.p_decoder_dropout = experiment_specs.p_decoder_dropout
+        self.attention_rnn_dim = specs.attention_rnn_dim
+        self.decoder_rnn_dim = specs.decoder_rnn_dim
+        self.pre_net_dim = specs.prenet_dim
+        self.max_decoder_steps = specs.max_decoder_steps
+        self.gate_threshold = specs.gate_threshold
+        self.p_attention_dropout = specs.p_attention_dropout
+        self.p_decoder_dropout = specs.p_decoder_dropout
 
-        self.prenet = Prenet(
-            self.encoder_spec.n_mel_channels() * experiment_specs.n_frames_per_step,
-            [experiment_specs.prenet_dim, experiment_specs.prenet_dim])
+        self.pre_net = Prenet(
+            self.encoder_spec.n_mel_channels() * specs.n_frames_per_step,
+            [specs.prenet_dim, specs.prenet_dim])
 
         self.attention_rnn = nn.LSTMCell(
-            experiment_specs.prenet_dim + experiment_specs.encoder_embedding_dim,
-            experiment_specs.attention_rnn_dim)
+            specs.prenet_dim + specs.encoder_embedding_dim,
+            specs.attention_rnn_dim)
 
         self.attention_layer = Attention(
-            experiment_specs.attention_rnn_dim, experiment_specs.encoder_embedding_dim,
-            experiment_specs.attention_dim, experiment_specs.attention_location_n_filters,
-            experiment_specs.attention_location_kernel_size)
+            specs.attention_rnn_dim, specs.encoder_embedding_dim,
+            specs.attention_dim, specs.attention_location_n_filters,
+            specs.attention_location_kernel_size)
 
         self.decoder_rnn = nn.LSTMCell(
-            experiment_specs.attention_rnn_dim + experiment_specs.encoder_embedding_dim,
-            experiment_specs.decoder_rnn_dim, 1)
+            specs.attention_rnn_dim + specs.encoder_embedding_dim,
+            specs.decoder_rnn_dim, 1)
 
         self.linear_projection = LinearNorm(
-            experiment_specs.decoder_rnn_dim + experiment_specs.encoder_embedding_dim,
-            self.encoder_spec.n_mel_channels() * experiment_specs.n_frames_per_step)
+            specs.decoder_rnn_dim + specs.encoder_embedding_dim,
+            self.encoder_spec.n_mel_channels() * specs.n_frames_per_step)
 
         self.gate_layer = LinearNorm(
-            experiment_specs.decoder_rnn_dim + experiment_specs.encoder_embedding_dim, 1,
+            specs.decoder_rnn_dim + specs.encoder_embedding_dim, 1,
             bias=True, w_init_gain='sigmoid')
 
     def get_go_frame(self, memory):
@@ -215,10 +216,9 @@ class Decoder(nn.Module):
         decoder_input = self.get_go_frame(memory).unsqueeze(0)
         decoder_inputs = self.parse_decoder_inputs(decoder_inputs)
         decoder_inputs = torch.cat((decoder_input, decoder_inputs), dim=0)
-        decoder_inputs = self.prenet(decoder_inputs)
+        decoder_inputs = self.pre_net(decoder_inputs)
 
-        self.initialize_decoder_states(
-            memory, mask=~get_mask_from_lengths(memory_lengths))
+        self.initialize_decoder_states(memory, mask=~get_mask_from_lengths(memory_lengths, self.device))
 
         mel_outputs, gate_outputs, alignments = [], [], []
         while len(mel_outputs) < decoder_inputs.size(0) - 1:
@@ -252,7 +252,7 @@ class Decoder(nn.Module):
 
         mel_outputs, gate_outputs, alignments = [], [], []
         while True:
-            decoder_input = self.prenet(decoder_input)
+            decoder_input = self.pre_net(decoder_input)
             mel_output, gate_output, alignment = self.decode(decoder_input)
 
             mel_outputs += [mel_output.squeeze(1)]

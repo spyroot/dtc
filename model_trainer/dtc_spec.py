@@ -23,3 +23,4 @@ class DTC(ModelSpec, ABC):
 
     def get_encoder(self) -> TacotronSpec:
         return self._encoder_spec
+

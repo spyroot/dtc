@@ -9,8 +9,11 @@ import torch.utils.data
 # from utils import load_wav_to_torch, load_filepaths_and_text
 from model_loader.tacotron_stft import TacotronSTFT
 from model_trainer.tacatron_spec import TacotronSpec
-from tacotron2.utils import load_wav_to_torch
+from tacotron2.utils import load_wav_to_torch, fmtl_print
 from text import text_to_sequence
+import time
+from timeit import default_timer as timer
+from datetime import timedelta
 
 
 class TextMelLoader(torch.utils.data.Dataset):
@@ -19,7 +22,8 @@ class TextMelLoader(torch.utils.data.Dataset):
         2) normalizes text and converts them to sequences of one-hot vectors
         3) computes mel-spectrograms from audio files.
     """
-    def __init__(self, model_spec: TacotronSpec, data):
+
+    def __init__(self, model_spec: TacotronSpec, data, is_trace_time=False):
         """
         """
 
@@ -43,6 +47,8 @@ class TextMelLoader(torch.utils.data.Dataset):
         random.seed(model_spec.get_seed())
         #
         # random.shuffle(self.audiopaths_and_text)
+
+        self.is_trace_time = False
 
     # def get_mel_text_pair(self, audiopath_and_text):
     #     """
@@ -104,21 +110,43 @@ class TextMelLoader(torch.utils.data.Dataset):
 
 
 class TextMelCollate:
-    """ Zero-pads model inputs and targets based on number of frames per setep
+    """ Zero-pads model inputs and targets based on number of frames per step
     """
-    def __init__(self, n_frames_per_step=1):
+
+    def __init__(self, n_frames_per_step=1, is_trace_time=False):
+        """
+
+        Args:
+            n_frames_per_step:
+        """
         self.n_frames_per_step = n_frames_per_step
+        self.is_trace_time = False
+
+    def trace(self):
+        """
+
+        Returns:
+
+        """
+        self.is_trace_time = True
 
     def __call__(self, batch):
-        """Collate's training batch from normalized text and mel-spectrogram
-        PARAMS
-        ------
-        batch: [text_normalized, mel_normalized]
         """
-        print("BATCH", len(batch))
+        Automatically collating individual fetched data samples into.
+        Each batch containers [text_normalized, mel_normalized]
 
+        Args:
+            batch:  batch size.
+        Returns:
+
+        """
         # Right zero-pad all one-hot text sequences to max input length
-        input_lengths, ids_sorted_decreasing = torch.sort(torch.LongTensor([len(x[0]) for x in batch]), dim=0, descending=True)
+        if self.is_trace_time:
+            t = time.process_time()
+            start = timer()
+
+        input_lengths, ids_sorted_decreasing = torch.sort(torch.LongTensor([len(x[0]) for x in batch]), dim=0,
+                                                          descending=True)
         max_input_len = input_lengths[0]
 
         text_padded = torch.LongTensor(len(batch), max_input_len)
@@ -130,10 +158,6 @@ class TextMelCollate:
         # Right zero-pad mel-spec
         num_mels = batch[0][1].size(0)
         max_target_len = max([x[1].size(1) for x in batch])
-
-        print("MAX target len", max_target_len)
-        print("num_mels num_mels len", num_mels)
-        print("num_mels num_mels len",  self.n_frames_per_step)
 
         if max_target_len % self.n_frames_per_step != 0:
             max_target_len += self.n_frames_per_step - max_target_len % self.n_frames_per_step
@@ -148,8 +172,13 @@ class TextMelCollate:
         for i in range(len(ids_sorted_decreasing)):
             mel = batch[ids_sorted_decreasing[i]][1]
             mel_padded[i, :, :mel.size(1)] = mel
-            gate_padded[i, mel.size(1)-1:] = 1
+            gate_padded[i, mel.size(1) - 1:] = 1
             output_lengths[i] = mel.size(1)
 
-        return text_padded, input_lengths, mel_padded, gate_padded, \
-            output_lengths
+        if self.is_trace_time:
+            elapsed_time = time.process_time() - t
+            end = timer()
+            fmtl_print("Collate single pass time", elapsed_time)
+            fmtl_print("Collate single pass delta sec", timedelta(seconds=end - start))
+
+        return text_padded, input_lengths, mel_padded, gate_padded, output_lengths

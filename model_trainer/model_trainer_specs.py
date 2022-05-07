@@ -24,6 +24,7 @@ from typing import Final, List
 from datetime import time
 from datetime import timedelta
 from .model_spec import ModelSpec
+from time import gmtime, strftime
 
 
 class ExperimentSpecs:
@@ -39,6 +40,8 @@ class ExperimentSpecs:
         """
 
         # a file name or io.string
+        self.lr_schedulers = None
+        self._optimizers = None
         self.config_file_name = None
         current_dir = os.path.dirname(os.path.realpath(__file__))
 
@@ -47,7 +50,7 @@ class ExperimentSpecs:
             # a file name or io.string
             self.config_file_name = Path(template_file_name)
 
-        self._verbose = None
+        self._verbose = verbose
 
         #
         self._setting = None
@@ -84,16 +87,14 @@ class ExperimentSpecs:
 
         fmtl_print("Device", self.device)
 
-        # model files
-        self.model_files = ModelFiles()
-
         # if clean tensorboard
         self.clean_tensorboard = False
 
         self.ignore_layers = ['embedding.weight']
 
-        self.load_mel_from_disk = False,
-        self.text_cleaners = ['english_cleaners'],
+        self.load_mel_from_disk = False
+
+        self.text_cleaners = ['english_cleaners']
 
         ################################
         # Model Parameters             #
@@ -132,10 +133,11 @@ class ExperimentSpecs:
         # Optimization Hyperparameters #
         ################################
         self.use_saved_learning_rate = False
-        self.learning_rate = 1e-3
-        self.weight_decay = 1e-6
+
+        # self.learning_rate = 1e-3
+        # self.weight_decay = 1e-6
+        # 
         self.grad_clip_thresh = 1.0
-        self.batch_size = 64
         self.mask_padding = True  # set model's padded outputs to padded values
         self.dynamic_loss_scaling = True
 
@@ -145,23 +147,33 @@ class ExperimentSpecs:
         self.read_from_file()
         # self.optimizer = HParam('optimizer', hp.Discrete(['adam', 'sgd']))
 
-    def setup_tensorflow(self):
+        # model files
+        self.model_files = ModelFiles(self.config)
+        self.model_files.build_dir()
+        self.setup_tensorboard()
+
+    def setup_tensorboard(self):
         """
         Setup tensorflow dir
         """
-        time = time.strftime("%Y-%m-%d-%H", time.gmtime())
-        fmt_print("tensorboard log dir", self.log_dir())
-        logging.basicConfig(filename=str(self.dir_log / Path('train' + time + '.log')), level=logging.DEBUG)
+        time_fmt = strftime("%Y-%m-%d-%H", gmtime())
+        fmt_print("tensorboard log dir", self.model_files.get_model_log_dir())
+        logging.basicConfig(filename=str(self.model_files.get_model_log_dir() / Path('train' + time_fmt + '.log')),
+                            level=logging.DEBUG)
 
         if bool(self.config['regenerate']):
             if os.path.isdir("tensorboard"):
                 shutil.rmtree("tensorboard")
         self.writer = SummaryWriter()
+
+        #from tensorboard.plugins.hparams import api as hp
+        # HP_OPTIMIZER = hp.HParam('optimizer', hp.Discrete(['adam', 'sgd']))
+        # METRIC_ACCURACY = 'accuracy'
+
+
         # with SummaryWriter() as w:
         #     for i in range(5):
         #         w.add_hparams({'lr': 0.1 * i, 'bsize': i}, {'hparam/accuracy': 10 * i, 'hparam/loss': 10 * i})
-
-        return self.writer
 
     def models_list(self):
         """
@@ -205,6 +217,7 @@ class ExperimentSpecs:
         """
         if 'models' not in self.config:
             raise Exception("config.yaml must contain at least one models list and one model.")
+
         if 'use_model' not in self.config:
             raise Exception("config.yaml must contain use_model and it must defined.")
         #
@@ -219,7 +232,7 @@ class ExperimentSpecs:
             raise Exception("config.yaml doesn't contain model {}.".format(self.active_model))
 
         # set model spec
-        #self.model_spec = self.models_specs[self.active_model]
+        # self.model_spec = self.models_specs[self.active_model]
 
     def set_active_settings(self, debug=False):
         """
@@ -239,6 +252,28 @@ class ExperimentSpecs:
         if debug:
             fmt_print("Active settings", self._setting)
 
+    def read_optimizer(self):
+        """
+        Read optimizer setting.
+        Single config can have different optimizer.  Each model spec has name bind.
+
+        Returns:
+        """
+        # checks if optimizers setting present
+        if 'optimizers' in self.config:
+            self._optimizers = self.config['optimizers']
+        else:
+            raise Exception("config.yaml doesn't contain optimizers section. Example {}".format(""))
+
+    def read_lr_scheduler(self):
+        """
+        Read lr lr_schedulers, each model can have different lr lr_schedulers.
+        Returns:
+
+        """
+        if 'lr_schedulers' in self.config:
+            self.lr_schedulers = self.config['lr_schedulers']
+
     def read_config(self, debug=False):
         """
         Parse config file and initialize trainer
@@ -251,6 +286,8 @@ class ExperimentSpecs:
         self.set_active_dataset()
         self.set_dataset_specs()
         self.set_active_model()
+        self.read_lr_scheduler()
+        self.read_optimizer()
 
         # settings stored internally
         if debug:
@@ -295,25 +332,29 @@ class ExperimentSpecs:
         keys = self._model_spec.keys()
         return [k for k in keys]
 
-    def text_parser(message):
-        """Get the normalized list of words from a message string.
-
-        This function should split a message into words, normalize them, and return
-        the resulting list. For splitting, you should split on spaces. For normalization,
-        you should convert everything to lowercase.
-
+    @staticmethod
+    def resolve_home(path_dir):
+        """
+        If config.yaml contain ~ resolve home and make a path to directory
+        full path.
         Args:
-            message: A string containing an SMS message
+            path_dir:
 
         Returns:
-           The list of normalized words from the message.
-        """
-        # *** START CODE HERE ***
-        mess = message.lower()
-        return mess.split()
-        # *** END CODE HERE ***
 
-    def load_text_file(self, file_name, delim="|", filter='DUMMY/'):
+        """
+        _dir = str(path_dir)
+        if _dir.find('~') != -1:
+            sub_dir = _dir.split('~')
+            if len(sub_dir) > 1:
+                home = Path.home()
+                full_path = home / (Path(sub_dir[1][1:]))
+                if full_path.exists():
+                    return full_path
+
+        return path_dir
+
+    def load_text_file(self, file_name, delim="|", _filter='DUMMY/'):
         """Load from text file name and metadata (text)
 
         Args:
@@ -321,14 +362,13 @@ class ExperimentSpecs:
 
         Returns:
             dict where key is file name and value text.
-            :param filter:
+            :param _filter:
             :param file_name:
             :param delim:
         """
 
-        target_dir = self.dataset_specs['dir']
+        target_dir = self.get_dataset_dir()
         file_path = Path(target_dir) / file_name
-        print(str(file_path))
 
         file_meta_kv = {}
         with open(file_path, 'r', newline='', encoding='utf8') as meta_file:
@@ -336,19 +376,40 @@ class ExperimentSpecs:
             for line in lines:
                 tokens = line.split(delim)
                 if len(tokens) == 2:
-                    file_name = tokens[0].replace(filter, '')
+                    file_name = tokens[0].replace(_filter, '')
                     file_meta_kv[file_name] = tokens[1]
 
         return file_meta_kv
 
-    def update_meta(self, metadata_file):
+    def get_dataset_dir(self):
+        """
+
+        Returns:
+        """
+        if 'dir' not in self.dataset_specs:
+            raise Exception("config.yaml doesn't dir entry")
+
+        # resolve home
+        path_to_dir = self.resolve_home(self.dataset_specs['dir'])
+        if path_to_dir != self.dataset_specs['dir']:
+            self.dataset_specs['dir'] = path_to_dir
+
+        return path_to_dir
+
+    def update_meta(self, metadata_file, file_type_filter="wav"):
         """
         Build a dict that hold each file as key, a nested dict contains
         full path to a file,  metadata such as label , text , translation etc.
         :return:
         """
+        path_to_dir = self.resolve_home(self.get_dataset_dir())
         file_meta_kv = self.load_text_file(metadata_file)
-        files = self.model_files.make_file_dict(self.dataset_specs['dir'], "wav")
+        #
+        files = self.model_files.make_file_dict(path_to_dir,
+                                                file_type_filter,
+                                                filter_dict=file_meta_kv)
+        if self._verbose:
+            fmtl_print("Updating metadata", metadata_file)
 
         for k in file_meta_kv:
             if k in files:
@@ -356,13 +417,36 @@ class ExperimentSpecs:
 
         return files
 
+    def get_training_meta_file(self):
+        """
+        Returns:  Path to file contain meta information , such as file - text
+        """
+        if 'training_meta' not in self.dataset_specs:
+            raise Exception("config.yaml doesn't contain training_meta entry.")
+        return self.dataset_specs['training_meta']
+
+    def get_validation_meta_file(self):
+        """
+        Returns:  Path to file contain meta information , such as file - text
+        """
+        if 'validation_meta' not in self.dataset_specs:
+            raise Exception("config.yaml doesn't contain validation_meta entry.")
+        return self.dataset_specs['validation_meta']
+
+    def get_test_meta_file(self):
+        """
+        Returns:  Path to file contain meta information , such as file - text
+        """
+        if 'test_meta' not in self.dataset_specs:
+            raise Exception("config.yaml doesn't contain test_meta entry.")
+        return self.dataset_specs['test_meta']
+
     def build_training_set(self):
         """
         :return:
         """
         if 'training_meta' in self.dataset_specs:
-            return self.update_meta(self.dataset_specs['training_meta'])
-
+            return self.update_meta(self.get_training_meta_file())
         return {}
 
     def build_validation_set(self):
@@ -370,8 +454,7 @@ class ExperimentSpecs:
         :return:
         """
         if 'training_meta' in self.dataset_specs:
-            return self.update_meta(self.dataset_specs['validation_meta'])
-
+            return self.update_meta(self.get_validation_meta_file())
         return {}
 
     def build_test_set(self):
@@ -379,28 +462,53 @@ class ExperimentSpecs:
         :return:
         """
         if 'training_meta' in self.dataset_specs:
-            return self.update_meta(self.dataset_specs['test_meta'])
-
+            return self.update_meta(self.get_test_meta_file())
         return {}
+
+    def num_records_in_txt(self, file_path, target_dir=None):
+        """
+        Count number of lines in text file
+        Args:
+            target_dir:
+            file_path:
+
+        Returns:
+
+        """
+        full_path = file_path
+        if target_dir is not None:
+            self.resolve_home(target_dir)
+            full_path = target_dir / file_path
+
+        if Path(full_path).exists():
+            with open(full_path, 'r', newline='', encoding='utf8') as file:
+                nonempty_lines = [line.strip("\n") for line in file if line != "\n"]
+                line_count = len(nonempty_lines)
+                return line_count
+
+        return 0
 
     def get_audio_ds_files(self):
         """
         :return:
         """
+        train_set = self.build_training_set()
+        validation_set = self.build_validation_set()
+        test_set = self.build_test_set()
+
+        # in case we need to do sanity check how many file and meta resolved.
+        if self._verbose:
+            fmtl_print("Train set contains", len(train_set))
+            fmtl_print("Validation set contains", len(validation_set))
+            fmtl_print("Test set contains", len(test_set))
+            train_record = self.num_records_in_txt(self.get_training_meta_file(), self.get_dataset_dir())
+            val_record = self.num_records_in_txt(self.get_validation_meta_file(), self.get_dataset_dir())
+            test_record = self.num_records_in_txt(self.get_test_meta_file(), self.get_dataset_dir())
+            fmtl_print("Train set metadata contains", train_record)
+            fmtl_print("Validation set metadata contains", val_record)
+            fmtl_print("Test set metadata contains", test_record)
+
         return self.build_training_set(), self.build_validation_set(), self.build_test_set()
-
-    def is_distributed_run(self):
-        """
-
-        :return:
-        """
-        if self._setting is None:
-            raise Exception("Initialize settings first")
-
-        if 'distributed' in self._setting:
-            return self._setting['distributed']
-
-        return False
 
     def tensorboard_sample_update(self):
         """
@@ -414,9 +522,50 @@ class ExperimentSpecs:
             return True
 
     def seed(self):
+        """
+
+        Returns:
+
+        """
+        if self._setting is None:
+            raise Exception("Initialize settings first")
+
+        if 'seed' in self._setting:
+            if self._verbose:
+                fmtl_print("Model uses fixed seed", self._setting['seed'])
+            return self._setting['seed']
+
         return 1234
 
     def is_fp16_run(self):
+        """
+
+        Returns:
+
+        """
+        if self._setting is None:
+            raise Exception("Initialize settings first")
+
+        if 'fp16' in self._setting:
+            if self._verbose:
+                fmtl_print("Model uses fp16", self._setting['fp16'])
+            return self._setting['fp16']
+
+        return False
+
+    def is_distributed_run(self) -> bool:
+        """
+        If trainer need to distribute training.
+        :return:
+        """
+        if self._setting is None:
+            raise Exception("Initialize settings first")
+
+        if 'distributed' in self._setting:
+            if self._verbose:
+                fmtl_print("Model uses fp16", self._setting['fp16'])
+            return self._setting['distributed']
+
         return False
 
     def get_backend(self):
@@ -429,4 +578,513 @@ class ExperimentSpecs:
         return self._model_spec
 
     def fp16_run(self):
+        return self.is_fp16_run()
+
+    def epochs(self) -> int:
+        """
+        Return epochs,
+        Note each graph has own total epochs. ( depend on graph size)
+        :return: number of epochs to run for given dataset, default 100
+        """
+        if self._setting is None:
+            raise Exception("Initialize settings first")
+
+        if 'epochs' in self._setting:
+            return int(self._setting['epochs'])
+
+        return 100
+
+    def validate_settings(self):
+        """
+
+        Returns:
+
+        """
+        if 'batch_size' in self._setting:
+            return int(self._setting['batch_size'])
+
+    @property
+    def batch_size(self):
+        """
+        Return batch size, each dataset has own batch size.
+        Model batch size
+        :return:
+        """
+        if self._setting is None:
+            raise Exception("Initialize settings first")
+
+        if 'batch_size' in self._setting:
+            return int(self._setting['batch_size'])
+
+        return 32
+
+    def load(self) -> bool:
+        """
+        Return true if model must be loaded.
+        """
+        return bool(self.config['load_model'])
+
+    def is_save(self) -> bool:
+        """
+        Return true if model saved during training.
+        """
+        return bool(self.config['save_model'])
+
+    def is_save_per_iteration(self) -> bool:
+        """
+        Return true if model saved during training.
+        """
+        if 'save_per_iteration' in self._setting:
+            return bool(self._setting['save_per_iteration'])
+
+        return False
+
+    def get_active_model(self) -> str:
+        """
+         Return model that indicate as current active model.
+         It is important to understand, we can switch between models.
+        """
+        return self.active_model
+
+    def get_active_sub_models(self):
+        """
+
+        Returns:
+
+        """
+        _active_model = self.config['use_model']
+        _models = self.config['models']
+        if _active_model not in _models:
+            raise Exception("config.yaml doesn't contain model {}.".format(_active_model))
+
+        _model = _models[_active_model]
+        sub_models = []
+        for k in _model:
+            sub_models.append(k)
+
+        return sub_models
+
+    def epochs_save(self) -> int:
+        """
+        Save model at epochs , by default trainer will use early stopping
+        TODO add early stopping optional
+        """
+        if 'epochs_save' in self._setting:
+            return int(self._setting['epochs_save'])
+
+        return 100
+
+    def is_train_verbose(self):
+        """
+        @return: Return true if we do verbose training
+        """
+        if 'debug' in self.config:
+            t = self.config['debug']
+            if 'train_verbose' in t:
+                return bool(t['train_verbose'])
+        return False
+
+    def lr_scheduler(self, alias_name):
+        """
+         Returns lr scheduler by name, each value of lr_scheduler in dict
+        :param alias_name: alias name defined in config.
+                           The purpose of alias bind different scheduler config to model
+        :return:
+        """
+        if alias_name is None or len(alias_name) == 0:
+            return None
+
+        if self.lr_schedulers is not None:
+            for elm in self.lr_schedulers:
+                spec = elm
+                if 'name' in spec and alias_name in spec['name']:
+                    return spec
+
+        return None
+
+    def lr_scheduler_type(self, alias_name):
+        """
+        Returns lr scheduler type.
+        :param alias_name: alias_name: alias name defined in config.
+                           The purpose of alias bind different scheduler config to model
+        :return:
+        """
+        scheduler_spec = self.lr_scheduler(alias_name)
+        if scheduler_spec is not None:
+            if 'type' in scheduler_spec:
+                return scheduler_spec['type']
+
+        return None
+
+    def get_sub_model_lr_scheduler(self, sub_model_name) -> str:
+        """
+
+        Args:
+            sub_model_name:
+
+        Returns:
+
+        """
+        _active_model = self.config['use_model']
+        _models = self.config['models']
+        if _active_model not in _models:
+            raise Exception("config.yaml doesn't contain model {}.".format(_active_model))
+
+        if sub_model_name is not None:
+            _model = _models[_active_model]
+            sub_model = _model[sub_model_name]
+            if 'lr_scheduler' in sub_model:
+                return sub_model['lr_scheduler']
+
+        return ""
+
+    def get_optimizer(self, alias_name: str):
+        """
+        Method return optimizer setting.
+        Args:
+            alias_name: alias name in config.  It binds optimizer to model
+
+        Returns: dict that hold optimizer settings
+
+        """
+        return self._optimizers[alias_name]
+
+    def optimizer_type(self, alias_name: str, default=False) -> str:
+        """
+        Returns optimizer type for a given alias , if default is passed , will return default.
+        Args:
+            alias_name:
+            default:
+
+        Returns:
+
+        """
+        if default is False:
+            opt = self.get_optimizer(alias_name)
+            if 'type' in opt:
+                return str(opt['type'])
+
+        return "Adam"
+
+    def get_sub_model_optimizer(self, sub_model_name) -> str:
+        """
+         Return optimizer name for a given sub_model.
+         Each sub model might have own optimizer.
+
+        Args:
+            sub_model_name:
+
+        Returns:
+
+        """
+        _active_model = self.config['use_model']
+        _models = self.config['models']
+        if _active_model not in _models:
+            raise Exception("config.yaml doesn't contain model {}.".format(_active_model))
+
+        if sub_model_name is not None:
+            _model = _models[_active_model]
+            if sub_model_name in _model:
+                sub_model = _model[sub_model_name]
+                if 'optimizer' in sub_model:
+                    return sub_model['optimizer']
+
+        return ""
+
+    def get_model_lr_scheduler(self, model_name=None) -> str:
+        """
+
+        :param model_name:
+        :return:
+        """
+        _active_model = self.config['use_model']
+        _models = self.config['models']
+        if _active_model not in _models:
+            raise Exception("config.yaml doesn't contain model {}.".format(_active_model))
+
+        if model_name is None:
+            _model = _models[_active_model]
+            if 'lr_scheduler' in _model:
+                return _model['lr_scheduler']
+
+        return ""
+
+    def milestones(self, alias_name):
+        """
+
+        :return:
+        """
+        scheduler_spec = self.lr_scheduler(alias_name)
+        if scheduler_spec is not None:
+            if 'milestones' in scheduler_spec:
+                return scheduler_spec['milestones']
+
+        return ""
+
+    def set_milestones(self, alias_name):
+        """
+
+        :param m:
+        :return:
+        """
+        self.graph_specs['milestones'] = m
+
+    def min_lr(self, alias_name):
+        """
+
+        Args:
+            alias_name:
+
+        Returns:
+
+        """
+        scheduler_spec = self.lr_scheduler(alias_name)
+        if scheduler_spec is not None:
+            if 'milestones' in scheduler_spec:
+                return scheduler_spec['milestones']
         pass
+
+    def lr_rate(self, alias_name):
+        """
+
+        Args:
+            alias_name:
+
+        Returns:
+
+        """
+        scheduler_spec = self.lr_scheduler(alias_name)
+        if scheduler_spec is not None:
+            if 'learning_rate' in scheduler_spec:
+                return scheduler_spec['learning_rate']
+
+    def lr_lambdas(self, alias_name):
+        """
+         A function which computes a multiplicative factor given an integer parameter epoch,
+         or a list of such functions, one for each group in optimizer.param_groups.
+        Args:
+            alias_name:
+
+        Returns:
+
+        """
+        scheduler_spec = self.lr_scheduler(alias_name)
+        if scheduler_spec is not None:
+            if 'lr_lambdas' in scheduler_spec:
+                return scheduler_spec['lr_lambdas']
+
+        return None
+
+    def adam_betas(self, alias_name, default=False) -> [float, float]:
+        """
+         adam coefficients used for computing running averages of gradient
+         and its square (default: (0.9, 0.999))
+
+        :param alias_name:
+        :param default:
+        :return:
+        """
+        if default is False:
+            opt = self.get_optimizer(alias_name)
+            if 'betas' in opt:
+                return opt['betas']
+
+        return [0.9, 0.999]
+
+    def adam_eps(self, alias_name, default=False) -> float:
+        """
+        Term added to the denominator to improve numerical stability
+        Default: 1e-8
+
+        Args:
+            alias_name: optimizer name
+            default: return default value
+
+        Returns:
+
+        """
+        if default is False:
+            opt = self.get_optimizer(alias_name)
+            if 'eps' in opt:
+                return float(opt['eps'])
+
+        return 1e-8
+
+    def weight_decay(self, alias_name: str, default=False) -> float:
+        """
+            Adam or SGD weight decay (L2 penalty) (default: 0)
+
+        Args:
+            alias_name: optimize alias name
+            default: true if ams grad must be enabled, default False
+
+        Returns:
+
+        """
+        if default is False:
+            opt = self.get_optimizer(alias_name)
+            if 'weight_decay' in opt:
+                return float(opt['weight_decay'])
+
+        return float(0)
+
+    def amsgrad(self, alias_name: str, default=False) -> bool:
+        """
+         Whether to use the AMSGrad variant of this algorithm,
+         Setting dictates whether to use the AMSGrad variant.
+
+        Args:
+            alias_name: optimize alias name
+            default: true if ams grad must be enabled, default False
+
+        Returns: true if ams grad must be enabled, default False
+
+        """
+        if default is False:
+            opt = self.get_optimizer(alias_name)
+            if 'amsgrad' in opt:
+                return bool(opt['amsgrad'])
+
+        return False
+
+    def sample_time(self) -> int:
+        """
+        :return: number of time take sample during prediction.
+        """
+        if 'training' in self.config:
+            t = self.config['training']
+            if 'sample_time' in t:
+                return int(t['sample_time'])
+
+        return 0
+
+    def momentum(self, alias_name: str, default=False) -> float:
+        """
+         SGD momentum factor (default: 0)
+        Args:
+            alias_name:
+            default: (default: 0)
+
+        Returns: SGD momentum facto
+
+        """
+        if default is False:
+            opt = self.get_optimizer(alias_name)
+            if 'momentum' in opt:
+                return float(opt['momentum'])
+
+        return float(0)
+
+    def dampening(self, alias_name: str, default=False) -> float:
+        """
+        SGD dampening for momentum (default: 0)
+        Returns:
+        """
+        if default is False:
+            opt = self.get_optimizer(alias_name)
+            if 'dampening' in opt:
+                return float(opt['dampening'])
+
+        return float(0)
+
+    def nesterov(self, alias_name: str, default=False) -> bool:
+        """
+            Enables nesterov momentum (default: False)
+
+        Args:
+            alias_name: optimize alias name
+            default: true if ams grad must be enabled, default False
+        Returns:
+        """
+
+        if default is False:
+            opt = self.get_optimizer(alias_name)
+            if 'nesterov' in opt:
+                return bool(opt['nesterov'])
+
+        return False
+
+    def eta_min(self, alias_name: str):
+        """
+        Minimum learning rate. Default: 0.
+
+        Args:
+            alias_name:
+
+        Returns:
+
+        """
+        scheduler_spec = self.lr_scheduler(alias_name)
+        if scheduler_spec is not None:
+            if 'eta_min' in scheduler_spec:
+                return scheduler_spec['eta_min']
+
+        return 0
+
+    def gamma(self, alias_name: str) -> float:
+        """
+        Multiplicative factor of learning rate decay. Default: 0.1.
+        Args:
+            alias_name:
+
+        Returns:
+
+        """
+        scheduler_spec = self.lr_scheduler(alias_name)
+        if scheduler_spec is not None:
+            if 'gamma' in scheduler_spec:
+                return float(scheduler_spec['gamma'])
+
+        return 0.1
+
+    def t_max(self, alias_name: str):
+        """
+        Maximum number of iterations.
+        Returns:
+
+        """
+        scheduler_spec = self.lr_scheduler(alias_name)
+        if scheduler_spec is not None:
+            if 't_max' in scheduler_spec:
+                return scheduler_spec['t_max']
+
+        return None
+
+    def optimizer_learning_rate(self, alias_name: str, default=False) -> float:
+        """
+        Adam learning rate (default: 1e-3)
+
+        Args:
+            default:  will return default value
+            alias_name:
+
+        Returns:
+
+        """
+        if default is False:
+            opt = self.get_optimizer(alias_name)
+            if 'learning_rate' in opt:
+                return float(opt['learning_rate'])
+            if 'lr' in opt:
+                return float(opt['lr'])
+
+        return float(1e-3)
+
+    def epochs_log(self) -> int:
+        """
+        Setting dictates when to log each epoch statistic.
+        Returns: Default 100
+        """
+        if self.inited is False:
+            raise Exception("Training must be initialized first.")
+
+        if self._setting is None:
+            raise Exception("Initialize settings first")
+
+        if 'epochs_log' in self._setting:
+            return int(self._setting['epochs_log'])
+
+        return 100
+
+    def get_tensorboard_writer(self):
+        return self.writer

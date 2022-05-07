@@ -24,7 +24,24 @@ class TacotronSTFT(torch.nn.Module):
         self.n_mel_channels = n_mel_channels
         self.sampling_rate = sampling_rate
         self.stft_fn = STFT(filter_length, hop_length, win_length)
-        mel_basis = librosa_mel_fn(sampling_rate, filter_length, n_mel_channels, mel_fmin, mel_fmax)
+
+        # def mel(
+        #         *,
+        #         sr,
+        #         n_fft,
+        #         n_mels=128,
+        #         fmin=0.0,
+        #         fmax=None,
+        #         htk=False,
+        #         norm="slaney",
+        #         dtype=np.float32,
+        # ):
+
+        mel_basis = librosa_mel_fn(sr=sampling_rate,
+                                   n_fft=filter_length,
+                                   n_mels=n_mel_channels,
+                                   fmin=mel_fmin,
+                                   fmax=mel_fmax)
         mel_basis = torch.from_numpy(mel_basis).float()
         self.register_buffer('mel_basis', mel_basis)
 
@@ -56,8 +73,8 @@ class TacotronSTFT(torch.nn.Module):
         -------
         mel_output: torch.FloatTensor of shape (B, n_mel_channels, T)
         """
-        assert(torch.min(y.data) >= -1)
-        assert(torch.max(y.data) <= 1)
+        assert (torch.min(y.data) >= -1)
+        assert (torch.max(y.data) <= 1)
 
         magnitudes, phases = self.stft_fn.transform(y)
         magnitudes = magnitudes.data

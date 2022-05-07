@@ -17,8 +17,9 @@ class Encoder(nn.Module):
         - Bidirectional LSTM
     """
 
-    def __init__(self, experiment_specs: ExperimentSpecs):
+    def __init__(self, experiment_specs: ExperimentSpecs, device):
         super(Encoder, self).__init__()
+        self.device = device
 
         convolutions = []
         for _ in range(experiment_specs.encoder_n_convolutions):
@@ -83,7 +84,7 @@ class Tacotron2(nn.Module):
 
     """
 
-    def __init__(self, experiment_specs: ExperimentSpecs):
+    def __init__(self, experiment_specs: ExperimentSpecs, device):
         """
 
         :param hparams:
@@ -93,6 +94,7 @@ class Tacotron2(nn.Module):
         self.model_trainer_spec = experiment_specs
         self.model_spec = experiment_specs.get_model_spec()
         self.encoder_spec = self.model_spec.get_encoder()
+        self.device = device
 
         self.mask_padding = self.experiment_specs.mask_padding
         self.fp16_run = self.experiment_specs.is_fp16_run()
@@ -107,9 +109,9 @@ class Tacotron2(nn.Module):
 
         self.embedding.weight.data.uniform_(-val, val)
         #
-        self.encoder = Encoder(experiment_specs)
-        self.decoder = Decoder(experiment_specs)
-        self.postnet = Postnet(experiment_specs)
+        self.encoder = Encoder(experiment_specs, device=self.device)
+        self.decoder = Decoder(experiment_specs, device=self.device)
+        self.postnet = Postnet(experiment_specs, device=self.device)
 
     def parse_batch(self, batch):
         """
@@ -125,11 +127,18 @@ class Tacotron2(nn.Module):
         gate_padded = to_gpu(gate_padded).float()
         output_lengths = to_gpu(output_lengths).long()
 
-        return (
-            (text_padded, input_lengths, mel_padded, max_len, output_lengths),
-            (mel_padded, gate_padded))
+        return (text_padded, input_lengths, mel_padded, max_len, output_lengths), (mel_padded, gate_padded)
 
     def parse_output(self, outputs, output_lengths=None):
+        """
+
+        Args:
+            outputs:
+            output_lengths:
+
+        Returns:
+
+        """
         if self.mask_padding and output_lengths is not None:
             mask = ~get_mask_from_lengths(output_lengths)
             mask = mask.expand(self.n_mel_channels, mask.size(0), mask.size(1))
@@ -142,6 +151,14 @@ class Tacotron2(nn.Module):
         return outputs
 
     def forward(self, inputs):
+        """
+
+        Args:
+            inputs:
+
+        Returns:
+
+        """
         text_inputs, text_lengths, mels, max_len, output_lengths = inputs
         text_lengths, output_lengths = text_lengths.data, output_lengths.data
 
@@ -160,6 +177,14 @@ class Tacotron2(nn.Module):
             output_lengths)
 
     def inference(self, inputs):
+        """
+
+        Args:
+            inputs:
+
+        Returns:
+
+        """
         embedded_inputs = self.embedding(inputs).transpose(1, 2)
         encoder_outputs = self.encoder.inference(embedded_inputs)
         mel_outputs, gate_outputs, alignments = self.decoder.inference(

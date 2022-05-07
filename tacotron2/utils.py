@@ -34,18 +34,19 @@ def fmt_print(left, *argv):
         print(f"{str(left) + ':' :<25} {argv}")
 
 
-def get_mask_from_lengths(lengths, device="cpu"):
+def get_mask_from_lengths(lengths, device="cuda"):
     """
 
     Args:
+        device:
         lengths:
 
     Returns:
 
     """
     max_len = torch.max(lengths).item()
-    ids = torch.arange(0, max_len, out=torch.LongTensor(max_len, device=device), device=device)
-    mask = (ids < lengths.unsqueeze(1)).bool()
+    ids = torch.arange(0, max_len, out=torch.LongTensor(max_len)).to(device)
+    mask = (ids < lengths.unsqueeze(1)).bool().to(device)
     return mask
 
 

@@ -14,6 +14,9 @@ class TacotronSpec:
     def filter_length(self):
         return self._model_dict['filter_length']
 
+    def frames_per_step(self):
+        return self._model_dict['frames_per_step']
+
     def hop_length(self):
         return self._model_dict['hop_length']
 
