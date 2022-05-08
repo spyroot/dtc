@@ -15,8 +15,24 @@ class GeneratorTrainer(ABC, metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def load(self, model_name):
+    def load(self, model_name: str, ignore_layers):
         pass
+
+    @staticmethod
+    def split_tensor(tensor, n_gpus):
+        """
+        "
+        Args:
+            tensor:
+            n_gpus:
+
+        Returns:
+
+        """
+        rt = tensor.clone()
+        dist.all_reduce(rt, op=dist.reduce_op.SUM)
+        rt /= n_gpus
+        return rt
 
     @staticmethod
     def save_graphs(g, file_name, verbose=False):

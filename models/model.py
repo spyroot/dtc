@@ -11,6 +11,13 @@ from models.layers import ConvNorm
 from tacotron2.utils import to_gpu, get_mask_from_lengths
 
 
+# We minimize the summed mean squared error (MSE) from before
+# and after the post-net to aid convergence. We also experimented
+# with a log-likelihood loss by modeling the output distribution with
+# a Mixture Density Network [23, 24] to avoid assuming a constant
+# variance over time, but found that these were more difficult to train
+# and they did not lead to better sounding samples.
+
 class Encoder(nn.Module):
     """Encoder module:
         - Three 1-d convolution banks
@@ -51,15 +58,14 @@ class Encoder(nn.Module):
 
         # pytorch tensor are not reversible, hence the conversion
         input_lengths = input_lengths.cpu().numpy()
+        flipped = torch.fliplr(input_lengths)
+
         x = nn.utils.rnn.pack_padded_sequence(
             x, input_lengths, batch_first=True)
 
         self.lstm.flatten_parameters()
         outputs, _ = self.lstm(x)
-
-        outputs, _ = nn.utils.rnn.pad_packed_sequence(
-            outputs, batch_first=True)
-
+        outputs, _ = nn.utils.rnn.pad_packed_sequence(outputs, batch_first=True)
         return outputs
 
     def inference(self, x):

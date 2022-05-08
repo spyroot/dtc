@@ -8,9 +8,16 @@ from models.layers import LinearNorm
 
 class Prenet(nn.Module):
     """
-
+    The prediction from the previous time step is first
+    passed through a small pre-net containing 2 fully connected layers
+    of 256 hidden ReLU units
     """
     def __init__(self, in_dim, sizes):
+        """
+
+        :param in_dim:
+        :param sizes:
+        """
         super(Prenet, self).__init__()
         in_sizes = [in_dim] + sizes[:-1]
         self.layers = nn.ModuleList(
@@ -35,7 +42,6 @@ class Postnet(nn.Module):
         self.experiment_specs = experiment_specs
         self.model_spec = experiment_specs.get_model_spec()
         self.encoder_spec = self.model_spec.get_encoder()
-
 
         self.convolutions.append(
             nn.Sequential(

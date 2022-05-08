@@ -618,7 +618,7 @@ class ExperimentSpecs:
 
         if 'distributed' in self._setting:
             if self._verbose:
-                fmtl_print("Model uses fp16", self._setting['fp16'])
+                fmtl_print("Model uses distributed", self._setting['distributed'])
             return self._setting['distributed']
 
         return False

@@ -80,6 +80,14 @@ class Mel_Dataloader:
             fmtl_print("Dataloader train set contains", len(self.train_dataset))
             fmtl_print("Dataloader validation set contains", len(self.validation_dataset))
 
+        if len(self.train_dataset) == 0:
+            raise Exception("Dataloader received empty train dataset.")
+        if len(self.validation_dataset) == 0:
+            raise Exception("Dataloader received empty validation dataset.")
+
+        if self.model_trainer_spec.batch_size == 0:
+            raise Exception("Dataloader need batch size > 0.")
+
         self.train_dataloader = DataLoader(self.train_dataset, num_workers=1, shuffle=shuffle,
                                            sampler=train_sampler,
                                            batch_size=self.model_trainer_spec.batch_size,

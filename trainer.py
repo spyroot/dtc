@@ -39,7 +39,7 @@ class Trainer(GeneratorTrainer, ABC):
     """
 
     def __init__(self, experiment_specs: ExperimentSpecs, data_loader,
-                 verbose=False, is_notebook=False, rank=0, device=None):
+                 verbose=False, is_notebook=False, rank=0, n_gpus=1, device=None):
         """
 
         :param experiment_specs:
@@ -50,14 +50,15 @@ class Trainer(GeneratorTrainer, ABC):
         # self.rank = model_spec['model_spec']
         # self.group_name = model_spec['group_name']
 
-        self.n_gpus = 1
+        self.n_gpus = n_gpus
         self.device = device
         self.schedulers = {}
         self.optimizers = {}
 
         self.experiment_specs = experiment_specs
-        if self.experiment_specs.is_distributed_run():
-            self.init_distributed()
+
+        # if self.experiment_specs.is_distributed_run():
+        #     self.init_distributed()
 
         self.dataloader = dataloader
         self.train_loader, self.validation_loader, self.collate_fn = data_loader.get_loader()
@@ -78,7 +79,9 @@ class Trainer(GeneratorTrainer, ABC):
         Returns:
 
         """
-        self.init_distributed()
+        if self.experiment_specs.is_distributed_run():
+            self.init_distributed()
+
         self.create_models()
         self.create_optimizers()
         self.create_lr_schedulers()
@@ -129,69 +132,14 @@ class Trainer(GeneratorTrainer, ABC):
             self.models[model_name] = model
             self.last_epochs[model_name] = 0
 
-    # def warm_start_model(checkpoint_path, model, ignore_layers):
-    #     """
-    #
-    #     :param model:
-    #     :param ignore_layers:
-    #     :return:
-    #     """
-    #     assert os.path.isfile(checkpoint_path)
-    #     print("Warm starting model from checkpoint '{}'".format(checkpoint_path))
-    #     checkpoint_dict = torch.load(checkpoint_path, map_location='cpu')
-    #     model_dict = checkpoint_dict['state_dict']
-    #     if len(ignore_layers) > 0:
-    #         model_dict = {k: v for k, v in model_dict.items()
-    #                       if k not in ignore_layers}
-    #         dummy_dict = model.state_dict()
-    #         dummy_dict.update(model_dict)
-    #         model_dict = dummy_dict
-    #     model.load_state_dict(model_dict)
-    #     return model
-
-    # def load_checkpoint(checkpoint_path, model, optimizer):
-    #     assert os.path.isfile(checkpoint_path)
-    #     print("Loading checkpoint '{}'".format(checkpoint_path))
-    #     checkpoint_dict = torch.load(checkpoint_path, map_location='cpu')
-    #     model.load_state_dict(checkpoint_dict['state_dict'])
-    #     optimizer.load_state_dict(checkpoint_dict['optimizer'])
-    #     learning_rate = checkpoint_dict['learning_rate']
-    #     iteration = checkpoint_dict['iteration']
-    #     print("Loaded checkpoint '{}' from iteration {}".format(
-    #         checkpoint_path, iteration))
-    #     return model, optimizer, learning_rate, iteration
-    #
-    # def save_checkpoint(model, optimizer, learning_rate, iteration, filepath):
-    #     print("Saving model and optimizer state at iteration {} to {}".format(
-    #         iteration, filepath))
-    #     torch.save({'iteration': iteration,
-    #                 'state_dict': model.state_dict(),
-    #                 'optimizer': optimizer.state_dict(),
-    #                 'learning_rate': learning_rate}, filepath)
-
-    @staticmethod
-    def split_tensor(tensor, n_gpus):
-        """
-        "
-        Args:
-            tensor:
-            n_gpus:
-
-        Returns:
-
-        """
-        rt = tensor.clone()
-        dist.all_reduce(rt, op=dist.reduce_op.SUM)
-        rt /= n_gpus
-        return rt
-
-    def load(self, model_name: str):
+    def load(self, model_name: str, ignore_layers=None):
         """
         Method loads model from a checkpoint.
         Args:
             model_name:
 
         Returns:
+        :param ignore_layers:  a list contain of layers we skip
 
         """
         if not self.experiment_specs.load():
@@ -215,13 +163,19 @@ class Trainer(GeneratorTrainer, ABC):
             if 'optimizer_state_dict' not in checkpoint:
                 raise Exception("model has no optimizer_state_dict")
 
-            # if model_name in self.schedulers:
-            #     self.schedulers[model_name].load_state_dict(checkpoint['scheduler_state_dict'])
-            #     if 'scheduler_state_dict' not in checkpoint:
-            #         raise Exception("model has no scheduler_state_dict")
+            if model_name in self.schedulers:
+                self.schedulers[model_name].load_state_dict(checkpoint['scheduler_state_dict'])
+                if 'scheduler_state_dict' not in checkpoint:
+                    raise Exception("model has no scheduler_state_dict")
+
+            if ignore_layers is not None and len(ignore_layers) > 0:
+                model_dict = {k: v for k, v in self.models[model_name].items()
+                              if k not in ignore_layers}
+                new_state = self.models[model_name].state_dict()
+                new_state.update(model_dict)
+                self.models[model_name] = new_state
 
             # self.trainer_spec.set_lr(0.00001)
-            # print('Model loaded, lr: {}'.format(self.trainer_spec.lr()))
             fmtl_print("Last checkpoint. ", checkpoint['epoch'], checkpoint['it'])
             self.last_epochs[model_name] = checkpoint['epoch']
             self.iters[model_name] = checkpoint['it']
@@ -487,81 +441,7 @@ class Trainer(GeneratorTrainer, ABC):
                                                                             grad_norm,
                                                                             duration))
 
-    #     logger.log_training(reduced_loss, grad_norm, learning_rate, duration, iteration)
-    #
-    # if not is_overflow and (iteration % hparams.iters_per_checkpoint == 0):
-    #     validate(model, criterion, valset, iteration, hparams.batch_size, n_gpus, collate_fn, logger,
-    #              hparams.distributed_run, rank)
-    #     if rank == 0:
-    #         checkpoint_path = os.path.join(output_directory, "checkpoint_{}".format(iteration))
-    #         save_checkpoint(model, optimizer, learning_rate, iteration, checkpoint_path)
-
-    # if not is_overflow and (iteration % self.experiment_specs.save() == 0):
-    #     validate(model, criterion, valset, iteration,
-    #              hparams.batch_size, n_gpus, collate_fn, logger,
-    #              hparams.distributed_run, rank)
-    #     if rank == 0:
-    #         checkpoint_path = os.path.join(
-    #             output_directory, "checkpoint_{}".format(iteration))
-    #         save_checkpoint(model, optimizer, learning_rate, iteration,
-    #                         checkpoint_path)
-
-    def warm_load(self, model_name: str, ignore_layers):
-        """
-        Method loads model from a checkpoint.
-        Args:
-            ignore_layers:
-            model_name:
-
-        Returns:
-
-        """
-        if not self.experiment_specs.load():
-            return 0
-
-        model_file = self.experiment_specs.model_files.get_model_filename(model_name)
-        # load trained optimizer state_dict
-        try:
-            checkpoint = torch.load(model_file, map_location='cpu')
-            if 'model_state_dict' not in checkpoint:
-                raise Exception("model has no state dict")
-
-            model = self.models[model_name]
-            model_dict = checkpoint['model_state_dict']
-            if 'model_state_dict' not in checkpoint:
-                raise Exception("model has no state dict")
-
-            if len(ignore_layers) > 0:
-                model_dict = {k: v for k, v in model_dict.items()
-                              if k not in ignore_layers}
-                dummy_dict = model.state_dict()
-                dummy_dict.update(model_dict)
-                model_dict = dummy_dict
-                self.models[model_name].load_state_dict(model_dict)
-
-            self.optimizers[model_name].load_state_dict(checkpoint['optimizer_state_dict'])
-            if 'optimizer_state_dict' not in checkpoint:
-                raise Exception("model has no optimizer_state_dict")
-
-            # if model_name in self.schedulers:
-            #     self.schedulers[model_name].load_state_dict(checkpoint['scheduler_state_dict'])
-            #     if 'scheduler_state_dict' not in checkpoint:
-            #         raise Exception("model has no scheduler_state_dict")
-
-            fmtl_print('attempting to load {} model edge weights state_dict '
-                       'loaded...'.format(self.experiment_specs.get_active_model()))
-
-            # self.trainer_spec.set_lr(0.00001)
-            # print('Model loaded, lr: {}'.format(self.trainer_spec.lr()))
-            fmtl_print("Last checkpoint saved. ", checkpoint['epoch'], checkpoint['it'])
-            return checkpoint['epoch']
-
-        except FileNotFoundError as e:
-            print("Failed load model files. No saved model found.")
-
-        return 0
-
-    def validate(self, model, model_name, it):
+    def validate(self, model, model_name: str, it):
         """
 
         Args:
@@ -580,13 +460,15 @@ class Trainer(GeneratorTrainer, ABC):
             for i, batch in enumerate(self.validation_loader):
                 x, y = model.parse_batch(batch)
                 y_pred = model(x)
+                # our loss mel_loss + gate_loss
                 loss = self.criterion(y_pred, y)
                 if self.experiment_specs.is_distributed_run():
                     reduced_val_loss = self.split_tensor(loss.data, self.n_gpus).item()
                 else:
                     reduced_val_loss = loss.item()
                 total_prediction_loss += reduced_val_loss
-            total_prediction_loss = total_prediction_loss / (i + 1)
+            # normalize
+            total_prediction_loss = total_prediction_loss / (len(self.validation_loader) + 1)
 
         model.train()
         if self.rank == 0:
@@ -610,6 +492,12 @@ class Trainer(GeneratorTrainer, ABC):
         return it
 
     def plot_data(self, data, figsize=(16, 4)):
+        """
+
+        :param data:
+        :param figsize:
+        :return:
+        """
         fig, axes = plt.subplots(1, len(data), figsize=figsize)
         for i in range(len(data)):
             axes[i].imshow(data[i], aspect='auto', origin='bottom',
@@ -880,11 +768,10 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
         "lr": tune.loguniform(1e-4, 1e-1),
         "batch_size": tune.choice([2, 4, 8, 16])
     }
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     experiment_specs = ExperimentSpecs(verbose=False)
     dataloader = Mel_Dataloader(experiment_specs, verbose=False)
-
     trainer = Trainer(experiment_specs, dataloader, verbose=True, device=device)
 
     scheduler = ASHAScheduler(
@@ -1029,8 +916,6 @@ if __name__ == '__main__':
                         help='directory to save checkpoints')
     parser.add_argument('-l', '--log_directory', type=str,
                         help='directory to save tensorboard logs')
-    parser.add_argument('-c', '--checkpoint_path', type=str, default=None,
-                        required=False, help='checkpoint path')
     parser.add_argument('--warm_start', action='store_true',
                         help='load model weights only, ignore specified layers')
     parser.add_argument('--n_gpus', type=int, default=1,
@@ -1039,9 +924,12 @@ if __name__ == '__main__':
                         required=False, help='rank of current gpu')
     parser.add_argument('--group_name', type=str, default='group_name',
                         required=False, help='Distributed group name')
-    parser.add_argument('--hparams', type=str,
-                        required=False, help='comma separated name=value pairs')
+    parser.add_argument('--verbose', type=str, default='store_true',
+                        required=False, help='set verbose output')
 
+    args = parser.parse_args()
+
+    cuda_device_count = torch.cuda.device_count()
     is_benchmark_read = False
     is_train = True
     is_convert = False
@@ -1049,62 +937,61 @@ if __name__ == '__main__':
 
     experiment_specs = ExperimentSpecs(verbose=False)
     experiment_specs.model_files.build_dir()
-
+    #
     dataloader = Mel_Dataloader(experiment_specs, verbose=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
     if is_benchmark_read:
         dataloader.create()
         dataloader.benchmark_read()
-
-    if is_convert:
-        convert()
-
-    create_loader()
-
+    #
+    # if is_convert:
+    #     convert()
+    #
+    # create_loader()
+    #
     torch.backends.cudnn.enabled = True
     # torch.backends.cudnn.benchmark = True
-
+    #
     print(torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction)
     print(torch.backends.cudnn.version())
     print(torch.backends.openmp)
 
-    trainer = Trainer(experiment_specs, dataloader, verbose=True, device=device)
-
+    trainer = Trainer(experiment_specs, dataloader, rank=args.rank, verbose=args.verbose, device=device)
     if is_train:
         trainer.train()
-
-    if is_inference:
-        # trainer = Trainer(experiment_specs, dataloader, verbose=True, device=device)
-        # text = "Hello world, I missed you so much."
-        # utils = torch.hub.load('NVIDIA/DeepLearningExamples:torchhub', 'nvidia_tts_utils')
-        # sequences, lengths = utils.prepare_input_sequence([text])
-
-        text = "artist would have difficulty in doing such accurate work"
-        sequence = np.array(text_to_sequence(text, ['english_cleaners']))[None, :]
-        sequence = torch.autograd.Variable(torch.from_numpy(sequence)).cuda().long()
-
-        # model_math = 'fp16'
-        waveglow = torch.hub.load('NVIDIA/DeepLearningExamples:torchhub', 'nvidia_waveglow')
-        waveglow = waveglow.remove_weightnorm(waveglow)
-        waveglow = waveglow.to('cuda')
-        waveglow.eval()
-
-        with torch.no_grad():
-            print(sequence)
-            mel_outputs, mel_outputs_post_net, alignments = trainer.inference(sequence)
-            audio_from_mel = waveglow.infer(mel_outputs)
-            audio_from_post = waveglow.infer(mel_outputs_post_net)
-            print("waveglow return mel", audio_from_mel.shape)
-            print("waveglow return post", audio_from_post.shape)
-
-            audio_numpy_mel = audio_from_mel[0].data.cpu().numpy()
-            audio_numpy_post = audio_from_post[0].data.cpu().numpy()
-            #
-            rate = 22050
-            from scipy.io.wavfile import write
-            write("audio_mel.wav", rate, audio_numpy_mel)
-            write("audio_from_post.wav", rate, audio_numpy_post)
+    #
+    # if is_inference:
+    #     # trainer = Trainer(experiment_specs, dataloader, verbose=True, device=device)
+    #     # text = "Hello world, I missed you so much."
+    #     # utils = torch.hub.load('NVIDIA/DeepLearningExamples:torchhub', 'nvidia_tts_utils')
+    #     # sequences, lengths = utils.prepare_input_sequence([text])
+    #
+    #     text = "artist would have difficulty in doing such accurate work"
+    #     sequence = np.array(text_to_sequence(text, ['english_cleaners']))[None, :]
+    #     sequence = torch.autograd.Variable(torch.from_numpy(sequence)).cuda().long()
+    #
+    #     # model_math = 'fp16'
+    #     waveglow = torch.hub.load('NVIDIA/DeepLearningExamples:torchhub', 'nvidia_waveglow')
+    #     waveglow = waveglow.remove_weightnorm(waveglow)
+    #     waveglow = waveglow.to('cuda')
+    #     waveglow.eval()
+    #
+    #     with torch.no_grad():
+    #         print(sequence)
+    #         mel_outputs, mel_outputs_post_net, alignments = trainer.inference(sequence)
+    #         audio_from_mel = waveglow.infer(mel_outputs)
+    #         audio_from_post = waveglow.infer(mel_outputs_post_net)
+    #         print("waveglow return mel", audio_from_mel.shape)
+    #         print("waveglow return post", audio_from_post.shape)
+    #
+    #         audio_numpy_mel = audio_from_mel[0].data.cpu().numpy()
+    #         audio_numpy_post = audio_from_post[0].data.cpu().numpy()
+    #         #
+    #         rate = 22050
+    #         from scipy.io.wavfile import write
+    #
+    #         write("audio_mel.wav", rate, audio_numpy_mel)
+    #         write("audio_from_post.wav", rate, audio_numpy_post)
 
         # mel_outputs, mel_outputs_postnet, _, alignments = model.inference(sequence)
         # plot_data((mel_outputs.float().data.cpu().numpy()[0],
