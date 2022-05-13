@@ -6,6 +6,8 @@ import torch
 import torch.distributed as dist
 import math
 
+from loguru import logger
+
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data import DataLoader
 
@@ -31,6 +33,9 @@ from ray.tune.schedulers import ASHAScheduler
 import matplotlib.pylab as plt
 
 from text import sequence_to_text, text_to_sequence
+import dill
+from pathlib import Path
+import logging
 
 
 class Trainer(GeneratorTrainer, ABC):
@@ -38,13 +43,14 @@ class Trainer(GeneratorTrainer, ABC):
 
     """
 
-    def __init__(self, experiment_specs: ExperimentSpecs, data_loader,
+    def __init__(self, trainer_spec: ExperimentSpecs, data_loader,
                  verbose=False, is_notebook=False, rank=0, n_gpus=1, device=None):
         """
 
-        :param experiment_specs:
+        :param trainer_spec:
         """
         super(Trainer, self).__init__(verbose=verbose, is_notebook=is_notebook)
+        logger.info("Trainer created, active model {}", trainer_spec.get_active_mode())
         # self.model_spec = model_spec
         # self.n_gpus = model_spec['model_spec']
         # self.rank = model_spec['model_spec']
@@ -55,12 +61,15 @@ class Trainer(GeneratorTrainer, ABC):
         self.schedulers = {}
         self.optimizers = {}
 
-        self.experiment_specs = experiment_specs
+        print("Class", type(trainer_spec))
+        self.experiment_specs = trainer_spec
+        if not trainer_spec.is_initialized():
+            raise Exception("you need initialize trainer specs first.")
 
         # if self.experiment_specs.is_distributed_run():
         #     self.init_distributed()
 
-        self.dataloader = dataloader
+        self.dataloader = data_loader
         self.train_loader, self.validation_loader, self.collate_fn = data_loader.get_loader()
         self.rank = rank
 
@@ -72,6 +81,12 @@ class Trainer(GeneratorTrainer, ABC):
         self.init_trainer()
         self.scaler = None
         self.logger = Tacotron2Logger()
+
+        logging.basicConfig(level=logging.DEBUG,
+                            format='%(asctime)s %(levelname)s %(message)s',
+                            filename='/tmp/myapp.log',
+                            filemode='w')
+
 
     def init_trainer(self):
         """
@@ -303,6 +318,7 @@ class Trainer(GeneratorTrainer, ABC):
         self.optimizers[model_name] = opt
         return opt
 
+    #@logger.catch()
     def create_optimizers(self):
         """
         Create all required optimizers based on model specs.
@@ -312,7 +328,8 @@ class Trainer(GeneratorTrainer, ABC):
 
         models = self.experiment_specs.get_active_sub_models()
         for model_name in models:
-            opt_spec_alias = experiment_specs.get_sub_model_optimizer(model_name)
+            logger.info("Loading {} optimizer settings".format(model_name))
+            opt_spec_alias = self.experiment_specs.get_sub_model_optimizer(model_name)
             optimizer = self.create_optimizer(model_name, opt_spec_alias)
             self.optimizers[model_name] = optimizer
 
@@ -326,7 +343,7 @@ class Trainer(GeneratorTrainer, ABC):
         Returns: lr_scheduler
 
         """
-        alias_name = experiment_specs.get_sub_model_lr_scheduler(model_name)
+        alias_name = self.experiment_specs.get_sub_model_lr_scheduler(model_name)
         if len(alias_name) == 0:
             if self.verbose:
                 fmtl_print("Model {}".format(model_name), "no scheduler attached")
@@ -371,8 +388,7 @@ class Trainer(GeneratorTrainer, ABC):
         models = self.experiment_specs.get_active_sub_models()
         for model_name in models:
             if model_name not in self.optimizers:
-                raise Exception("make sure optimizer created.")
-
+                raise Exception("make sure optimizer spec created.")
             opt = self.optimizers[model_name]
             self.create_lr_scheduler(model_name, opt)
 
@@ -760,47 +776,47 @@ def print_optimizer(opt_name):
     fmtl_print("optimizer lr rate", experiment_specs.optimizer_learning_rate(optimizer_name))
     fmtl_print("optimizer weight_decay type", experiment_specs.weight_decay(optimizer_name))
 
-
-def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
-    config = {
-        "l1": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
-        "l2": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
-        "lr": tune.loguniform(1e-4, 1e-1),
-        "batch_size": tune.choice([2, 4, 8, 16])
-    }
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    experiment_specs = ExperimentSpecs(verbose=False)
-    dataloader = Mel_Dataloader(experiment_specs, verbose=False)
-    trainer = Trainer(experiment_specs, dataloader, verbose=True, device=device)
-
-    scheduler = ASHAScheduler(
-        max_t=max_num_epochs,
-        grace_period=1,
-        reduction_factor=2)
-    result = tune.run(
-        tune.with_parameters(trainer.train()),
-        resources_per_trial={"cpu": 2, "gpu": gpus_per_trial},
-        config=config,
-        metric="loss",
-        mode="min",
-        num_samples=num_samples,
-        scheduler=scheduler
-    )
-
-    best_trial = result.get_best_trial("loss", "min", "last")
-    print("Best trial config: {}".format(best_trial.config))
-    print("Best trial final validation loss: {}".format(
-        best_trial.last_result["loss"]))
-    print("Best trial final validation accuracy: {}".format(
-        best_trial.last_result["accuracy"]))
-
-    if ray.util.client.ray.is_connected():
-        # If using Ray Client, we want to make sure checkpoint access
-        # happens on the server. So we wrap `test_best_model` in a Ray task.
-        # We have to make sure it gets executed on the same node that
-        # ``tune.run`` is called on.
-        from ray.util.ml_utils.node import force_on_current_node
+#
+# def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
+#     config = {
+#         "l1": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
+#         "l2": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
+#         "lr": tune.loguniform(1e-4, 1e-1),
+#         "batch_size": tune.choice([2, 4, 8, 16])
+#     }
+#
+#     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#     experiment_specs = ExperimentSpecs(verbose=False)
+#     dataloader = Mel_Dataloader(experiment_specs, verbose=False)
+#     trainer = Trainer(experiment_specs, dataloader, verbose=True, device=device)
+#
+#     scheduler = ASHAScheduler(
+#         max_t=max_num_epochs,
+#         grace_period=1,
+#         reduction_factor=2)
+#     result = tune.run(
+#         tune.with_parameters(trainer.train()),
+#         resources_per_trial={"cpu": 2, "gpu": gpus_per_trial},
+#         config=config,
+#         metric="loss",
+#         mode="min",
+#         num_samples=num_samples,
+#         scheduler=scheduler
+#     )
+#
+#     best_trial = result.get_best_trial("loss", "min", "last")
+#     print("Best trial config: {}".format(best_trial.config))
+#     print("Best trial final validation loss: {}".format(
+#         best_trial.last_result["loss"]))
+#     print("Best trial final validation accuracy: {}".format(
+#         best_trial.last_result["accuracy"]))
+#
+#     if ray.util.client.ray.is_connected():
+#         # If using Ray Client, we want to make sure checkpoint access
+#         # happens on the server. So we wrap `test_best_model` in a Ray task.
+#         # We have to make sure it gets executed on the same node that
+#         # ``tune.run`` is called on.
+#         from ray.util.ml_utils.node import force_on_current_node
 
 
 #     remote_fn = force_on_current_node(ray.remote(test_best_model))
@@ -810,101 +826,6 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
 
 import dill
 from pathlib import Path
-
-
-def convert_mel_to_data(encoder_spec, target_dir: str, dataset,
-                        dataset_name: str, data_type: str, post_check=True, verbose=True):
-    """
-
-    Args:
-        data_type:
-        verbose:
-        target_dir:
-        encoder_spec:
-        dataset:
-        dataset_name:
-        post_check:
-
-    Returns:
-
-    """
-    meta = dict(filter_length=encoder_spec.filter_length(), hop_length=encoder_spec.hop_length(),
-                win_length=encoder_spec.win_length(), n_mel_channels=encoder_spec.n_mel_channels(),
-                sampling_rate=encoder_spec.sampling_rate(), mel_fmin=encoder_spec.mel_fmin(),
-                mel_fmax=encoder_spec.mel_fmax())
-
-    data = []
-    for i in range(0, len(dataset)):
-        txt, mel = dataset[i]
-        data.append((txt, mel))
-
-    meta['data'] = data
-    file_name = Path(target_dir) / f'{dataset_name}_{data_type}_{encoder_spec.n_mel_channels()}.pt'
-    torch.save(meta, file_name)
-    ds = torch.load(file_name)
-    if verbose:
-        fmtl_print("Dataset saved", file_name)
-        fmtl_print("Dataset filter length", ds['filter_length'])
-        fmtl_print("Dataset mel channels", ds['n_mel_channels'])
-        fmtl_print("Dataset contains records", len(ds['data']))
-
-    if post_check:
-        d = ds['data']
-        for i, (one_hot, mel) in enumerate(d):
-            txt_original, mel_from_ds = dataset[i]
-            if not torch.equal(mel, mel_from_ds):
-                raise Exception("data mismatched.")
-            if not torch.equal(one_hot, txt_original):
-                raise Exception("data mismatched.")
-
-
-def convert(verbose=True):
-    """
-
-    Returns:
-
-    """
-    trainer_spec = ExperimentSpecs(verbose=False)
-    training_set, validation_set, test_set = trainer_spec.get_audio_ds_files()
-    model_spec = trainer_spec.get_model_spec()
-    encoder_spec = model_spec.get_encoder()
-
-    #
-    train_dataset = TextMelLoader(encoder_spec, list(training_set.values()))
-    validation_dataset = TextMelLoader(encoder_spec, list(validation_set.values()))
-    test_dataset = TextMelLoader(encoder_spec, list(test_set.values()))
-
-    if verbose:
-        fmtl_print("filter_length", encoder_spec.filter_length())
-        fmtl_print("hop_length", encoder_spec.hop_length())
-        fmtl_print("win_length", encoder_spec.win_length())
-        fmtl_print("n_mel_channels", encoder_spec.n_mel_channels())
-        fmtl_print("sampling_rate", encoder_spec.sampling_rate())
-        fmtl_print("mel_fmin", encoder_spec.mel_fmin())
-        fmtl_print("mel_fmax", encoder_spec.mel_fmax())
-
-    convert_mel_to_data(encoder_spec, trainer_spec.get_dataset_dir(),
-                        train_dataset, trainer_spec.use_dataset, "train")
-    convert_mel_to_data(encoder_spec, trainer_spec.get_dataset_dir(),
-                        validation_dataset, trainer_spec.use_dataset, "validate")
-    convert_mel_to_data(encoder_spec, trainer_spec.get_dataset_dir(),
-                        test_dataset, trainer_spec.use_dataset, "test")
-
-
-def create_loader():
-    """
-
-    Returns:
-
-    """
-    experiment_specs = ExperimentSpecs(verbose=False)
-    pk_dataset = experiment_specs.get_audio_dataset()
-    # experiment_specs.model_files.build_dir()
-    data_loader = Mel_Dataloader(experiment_specs, verbose=True)
-
-    # for i, batch in enumerate(data_loader):
-    #     print(type(batch))
-    #     break
 
 
 if __name__ == '__main__':
@@ -935,6 +856,7 @@ if __name__ == '__main__':
     is_convert = False
     is_inference = True
 
+    # main()
     experiment_specs = ExperimentSpecs(verbose=False)
     experiment_specs.model_files.build_dir()
     #
@@ -993,10 +915,10 @@ if __name__ == '__main__':
     #         write("audio_mel.wav", rate, audio_numpy_mel)
     #         write("audio_from_post.wav", rate, audio_numpy_post)
 
-        # mel_outputs, mel_outputs_postnet, _, alignments = model.inference(sequence)
-        # plot_data((mel_outputs.float().data.cpu().numpy()[0],
-        #            mel_outputs_postnet.float().data.cpu().numpy()[0],
-        #            alignments.float().data.cpu().numpy()[0].T))
+    # mel_outputs, mel_outputs_postnet, _, alignments = model.inference(sequence)
+    # plot_data((mel_outputs.float().data.cpu().numpy()[0],
+    #            mel_outputs_postnet.float().data.cpu().numpy()[0],
+    #            alignments.float().data.cpu().numpy()[0].T))
 
     # train_loader, val_loader, xx = dataloader.create()
     # for i, batch in enumerate(train_loader):

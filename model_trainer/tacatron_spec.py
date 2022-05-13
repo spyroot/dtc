@@ -8,7 +8,6 @@ class TacotronSpec:
         :param model_dict:
         """
         self._model_dict = model_dict
-        # self.dataset_dict = dataset_dict
         self.n_frames_per_step = 1
 
     def filter_length(self):
@@ -58,3 +57,5 @@ class TacotronSpec:
         """
         return 1234
 
+    def __str__(self):
+        return str(self._model_dict)

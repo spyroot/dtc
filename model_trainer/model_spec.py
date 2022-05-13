@@ -1,7 +1,4 @@
-import pickle
 from abc import ABC, abstractmethod, ABCMeta
-
-from tacotron2.utils import fmt_print
 
 
 class ModelSpec(ABC, metaclass=ABCMeta):
@@ -11,4 +8,12 @@ class ModelSpec(ABC, metaclass=ABCMeta):
 
     @abstractmethod
     def get_model_param(self):
+        pass
+
+    @abstractmethod
+    def sub_models(self):
+        pass
+
+    @abstractmethod
+    def get_sub_models_names(self):
         pass

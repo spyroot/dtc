@@ -1,30 +1,21 @@
+import logging
 import os
+import shutil
+import sys
+from pathlib import Path
+from time import gmtime, strftime
+from typing import List
 
-from tensorboard.plugins.hparams import api as hp
+import torch
 import yaml
 from torch.utils.tensorboard import SummaryWriter
 
-import shutil
-import logging
-from pathlib import Path
-
-from .model_files import ModelFiles
-from .dtc_spec import DTC
-from text.symbols import symbols
 from tacotron2.utils import fmtl_print, fmt_print
-import torch
-
-import argparse
-import random
-import sys
-import time
-from datetime import time
-from datetime import timedelta
-from typing import Final, List
-from datetime import time
-from datetime import timedelta
+from text.symbols import symbols
+from .dtc_spec import DTC
+from .model_files import ModelFiles
 from .model_spec import ModelSpec
-from time import gmtime, strftime
+from loguru import logger
 
 
 class ExperimentSpecs:
@@ -40,13 +31,14 @@ class ExperimentSpecs:
         """
 
         # a file name or io.string
+        self._initialized = None
         self.lr_schedulers = None
         self._optimizers = None
         self.config_file_name = None
         current_dir = os.path.dirname(os.path.realpath(__file__))
 
         if isinstance(template_file_name, str):
-            fmtl_print("Loading", template_file_name)
+            logger.info("Loading {} file.", template_file_name)
             # a file name or io.string
             self.config_file_name = Path(template_file_name)
 
@@ -108,7 +100,7 @@ class ExperimentSpecs:
         self.encoder_embedding_dim = 512
 
         # Decoder parameters
-        self.n_frames_per_step = 1  # currently only 1 is supported
+        self.n_frames_per_step = 1  # currently, only 1 is supported
         self.decoder_rnn_dim = 1024
         self.prenet_dim = 256
         self.max_decoder_steps = 1000
@@ -151,6 +143,7 @@ class ExperimentSpecs:
         self.model_files = ModelFiles(self.config)
         self.model_files.build_dir()
         self.setup_tensorboard()
+        self.initialized()
 
     def setup_tensorboard(self):
         """
@@ -186,17 +179,16 @@ class ExperimentSpecs:
                 models_types.append(k)
 
     def set_active_dataset(self):
-        """
-
+        """Sets active dataset
         :return:
         """
         if 'use_dataset' not in self.config:
             raise Exception("config.yaml must contains valid active settings.")
+
         self.use_dataset = self.config['use_dataset']
 
     def set_dataset_specs(self):
-        """
-
+        """Sets dataset spec, for example if we need swap dataset.
         :return:
         """
         if 'datasets' not in self.config:
@@ -210,8 +202,7 @@ class ExperimentSpecs:
         self.dataset_specs = self.config['datasets'][self.use_dataset]
 
     def set_active_model(self):
-        """
-
+        """Sets active Model
         :return:
         """
         if 'models' not in self.config:
@@ -219,11 +210,9 @@ class ExperimentSpecs:
 
         if 'use_model' not in self.config:
             raise Exception("config.yaml must contain use_model and it must defined.")
-        #
+
         self.active_model = self.config['use_model']
-        #
         self.models_specs = self.config['models']
-        #
         if self.active_model == 'dts':
             self._model_spec = DTC(self.models_specs[self.active_model], self.dataset_specs)
 
@@ -273,20 +262,33 @@ class ExperimentSpecs:
         if 'lr_schedulers' in self.config:
             self.lr_schedulers = self.config['lr_schedulers']
 
+    def validate_spec_config(self):
+        """ Validate dataset spec,  each spec has own semantics.
+        :return:
+        """
+        mandatory_kv = ["dir", "training_meta", "validation_meta", "test_meta", "file_type"]
+
+        dataset_type = self.dataset_specs['ds_type']
+        if dataset_type == "audio":
+            for k in mandatory_kv:
+                if k not in self.dataset_specs:
+                    raise Exception("Audio dataset must contain config entry {}".format(k))
+
     def read_config(self, debug=False):
         """
-        Parse config file and initialize trainer
+        Parse config file and initialize trainer.
         :param debug: will output debug into
         :return: nothing
         """
         if debug:
-            fmtl_print("Parsing... ", self.config)
+            logger.debug("Parsing... ", self.config)
 
         self.set_active_dataset()
         self.set_dataset_specs()
         self.set_active_model()
         self.read_lr_scheduler()
         self.read_optimizer()
+        self.validate_spec_config()
 
         # settings stored internally
         if debug:
@@ -386,7 +388,7 @@ class ExperimentSpecs:
         Returns:
         """
         if 'dir' not in self.dataset_specs:
-            raise Exception("config.yaml doesn't dir entry")
+            raise Exception("config.yaml must contain dir entry")
 
         # resolve home
         path_to_dir = self.resolve_home(self.dataset_specs['dir'])
@@ -407,9 +409,8 @@ class ExperimentSpecs:
         files = self.model_files.make_file_dict(path_to_dir,
                                                 file_type_filter,
                                                 filter_dict=file_meta_kv)
-        if self._verbose:
-            fmtl_print("Updating metadata", metadata_file)
 
+        logger.debug("Updating metadata {}", metadata_file)
         for k in file_meta_kv:
             if k in files:
                 files[k]['meta'] = file_meta_kv[k]
@@ -421,7 +422,7 @@ class ExperimentSpecs:
         Returns:  Path to file contain meta information , such as file - text
         """
         if 'training_meta' not in self.dataset_specs:
-            raise Exception("config.yaml doesn't contain training_meta entry.")
+            raise Exception("config.yaml must contain training_meta entry.")
         return self.dataset_specs['training_meta']
 
     def get_validation_meta_file(self):
@@ -429,7 +430,7 @@ class ExperimentSpecs:
         Returns:  Path to file contain meta information , such as file - text
         """
         if 'validation_meta' not in self.dataset_specs:
-            raise Exception("config.yaml doesn't contain validation_meta entry.")
+            raise Exception("config.yaml must contain validation_meta entry.")
         return self.dataset_specs['validation_meta']
 
     def get_test_meta_file(self):
@@ -446,6 +447,8 @@ class ExperimentSpecs:
         """
         if 'training_meta' in self.dataset_specs:
             return self.update_meta(self.get_training_meta_file())
+
+        logger.warning("training_meta is empty dict.")
         return {}
 
     def build_validation_set(self):
@@ -454,6 +457,8 @@ class ExperimentSpecs:
         """
         if 'validation_meta' in self.dataset_specs:
             return self.update_meta(self.get_validation_meta_file())
+
+        logger.warning("validation_meta is empty dict.")
         return {}
 
     def build_test_set(self):
@@ -462,22 +467,24 @@ class ExperimentSpecs:
         """
         if 'test_meta' in self.dataset_specs:
             return self.update_meta(self.get_test_meta_file())
+        logger.warning("test_meta is empty dict.")
+
         return {}
 
     def num_records_in_txt(self, file_path, target_dir=None):
-        """
-        Count number of lines in text file
+        """Count number of lines in text file
+
         Args:
             target_dir:
             file_path:
-
         Returns:
 
         """
         full_path = file_path
         if target_dir is not None:
             self.resolve_home(target_dir)
-            full_path = target_dir / file_path
+            logger.info("target dir {}".format(target_dir))
+            full_path = Path(target_dir) / Path(file_path)
 
         if Path(full_path).exists():
             with open(full_path, 'r', newline='', encoding='utf8') as file:
@@ -489,7 +496,7 @@ class ExperimentSpecs:
 
     def get_raw_audio_ds_files(self):
         """
-        :return:
+        :return: dict
         """
         train_set = self.build_training_set()
         validation_set = self.build_validation_set()
@@ -497,15 +504,17 @@ class ExperimentSpecs:
 
         # in case we need to do sanity check how many file and meta resolved.
         if self._verbose:
-            fmtl_print("Train set contains", len(train_set))
-            fmtl_print("Validation set contains", len(validation_set))
-            fmtl_print("Test set contains", len(test_set))
+            logger.info("{} rec in train set contains.".format(len(train_set)))
+            logger.info("{} rec validation set contains.".format(len(validation_set)))
+            logger.info("{} rec test set contains.", format(len(test_set)))
+
             train_record = self.num_records_in_txt(self.get_training_meta_file(), self.get_dataset_dir())
             val_record = self.num_records_in_txt(self.get_validation_meta_file(), self.get_dataset_dir())
             test_record = self.num_records_in_txt(self.get_test_meta_file(), self.get_dataset_dir())
-            fmtl_print("Train set metadata contains", train_record)
-            fmtl_print("Validation set metadata contains", val_record)
-            fmtl_print("Test set metadata contains", test_record)
+
+            logger.info("Train set metadata contains {}".format(train_record))
+            logger.info("Validation set metadata contains {}".format(val_record))
+            logger.info("Test set metadata contains {}".format(test_record))
 
         ds_dict = dict(train_set=self.build_training_set(),
                        validation_set=self.build_validation_set(),
@@ -546,7 +555,7 @@ class ExperimentSpecs:
         return pt_dict
 
     def get_audio_dataset(self):
-        """
+        """Method return audio dataset spec.
         :return:
         """
         if 'format' not in self.dataset_specs:
@@ -557,10 +566,10 @@ class ExperimentSpecs:
         data_type = self.dataset_specs['format']
         file_type = self.dataset_specs['file_type']
         if data_type == 'raw':
-            print("data type audio raw")
+            logger.debug("Dataset type raw file")
             return self.get_raw_audio_ds_files()
         if data_type == 'tensor_mel':
-            print("data type mel audio raw")
+            logger.debug("Dataset type torch tensor mel")
             return self.get_tensor_audio_ds_files()
 
         return None
@@ -624,15 +633,39 @@ class ExperimentSpecs:
         return False
 
     def get_backend(self):
-        pass
+        """
+        Return model backend setting such as nccl
+        :return:
+        """
+        if 'backend' in self._setting:
+            if self._verbose:
+                fmtl_print("Model backend", self._setting['backend'])
+            return self._setting['backend']
+        return False
 
     def dist_url(self):
-        pass
+        """
+
+        :return:
+        """
+        if 'url' in self._setting:
+            if self._verbose:
+                fmtl_print("Model backend", self._setting['url'])
+            return self._setting['url']
+        return False
 
     def get_model_spec(self) -> ModelSpec:
+        """
+        Return active model spec
+        :return:
+        """
         return self._model_spec
 
     def fp16_run(self):
+        """
+
+        :return:
+        """
         return self.is_fp16_run()
 
     def epochs(self) -> int:
@@ -829,6 +862,26 @@ class ExperimentSpecs:
 
         return "Adam"
 
+    def get_active_mode(self):
+        """
+
+        :return:
+        """
+        if 'use_model' not in self.config:
+            raise Exception("Make sure spec contains use_model key value.")
+
+        return self.config['use_model']
+
+    def get_models(self):
+        """
+
+        :return:
+        """
+        if 'models' not in self.config:
+            raise Exception("Make sure spec contains use_model key value.")
+
+        return self.config['models']
+
     def get_sub_model_optimizer(self, sub_model_name) -> str:
         """
          Return optimizer name for a given sub_model.
@@ -840,10 +893,12 @@ class ExperimentSpecs:
         Returns:
 
         """
-        _active_model = self.config['use_model']
-        _models = self.config['models']
+        _active_model = self.get_active_mode()
+        _models = self.get_models()
         if _active_model not in _models:
             raise Exception("config.yaml doesn't contain model {}.".format(_active_model))
+
+        logger.info("received {}", sub_model_name)
 
         if sub_model_name is not None:
             _model = _models[_active_model]
@@ -884,13 +939,13 @@ class ExperimentSpecs:
 
         return ""
 
-    def set_milestones(self, alias_name):
+    def set_milestones(self, alias_name, milestone):
         """
 
-        :param m:
+        :param:
         :return:
         """
-        self.graph_specs['milestones'] = m
+        self.graph_specs['milestones'] = milestone
 
     def min_lr(self, alias_name):
         """
@@ -1124,6 +1179,7 @@ class ExperimentSpecs:
         Returns:
 
         """
+
         if default is False:
             opt = self.get_optimizer(alias_name)
             if 'learning_rate' in opt:
@@ -1138,7 +1194,7 @@ class ExperimentSpecs:
         Setting dictates when to log each epoch statistic.
         Returns: Default 100
         """
-        if self.inited is False:
+        if self.is_initialized() is False:
             raise Exception("Training must be initialized first.")
 
         if self._setting is None:
@@ -1151,3 +1207,9 @@ class ExperimentSpecs:
 
     def get_tensorboard_writer(self):
         return self.writer
+
+    def initialized(self):
+        self._initialized = True
+
+    def is_initialized(self) -> bool:
+        return self._initialized

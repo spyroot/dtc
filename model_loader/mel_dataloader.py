@@ -3,9 +3,10 @@ import torch
 
 from torch.utils.data import DataLoader, DistributedSampler
 from model_loader.mel_dataset_loader import TextMelLoader, TextMelCollate
+from model_trainer import model_spec
+from model_trainer.dtc_spec import DTC
 from model_trainer.model_trainer_specs import ExperimentSpecs
 from tacotron2.utils import fmtl_print, to_gpu
-
 
 class Mel_Dataloader:
     """
@@ -23,8 +24,8 @@ class Mel_Dataloader:
         """
         self.val_loader = None
         self.val_sampler = None
-        self.model_trainer_spec = experiment_specs
-        self.model_spec = experiment_specs.get_model_spec()
+        self.trainer_spec: ExperimentSpecs = experiment_specs
+        self.model_spec: DTC = experiment_specs.get_model_spec()
         self.encoder_spec = self.model_spec.get_encoder()
         self.verbose = verbose
 
@@ -35,9 +36,8 @@ class Mel_Dataloader:
 
     def get_loader(self):
         """
-
-        Returns:
-
+        Method return data loader
+        :return:
         """
         if self.train_dataloader is None:
             self.create()
@@ -56,20 +56,20 @@ class Mel_Dataloader:
 
         if pk_dataset['ds_type'] == 'tensor_mel':
             self.train_dataset = TextMelLoader(self.encoder_spec,
-                                               pk_dataset['train_set'], format='tensor_mel')
+                                               pk_dataset['train_set'], data_format='tensor_mel')
             self.validation_dataset = TextMelLoader(self.encoder_spec,
-                                                    pk_dataset['validation_set'], format='tensor_mel')
+                                                    pk_dataset['validation_set'], data_format='tensor_mel')
             self.collate_fn = TextMelCollate(self.encoder_spec.frames_per_step())
 
         if pk_dataset['ds_type'] == 'audio_raw':
             self.train_dataset = TextMelLoader(self.encoder_spec,
-                                               list(pk_dataset['train_set'].values()), format='audio_raw')
+                                               list(pk_dataset['train_set'].values()), data_format='audio_raw')
             self.validation_dataset = TextMelLoader(self.encoder_spec,
-                                                    list(pk_dataset['validation_set'].values()), format='audio_raw')
+                                                    list(pk_dataset['validation_set'].values()), data_format='audio_raw')
             self.collate_fn = TextMelCollate(self.encoder_spec.frames_per_step())
 
         # test_set
-        if self.model_trainer_spec.is_distributed_run():
+        if self.trainer_spec.is_distributed_run():
             train_sampler = DistributedSampler(self.train_dataset)
             shuffle = False
         else:
@@ -85,19 +85,19 @@ class Mel_Dataloader:
         if len(self.validation_dataset) == 0:
             raise Exception("Dataloader received empty validation dataset.")
 
-        if self.model_trainer_spec.batch_size == 0:
+        if self.trainer_spec.batch_size == 0:
             raise Exception("Dataloader need batch size > 0.")
 
         self.train_dataloader = DataLoader(self.train_dataset, num_workers=1, shuffle=shuffle,
                                            sampler=train_sampler,
-                                           batch_size=self.model_trainer_spec.batch_size,
+                                           batch_size=self.trainer_spec.batch_size,
                                            pin_memory=False,
                                            drop_last=True, collate_fn=self.collate_fn)
 
         self.val_sampler = DistributedSampler(
-            self.validation_dataset) if self.model_trainer_spec.is_distributed_run() else None
+            self.validation_dataset) if self.trainer_spec.is_distributed_run() else None
         self.val_loader = DataLoader(self.validation_dataset, sampler=self.val_sampler, num_workers=1,
-                                     shuffle=False, batch_size=self.model_trainer_spec.batch_size,
+                                     shuffle=False, batch_size=self.trainer_spec.batch_size,
                                      pin_memory=False, collate_fn=self.collate_fn)
 
     def to_gpu(x):
@@ -129,7 +129,7 @@ class Mel_Dataloader:
 
     def read_batch(self):
         """
-
+        Read a b batch testing
         Returns:
         """
         if self.train_dataloader is None:
