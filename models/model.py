@@ -54,14 +54,18 @@ class Encoder(nn.Module):
         for conv in self.convolutions:
             x = F.dropout(F.relu(conv(x)), 0.5, self.training)
 
+        print("shape", x.shape)
         x = x.transpose(1, 2)
+        print("shape", x.shape)
 
         # pytorch tensor are not reversible, hence the conversion
         input_lengths = input_lengths.cpu().numpy()
-        flipped = torch.fliplr(input_lengths)
+        # flipped = torch.fliplr(input_lengths)
 
         x = nn.utils.rnn.pack_padded_sequence(
             x, input_lengths, batch_first=True)
+
+        print("shape", x.shape)
 
         self.lstm.flatten_parameters()
         outputs, _ = self.lstm(x)

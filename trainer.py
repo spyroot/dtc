@@ -35,7 +35,6 @@ import matplotlib.pylab as plt
 from text import sequence_to_text, text_to_sequence
 import dill
 from pathlib import Path
-import logging
 
 
 class Trainer(GeneratorTrainer, ABC):
@@ -82,11 +81,10 @@ class Trainer(GeneratorTrainer, ABC):
         self.scaler = None
         self.logger = Tacotron2Logger()
 
-        logging.basicConfig(level=logging.DEBUG,
-                            format='%(asctime)s %(levelname)s %(message)s',
-                            filename='/tmp/myapp.log',
-                            filemode='w')
-
+        # logging.basicConfig(level=logging.DEBUG,
+        #                     format='%(asctime)s %(levelname)s %(message)s',
+        #                     filename='/tmp/myapp.log',
+        #                     filemode='w')
 
     def init_trainer(self):
         """
@@ -112,7 +110,7 @@ class Trainer(GeneratorTrainer, ABC):
         :return:
         """
         assert torch.cuda.is_available(), "Distributed mode requires CUDA."
-        fmtl_print("Distributed Available", torch.cuda.device_count())
+        logger.info("Distributed Available", torch.cuda.device_count())
 
         # Set cuda device so everything is done on the right GPU.
         torch.cuda.set_device(self.rank % torch.cuda.device_count())
@@ -124,8 +122,7 @@ class Trainer(GeneratorTrainer, ABC):
         #     world_size=self.n_gpus(),
         #     rank=self.rank(),
         #     group_name=self.group_name())
-
-        fmtl_print("Done initializing distributed")
+        logger.debug("Done initializing distributed")
 
     def create_model(self, model_name):
         """
@@ -154,6 +151,7 @@ class Trainer(GeneratorTrainer, ABC):
             model_name:
 
         Returns:
+        :param model_name:
         :param ignore_layers:  a list contain of layers we skip
 
         """
@@ -161,6 +159,7 @@ class Trainer(GeneratorTrainer, ABC):
             return 0
 
         model_file = self.experiment_specs.model_files.get_model_filename(model_name)
+
         fmtl_print('Loading model weights ', model_name, model_file)
 
         # load trained optimizer state_dict
@@ -318,7 +317,7 @@ class Trainer(GeneratorTrainer, ABC):
         self.optimizers[model_name] = opt
         return opt
 
-    #@logger.catch()
+    # @logger.catch()
     def create_optimizers(self):
         """
         Create all required optimizers based on model specs.
@@ -776,6 +775,7 @@ def print_optimizer(opt_name):
     fmtl_print("optimizer lr rate", experiment_specs.optimizer_learning_rate(optimizer_name))
     fmtl_print("optimizer weight_decay type", experiment_specs.weight_decay(optimizer_name))
 
+
 #
 # def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
 #     config = {
@@ -826,7 +826,6 @@ def print_optimizer(opt_name):
 
 import dill
 from pathlib import Path
-
 
 if __name__ == '__main__':
     """
