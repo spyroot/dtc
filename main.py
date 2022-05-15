@@ -1,5 +1,7 @@
 import argparse
 import logging
+import os
+import sys
 from pathlib import Path
 
 import torch
@@ -164,6 +166,13 @@ if __name__ == '__main__':
                         required=False, help='set verbose output')
     parser.add_argument('--benchmark', type=bool, default=False,
                         required=False, help='set verbose output')
+    # parser.add_argument('--load', type=bool, default=False,
+    #                     required=False, help='set verbose output')
+
+    # level = logger.level("ERROR")
+    # logger.info(f"LOGURU_LEVEL: {os.environ['LOGURU_LEVEL']}")
+    logger.remove()
+    # logger.add(sys.stderr, level=config.LOG_LEVEL)
 
     args = parser.parse_args()
     cuda_device_count = torch.cuda.device_count()

@@ -39,7 +39,6 @@ from pathlib import Path
 from timeit import default_timer as timer
 
 
-
 class Trainer(GeneratorTrainer, ABC):
     """
 
@@ -675,7 +674,9 @@ class Trainer(GeneratorTrainer, ABC):
         #
         self.load_models()
         if self.is_trained():
-            print("It looks like model already trained.")
+            print("It looks like model already trained. \
+            Check file {}".format(self.trainer_spec.model_files.get_model_filename(model_name)))
+            return
 
         t_writer = self.trainer_spec.get_tensorboard_writer()
 
@@ -817,7 +818,22 @@ class Trainer(GeneratorTrainer, ABC):
                     iteration += 1
 
     def is_trained(self):
-        print("Last epoch {}".format(self.last_epochs))
+        """
+
+        Returns:
+
+        """
+        models = self.trainer_spec.get_active_sub_models()
+        num_finished = 0
+        for m in models:
+            if m in self.last_epochs:
+                if self.trainer_spec.epochs() == self.last_epochs[m]:
+                    num_finished += 1
+
+        if num_finished == len(models):
+            return True
+
+        return False
 
 
 def print_optimizer(opt_name):
