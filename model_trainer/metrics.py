@@ -13,6 +13,7 @@ class Metrics:
 
         :param num_batches:
         """
+        self.file_name = None
         self.loss = None
         self.total_loss = None
         self.num_epochs = num_epochs
@@ -99,3 +100,15 @@ class Metrics:
         """
         self.epoch_timer[epoch_idx] = timer() - max(0, self.epoch_timer[epoch_idx])
 
+    def save(self):
+        if self.file_name is not None and len(self.file_name) > 0:
+            np.save(self.file_name)
+            np.save(self.file_name)
+            np.save(self.file_name)
+
+
+    def load(self):
+        if self.file_name is not None and len(self.file_name) > 0:
+            np.load(self.file_name)
+            np.load(self.file_name)
+            np.load(self.file_name)
