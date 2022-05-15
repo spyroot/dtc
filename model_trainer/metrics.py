@@ -22,17 +22,17 @@ class Metrics:
         self.num_iteration = num_iteration
         self.epoch_timer = None
 
-    def update(self, batch_idx, it, loss):
+    def update(self, batch_idx, step, loss):
         """
 
         :param batch_idx:
-        :param it:
+        :param step:
         :param loss:
         :return:
         """
-        self.loss[it] = loss
+        self.loss[step] = loss
         self.total_loss[batch_idx] += loss
-        logger.info("Loss {} mean {}", loss, self.loss.mean())
+        logger.info("Batch {} Step {} Loss {} mean {}", batch_idx, step, loss, self.loss.mean())
 
     def set_num_iteration(self, num_iteration):
         """

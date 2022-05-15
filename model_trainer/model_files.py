@@ -1,28 +1,9 @@
 import os
-from os import listdir
-from os.path import isfile, join
-
-from tensorboard.plugins.hparams import api as hp
-import yaml
-from torch.utils.tensorboard import SummaryWriter
-
-import shutil
-import logging
+from os.path import join
 from pathlib import Path
 
-# from tacotron2.text.symbols import symbols
-from tacotron2.utils import fmtl_print, fmt_print
-
-import argparse
-import random
-import sys
-import time
-from datetime import time
-from datetime import timedelta
-from typing import Final
-from datetime import time
-from datetime import timedelta
 import torch
+from loguru import logger
 
 
 class ModelFiles:
@@ -30,14 +11,15 @@ class ModelFiles:
 
     """
 
-    def __init__(self, config, root_dir=".", name_generator=None):
+    def __init__(self, config, root_dir=".", name_generator=None, dir_walker_callback=None):
         """
 
         :param root_dir:
         """
         self._verbose = None
         self.config = config
-        self.name_generator = None
+        self.name_generator = name_generator
+        self.dir_walker_callback = dir_walker_callback
 
         self.root_dir = root_dir
         self._dir_input = root_dir
@@ -189,7 +171,13 @@ class ModelFiles:
         """
         target_files = {}
         for dir_path, dir_names, filenames in os.walk(target_dir):
+            logger.debug("Dir walker {}", dir_names)
             for a_file in filenames:
+                # additional callback if a caller need filter.
+                if self.dir_walker_callback is not None:
+                    if not self.dir_walker_callback(dir_path, dir_names, filenames):
+                        continue
+
                 if file_ext is not None and a_file.find(file_ext) != -1:
                     if filter_dict is None:
                         target_files[a_file] = {'path': join(dir_path, a_file), 'meta': '', 'label': '0'}
@@ -243,7 +231,6 @@ class ModelFiles:
         if 'batch_size' in self._setting:
             batch_size = int(self._setting['batch_size'])
 
-        print("######", batch_size)
         for k in self._model:
             models_filenames[k] = str(self._model_save_path / Path(self.filename +
                                                                    '_' + k + '_batch_' +
@@ -268,7 +255,7 @@ class ModelFiles:
         """
         models_filenames = self.model_filenames()
         if self._verbose:
-            print("Model filenames", models_filenames)
+            logger.info("Model files {}", models_filenames)
 
         for k in models_filenames:
             if not os.path.isfile(models_filenames[k]):
@@ -283,22 +270,22 @@ class ModelFiles:
         """
         checkpoints = {}
         if self._verbose:
-            fmtl_print('Trying load models last checkpoint...', self._active_model)
+            logger.debug("Trying load models last checkpoint for {}".format(self._active_model))
 
         if not self.is_trained():
             raise Exception("Untrained model")
 
         models_filenames = self.model_filenames()
         if self._verbose:
-            print("Model filenames", models_filenames)
+            logger.debug("Model filename {}".format(models_filenames))
 
         for m in models_filenames:
             if self._verbose:
-                print("Trying to load checkpoint file", models_filenames[m])
+                logger.debug("Trying to load checkpoint file  from {}".format(models_filenames[m]))
 
             check = torch.load(models_filenames[m])
             if self._verbose:
-                print(check.keys())
+                logger.debug("Model keys {}".format(check.keys()))
 
             if 'epoch' in check:
                 checkpoints[m] = check['epoch']

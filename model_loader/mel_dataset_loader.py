@@ -1,19 +1,16 @@
 import random
-
+import time
 import numpy as np
 import torch
 import torch.utils.data
 
-# import layers
-# from model_specs.model_specs import ModelSpecs
-# from utils import load_wav_to_torch, load_filepaths_and_text
-from model_loader.tacotron_stft import TacotronSTFT
-from model_trainer.tacatron_spec import TacotronSpec
-from tacotron2.utils import load_wav_to_torch, fmtl_print
-from text import text_to_sequence
-import time
 from timeit import default_timer as timer
 from datetime import timedelta
+from loguru import logger
+from model_loader.tacotron_stft import TacotronSTFT
+from model_trainer.specs.tacatron_spec import TacotronSpec
+from tacotron2.utils import load_wav_to_torch
+from text import text_to_sequence
 
 
 class TextMelLoader(torch.utils.data.Dataset):
@@ -50,10 +47,10 @@ class TextMelLoader(torch.utils.data.Dataset):
 
         if self.is_a_tensor:
             self._data = data['data']
-
-        if self.is_a_raw:
-            print(type(data))
+        elif self.is_a_raw:
             self._data = data
+        else:
+            raise Exception("Unknown format.")
 
         self.text_cleaners = model_spec.get_text_cleaner()
         self.max_wav_value = model_spec.max_wav_value()
@@ -62,6 +59,7 @@ class TextMelLoader(torch.utils.data.Dataset):
 
         # if raw we need transcode to stft's
         if self.is_a_raw:
+            logger.debug("Creating TacotronSTFT for raw file processing.")
             self.stft = TacotronSTFT(
                 model_spec.filter_length(), model_spec.hop_length(), model_spec.win_length(),
                 model_spec.n_mel_channels(), model_spec.sampling_rate(), model_spec.mel_fmin(),
@@ -91,6 +89,7 @@ class TextMelLoader(torch.utils.data.Dataset):
         :param filename:
         :return:
         """
+        logger.debug("Converting file {} to me", filename)
         if not self.load_mel_from_disk:
             audio, sampling_rate = load_wav_to_torch(filename)
             if sampling_rate != self.stft.sampling_rate:
@@ -98,15 +97,15 @@ class TextMelLoader(torch.utils.data.Dataset):
             audio_norm = audio / self.max_wav_value
             audio_norm = audio_norm.unsqueeze(0)
             audio_norm = torch.autograd.Variable(audio_norm, requires_grad=False)
-            melspec = self.stft.mel_spectrogram(audio_norm)
-            melspec = torch.squeeze(melspec, 0)
+            mel_spec = self.stft.mel_spectrogram(audio_norm)
+            mel_spec = torch.squeeze(mel_spec, 0)
         else:
-            melspec = torch.from_numpy(np.load(filename))
-            assert melspec.size(0) == self.stft.n_mel_channels, (
+            mel_spec = torch.from_numpy(np.load(filename))
+            assert mel_spec.size(0) == self.stft.n_mel_channels, (
                 'Mel dimension mismatch: given {}, expected {}'.format(
-                    melspec.size(0), self.stft.n_mel_channels))
+                    mel_spec.size(0), self.stft.n_mel_channels))
 
-        return melspec
+        return mel_spec
 
     def numpy_to_mel(self, filename):
         """
@@ -117,12 +116,12 @@ class TextMelLoader(torch.utils.data.Dataset):
         Returns:
 
         """
-        melspec = torch.from_numpy(np.load(filename))
-        assert melspec.size(0) == self.stft.n_mel_channels, (
+        mel_spec = torch.from_numpy(np.load(filename))
+        assert mel_spec.size(0) == self.stft.n_mel_channels, (
             'Mel dimension mismatch: given {}, expected {}'.format(
-                melspec.size(0), self.stft.n_mel_channels))
+                mel_spec.size(0), self.stft.n_mel_channels))
 
-        return melspec
+        return mel_spec
 
     def text_to_tensor(self, text):
         """
@@ -144,6 +143,10 @@ class TextMelLoader(torch.utils.data.Dataset):
             text, mel = self._data[index]
             return text, mel
         if self.is_a_raw:
+            if 'meta' not in self._data[index]:
+                raise Exception("data must contain meta key")
+            if 'path' not in self._data[index]:
+                raise Exception("data must contain path key")
             text = self.text_to_tensor(self._data[index]['meta'])
             mel = self.file_to_mel(self._data[index]['path'])
             return text, mel
@@ -190,9 +193,9 @@ class TextMelCollate:
             t = time.process_time()
             start = timer()
 
-        input_lengths, ids_sorted_decreasing = torch.sort(torch.LongTensor([len(x[0]) for x in batch]),
-                                                          dim=0,
-                                                          descending=True)
+        input_lengths, ids_sorted_decreasing = torch.sort(torch.LongTensor(
+            [len(x[0]) for x in batch]), dim=0, descending=True)
+
         max_input_len = input_lengths[0]
         text_padded = torch.LongTensor(len(batch), max_input_len)
         text_padded.zero_()
@@ -223,7 +226,7 @@ class TextMelCollate:
         if self.is_trace_time:
             elapsed_time = time.process_time() - t
             end = timer()
-            fmtl_print("Collate single pass time", elapsed_time)
-            fmtl_print("Collate single pass delta sec", timedelta(seconds=end - start))
+            logger.info("Collate single pass time {}".format(elapsed_time))
+            logger.info("Collate single pass delta sec {}".format(timedelta(seconds=end - start)))
 
         return text_padded, input_lengths, mel_padded, gate_padded, output_lengths

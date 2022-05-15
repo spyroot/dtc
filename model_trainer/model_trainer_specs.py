@@ -12,9 +12,9 @@ from torch.utils.tensorboard import SummaryWriter
 
 from tacotron2.utils import fmtl_print, fmt_print
 from text.symbols import symbols
-from .dtc_spec import DTC
+from .specs.dtc_spec import DTC
 from .model_files import ModelFiles
-from .model_spec import ModelSpec
+from .specs.model_spec import ModelSpec
 from loguru import logger
 
 
@@ -76,8 +76,7 @@ class ExperimentSpecs:
 
         # device
         self.device = 'cuda'
-
-        fmtl_print("Device", self.device)
+        logger.info("Device {}".format(self.device))
 
         # if clean tensorboard
         self.clean_tensorboard = False
@@ -150,11 +149,12 @@ class ExperimentSpecs:
         Setup tensorflow dir
         """
         time_fmt = strftime("%Y-%m-%d-%H", gmtime())
-        fmt_print("tensorboard log dir", self.model_files.get_model_log_dir())
+        logger.info("tensorboard log dir {}".format(self.model_files.get_model_log_dir()))
         logging.basicConfig(filename=str(self.model_files.get_model_log_dir() / Path('train' + time_fmt + '.log')),
                             level=logging.DEBUG)
 
         if bool(self.config['regenerate']):
+            logger.info("tensorboard erasing old logs")
             if os.path.isdir("tensorboard"):
                 shutil.rmtree("tensorboard")
         self.writer = SummaryWriter()
@@ -231,14 +231,14 @@ class ExperimentSpecs:
         self._active_setting = self.config['active_setting']
         _settings = self.config['settings']
         if debug:
-            fmt_print("Settings list", _settings)
+            logger.debug("Settings list {}".format(_settings))
 
         if self._active_setting not in _settings:
             raise Exception("config.yaml use undefined variable {} ".format(self._active_setting))
 
         self._setting = _settings[self._active_setting].copy()
         if debug:
-            fmt_print("Active settings", self._setting)
+            logger.debug("Active settings {}".format(self._setting))
 
     def read_optimizer(self):
         """
@@ -304,7 +304,7 @@ class ExperimentSpecs:
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         with open(self.config_file_name, "r") as stream:
             try:
-                fmtl_print("Reading... ", self.config_file_name)
+                logger.info("Reading configuration file from {}".format(self.config_file_name))
                 self.config = yaml.load(stream, Loader=yaml.FullLoader)
             except yaml.YAMLError as exc:
                 print(exc)
@@ -318,7 +318,7 @@ class ExperimentSpecs:
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         try:
             if self._verbose:
-                print("Reading from io buffer")
+                logger.info("Reading config from io buffer")
             self.config = yaml.load(buffer, Loader=yaml.FullLoader)
         except yaml.YAMLError as exc:
             print(exc)
@@ -405,7 +405,6 @@ class ExperimentSpecs:
         """
         path_to_dir = self.resolve_home(self.get_dataset_dir())
         file_meta_kv = self.load_text_file(metadata_file)
-        #
         files = self.model_files.make_file_dict(path_to_dir,
                                                 file_type_filter,
                                                 filter_dict=file_meta_kv)
@@ -539,12 +538,12 @@ class ExperimentSpecs:
             # check if  file exists
             if ds_dict[k].exists():
                 if self._verbose:
-                    fmtl_print("Loading tensor mel from", str(ds_dict[k]))
+                    logger.info("Loading tensor mel from {}".format(str(ds_dict[k])))
                 dataset_from_pt = torch.load(ds_dict[k])
                 if self._verbose:
-                    fmtl_print("Dataset filter length", dataset_from_pt['filter_length'])
-                    fmtl_print("Dataset mel channels", dataset_from_pt['n_mel_channels'])
-                    fmtl_print("Dataset contains records", len(dataset_from_pt['data']))
+                    logger.info("Dataset filter length {}".format(dataset_from_pt['filter_length']))
+                    logger.info("Dataset mel channels {}".format(dataset_from_pt['n_mel_channels']))
+                    logger.info("Dataset contains records {}".format(len(dataset_from_pt['data'])))
                 pt_dict[k] = dataset_from_pt
             else:
                 raise Exception("Failed locate {} file.".format(str(ds_dict[k])))
@@ -595,8 +594,7 @@ class ExperimentSpecs:
             raise Exception("Initialize settings first")
 
         if 'seed' in self._setting:
-            if self._verbose:
-                fmtl_print("Model uses fixed seed", self._setting['seed'])
+            logger.debug("Model uses fixed seed", self._setting['seed'])
             return self._setting['seed']
 
         return 1234

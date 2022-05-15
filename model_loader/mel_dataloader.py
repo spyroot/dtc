@@ -3,10 +3,11 @@ import torch
 
 from torch.utils.data import DataLoader, DistributedSampler
 from model_loader.mel_dataset_loader import TextMelLoader, TextMelCollate
-from model_trainer import model_spec
-from model_trainer.dtc_spec import DTC
+from model_trainer.specs import model_spec
+from model_trainer.specs.dtc_spec import DTC
 from model_trainer.model_trainer_specs import ExperimentSpecs
 from tacotron2.utils import fmtl_print, to_gpu
+
 
 class Mel_Dataloader:
     """
@@ -65,7 +66,8 @@ class Mel_Dataloader:
             self.train_dataset = TextMelLoader(self.encoder_spec,
                                                list(pk_dataset['train_set'].values()), data_format='audio_raw')
             self.validation_dataset = TextMelLoader(self.encoder_spec,
-                                                    list(pk_dataset['validation_set'].values()), data_format='audio_raw')
+                                                    list(pk_dataset['validation_set'].values()),
+                                                    data_format='audio_raw')
             self.collate_fn = TextMelCollate(self.encoder_spec.frames_per_step())
 
         # test_set

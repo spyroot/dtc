@@ -11,8 +11,8 @@ from loguru import logger
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data import DataLoader
 
-from Metrics import Metrics
-from TrainingLogger import TrainerLogger
+from model_trainer.metrics import Metrics
+from model_trainer.training_logger import TrainerLogger
 from distributed import apply_gradient_allreduce
 from model_loader.mel_dataloader import Mel_Dataloader
 from model_loader.mel_dataset_loader import TextMelLoader
