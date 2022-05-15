@@ -83,32 +83,19 @@ settings:
   # baseline
   medium:
     batch_size: 64
-    # tensorboard update rate
-    tensorboard_update: 20
-    # early stopping
-    early_stopping: True
-    # when to log to console
-    epochs_log: 10
-    # when to start run a test
-    start_test: 20
-    # when to start testing
-    epochs_test: 20
-    # when to save
-    epochs_save: 5
-    # if we want save per iteration
-    save_per_iteration: True
-    # fix seed
-    seed: 1234
-    #
-    epochs: 2
-    #
-    iters_per_checkpoint: 10
-    # fp16 or fp32
-    fp16: False
-    # if we distribute
-    distributed: False
-    # what distributed backend uses.
-    backend: "nccl"
+    tensorboard_update: 20      # update rate each step mod tensorboard_update
+    early_stopping: True        # early stopping
+    console_log_rate: 10        # when to log to console
+    start_test: 20              # when to start run a validation test.
+    epochs_test: 20             # epoch mod epochs_test_rate to start testing
+    epochs_save: 5              # when to save
+    save_per_iteration: True    # if we want save per iteration for large model make sense not to wait
+    seed: 1234                  # fix seed
+    epochs: 2                   # total epochs
+    iters_per_checkpoint: 10    #
+    fp16: False                 # fp16 or fp32
+    distributed: False          # if we distribute
+    backend: "nccl"              # what distributed backend uses.
     #
     url: "tcp://localhost:54321"
     #

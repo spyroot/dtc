@@ -12,7 +12,7 @@ from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data import DataLoader
 
 from model_trainer.metrics import Metrics
-from model_trainer.training_logger import TrainerLogger
+from model_trainer.training_logger import TensorboardTrainerLogger
 from distributed import apply_gradient_allreduce
 from model_loader.mel_dataloader import Mel_Dataloader
 from model_loader.mel_dataset_loader import TextMelLoader
@@ -82,7 +82,7 @@ class Trainer(GeneratorTrainer, ABC):
         # init trainer
         self.init_trainer()
         self.scaler = None
-        self.logger = TrainerLogger()
+        self.tf_logger = TensorboardTrainerLogger(trainer_spec.tensorboard_update_rate())
 
         # tqdm_iter, if we need fix post of iter
         self.tqdm_iter = None
@@ -524,7 +524,7 @@ class Trainer(GeneratorTrainer, ABC):
         if self.rank == 0:
             # t_writer.add_scalar('val_loss_' + model_name, loss.item(), it)
             # print("Validation loss {}: {:9f}  ".format(it, total_prediction_loss))
-            self.logger.log_validation(total_prediction_loss, model, y, y_pred, it)
+            self.tf_logger.log_validation(total_prediction_loss, model, y, y_pred, it)
 
         return total_prediction_loss
 
@@ -596,7 +596,7 @@ class Trainer(GeneratorTrainer, ABC):
 
         total_epoch_loss = 0
         total_accuracy = 0
-        it = self.get_last_iterator(model_name)
+        step = self.get_last_iterator(model_name)
         for batch_idx, batch in enumerate(self.train_loader):
             # start = time.perf_counter()
             # for param_group in self.optimizer[model_name].param_groups:
@@ -607,7 +607,7 @@ class Trainer(GeneratorTrainer, ABC):
 
             loss = self.criterion(y_pred, y)
             total_epoch_loss += loss.item()
-            self.metric.update(batch_idx, it, loss.item())
+            self.metric.update(batch_idx, step, loss.item())
 
             loss.backward()
 
@@ -620,42 +620,50 @@ class Trainer(GeneratorTrainer, ABC):
                 scheduler.step()
 
             # self.log_if_needed(it, loss, grad_norm, duration)
-            if self.rank == 0 and it != 0 and it % self.trainer_spec.epochs_log() == 0:
-                self.tqdm_iter.set_postfix({'run': it,
+            if self.rank == 0 and step != 0 and step % self.trainer_spec.console_log_rate() == 0:
+                self.tqdm_iter.set_postfix({'step': step,
                                             'total_loss': total_epoch_loss,
-                                            'acc': prediction_accuracy,
-                                            'acc_total': prediction_accuracy,
+                                            # 'acc': prediction_accuracy,
+                                            # 'acc_total': prediction_accuracy,
                                             'grad_norm': grad_norm.item(),
                                             'device': str(grad_norm.device),
                                             'batch': batch_idx,
                                             'batches': self.total_batches,
-                                            'saved run': self.saved_run})
+                                            'saved step': self.saved_run})
 
             # run prediction if_needed
-            if it != 0 and it % self.trainer_spec.predict() == 0:
-                prediction_accuracy = self.validate(model, model_name, it)
+            if step != 0 and step % self.trainer_spec.predict() == 0:
+                prediction_accuracy = self.validate(model, model_name, step)
                 total_accuracy += prediction_accuracy
 
             # save model checkpoint if needed
-            if self.save_if_need(model_name, it, self.epoch):
-                self.tqdm_iter.set_postfix({'run': it,
+            if self.save_if_need(model_name, step, self.epoch):
+                self.tqdm_iter.set_postfix({'step': step,
                                             'total_loss': total_epoch_loss,
-                                            'accuracy': prediction_accuracy,
+                                            # 'accuracy': prediction_accuracy,
                                             'grad_norm': grad_norm.item(),
                                             'device': str(grad_norm.device),
                                             'batch': batch_idx,
                                             'batches': self.total_batches,
-                                            'saved run': it})
-                self.saved_run = it
-            self.logger.log_training(loss.item(), grad_norm, optimizer.param_groups[0]['lr'], it)
+                                            'saved step': step})
+                self.saved_run = step
 
-            self.t_writer.add_hparams(
-                {'lr': optimizer.param_groups[0]['lr'], 'batch_size': self.trainer_spec.batch_size},
-                {'hparam/accuracy': prediction_accuracy, 'hparam/loss': float(loss.item())})
-            it += 1
+            hparams = \
+                {
+                    'lr': optimizer.param_groups[0]['lr'],
+                    'batch_size': self.trainer_spec.batch_size},\
+                {
+                    # 'hparam/accuracy': prediction_accuracy,
+                    'hparam/loss': float(loss.item()),
+                    'hparam/grad_norm': float(grad_norm.item())
+                 }
 
-        self.iters[model_name] = it
-        return it
+            self.tf_logger.log_training(loss.item(), step, grad_norm,
+                                        optimizer.param_groups[0]['lr'], hparams)
+            step += 1
+
+        self.iters[model_name] = step
+        return step
 
     def train(self, model_name='encoder'):
         """Training and validation logging results to tensorboard and stdout

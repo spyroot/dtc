@@ -5,30 +5,53 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 
 
-class TrainerLogger(SummaryWriter):
+class TensorboardTrainerLogger(SummaryWriter):
     """
 
     """
-    def __init__(self, logdir=None, is_distributed=False):
-        super(TrainerLogger, self).__init__()
+    def __init__(self, tensorboard_update_rate=0, logdir=None, is_distributed=False):
+        super(TensorboardTrainerLogger, self).__init__()
+        self.update_rate = tensorboard_update_rate
 
-    def log_training(self, reduced_loss, grad_norm, learning_rate, iteration):
+    def log_training(self, step, reduced_loss, grad_norm, learning_rate, hparams=None):
         """
 
         Args:
             reduced_loss:
             grad_norm:
             learning_rate:
-            iteration:
+            step:
 
         Returns:
+        :param hparams:
 
         """
-        self.add_scalar("training.loss", reduced_loss, iteration)
-        self.add_scalar("grad.norm", grad_norm, iteration)
-        self.add_scalar("learning.rate", learning_rate, iteration)
+        if self.update_rate == 0:
+            return
+
+        if step % self.update_rate != 0:
+            return
+
+        self.add_scalar("training.loss", reduced_loss, step)
+        self.add_scalar("grad.norm", grad_norm, step)
+        self.add_scalar("learning.rate", learning_rate, step)
+        self.add_hparams(hparams)
         self.flush()
-        #self.add_scalar("duration", duration, iteration)
+
+    def log_hparams(self, step, tf_hp_dict):
+        """
+
+        :param step:
+        :param dict:
+        :return:
+        """
+        if self.update_rate == 0:
+            return
+
+        if step % self.update_rate != 0:
+            return
+
+        self.add_hparams(tf_hp_dict)
 
     def log_validation(self, reduced_loss, model, y, y_pred, iteration):
         """

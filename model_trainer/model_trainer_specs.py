@@ -1190,7 +1190,7 @@ class ExperimentSpecs:
 
         return float(1e-3)
 
-    def epochs_log(self) -> int:
+    def console_log_rate(self) -> int:
         """
         Setting dictates when to log each epoch statistic.
         Returns: Default 100
@@ -1201,8 +1201,24 @@ class ExperimentSpecs:
         if self._setting is None:
             raise Exception("Initialize settings first")
 
-        if 'epochs_log' in self._setting:
-            return int(self._setting['epochs_log'])
+        if 'console_log_rate' in self._setting:
+            return int(self._setting['console_log_rate'])
+
+        return 100
+
+    def tensorboard_update_rate(self) -> int:
+        """
+        Setting dictates when to log each epoch statistic.
+        Returns: Default 100
+        """
+        if self.is_initialized() is False:
+            raise Exception("Training must be initialized first.")
+
+        if self._setting is None:
+            raise Exception("Initialize settings first")
+
+        if 'tensorboard_update' in self._setting:
+            return int(self._setting['tensorboard_update'])
 
         return 100
 
