@@ -5,9 +5,12 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 
 
-class Tacotron2Logger(SummaryWriter):
-    def __init__(self, logdir=None):
-        super(Tacotron2Logger, self).__init__()
+class TrainerLogger(SummaryWriter):
+    """
+
+    """
+    def __init__(self, logdir=None, is_distributed=False):
+        super(TrainerLogger, self).__init__()
 
     def log_training(self, reduced_loss, grad_norm, learning_rate, iteration):
         """
@@ -28,6 +31,15 @@ class Tacotron2Logger(SummaryWriter):
         #self.add_scalar("duration", duration, iteration)
 
     def log_validation(self, reduced_loss, model, y, y_pred, iteration):
+        """
+
+        :param reduced_loss:
+        :param model:
+        :param y:
+        :param y_pred:
+        :param iteration:
+        :return:
+        """
         self.add_scalar("validation.loss", reduced_loss, iteration)
         _, mel_outputs, gate_outputs, alignments = y_pred
         mel_targets, gate_targets = y

@@ -11,7 +11,8 @@ from loguru import logger
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data import DataLoader
 
-from TrainingLogger import Tacotron2Logger
+from Metrics import Metrics
+from TrainingLogger import TrainerLogger
 from distributed import apply_gradient_allreduce
 from model_loader.mel_dataloader import Mel_Dataloader
 from model_loader.mel_dataset_loader import TextMelLoader
@@ -35,6 +36,7 @@ import matplotlib.pylab as plt
 from text import sequence_to_text, text_to_sequence
 import dill
 from pathlib import Path
+from timeit import default_timer as timer
 
 
 class Trainer(GeneratorTrainer, ABC):
@@ -60,12 +62,11 @@ class Trainer(GeneratorTrainer, ABC):
         self.schedulers = {}
         self.optimizers = {}
 
-        print("Class", type(trainer_spec))
-        self.experiment_specs = trainer_spec
+        self.trainer_spec = trainer_spec
         if not trainer_spec.is_initialized():
             raise Exception("you need initialize trainer specs first.")
 
-        # if self.experiment_specs.is_distributed_run():
+        # if self.trainer_spec.is_distributed_run():
         #     self.init_distributed()
 
         self.dataloader = data_loader
@@ -75,16 +76,33 @@ class Trainer(GeneratorTrainer, ABC):
         self.criterion = Tacotron2Loss()
         self.models = {}
         self.last_epochs = {}
+        # dict holds model name = last iterator value
         self.iters = {}
 
+        # init trainer
         self.init_trainer()
         self.scaler = None
-        self.logger = Tacotron2Logger()
+        self.logger = TrainerLogger()
+
+        # tqdm_iter, if we need fix post of iter
+        self.tqdm_iter = None
+        # current epoch trainer executing.
+        self.epoch = None
+        # last saved run
+        self.saved_run = None
+        # total batches
+        self.total_batches = None
+        # clip or not grad
+        self.clip_grad = True
 
         # logging.basicConfig(level=logging.DEBUG,
         #                     format='%(asctime)s %(levelname)s %(message)s',
         #                     filename='/tmp/myapp.log',
         #                     filemode='w')
+        self.metric = Metrics(num_epochs=self.trainer_spec.epochs())
+
+        # tensorboard writer
+        self.t_writer = None
 
     def init_trainer(self):
         """
@@ -92,17 +110,17 @@ class Trainer(GeneratorTrainer, ABC):
         Returns:
 
         """
-        if self.experiment_specs.is_distributed_run():
+        if self.trainer_spec.is_distributed_run():
             self.init_distributed()
 
         self.create_models()
         self.create_optimizers()
         self.create_lr_schedulers()
-        if self.experiment_specs.fp16_run():
+        if self.trainer_spec.fp16_run():
             self.scaler = torch.cuda.amp.GradScaler()
 
-        torch.manual_seed(self.experiment_specs.seed())
-        torch.cuda.manual_seed(self.experiment_specs.seed())
+        torch.manual_seed(self.trainer_spec.seed())
+        torch.cuda.manual_seed(self.trainer_spec.seed())
 
     def init_distributed(self):
         """
@@ -134,38 +152,44 @@ class Trainer(GeneratorTrainer, ABC):
 
         """
         if model_name == 'encoder':
-            model = Tacotron2(self.experiment_specs, self.device)
-            if self.experiment_specs.is_fp16_run():
+            model = Tacotron2(self.trainer_spec, self.device)
+            if self.trainer_spec.is_fp16_run():
                 model.decoder.attention_layer.score_mask_value = finfo('float16').min
 
-            if self.experiment_specs.is_distributed_run():
+            if self.trainer_spec.is_distributed_run():
                 model = apply_gradient_allreduce(model)
 
             self.models[model_name] = model
             self.last_epochs[model_name] = 0
 
-    def load(self, model_name: str, ignore_layers=None):
+    def load(self, model_name: str, to_device=True, ignore_layers=None):
         """
         Method loads model from a checkpoint.
         Args:
             model_name:
 
         Returns:
+        :param to_device: load model and make sure , it uploaded to  target device.
         :param model_name:
         :param ignore_layers:  a list contain of layers we skip
 
         """
-        if not self.experiment_specs.load():
+        if not self.trainer_spec.is_load_model():
             return 0
 
-        model_file = self.experiment_specs.model_files.get_model_filename(model_name)
-
-        fmtl_print('Loading model weights ', model_name, model_file)
+        model_file = self.trainer_spec.model_files.get_model_filename(model_name)
+        logger.info("Loading model '{}' model file name {}".format(model_name, model_file))
 
         # load trained optimizer state_dict
         try:
-            self.models[model_name].to(self.device)
-            checkpoint = torch.load(model_file, map_location=self.device)
+            if to_device:
+                self.models[model_name].to(self.device)
+
+            if to_device:
+                checkpoint = torch.load(model_file, map_location=self.device)
+            else:
+                checkpoint = torch.load(model_file)
+
             if 'model_state_dict' not in checkpoint:
                 raise Exception("model has no state dict")
 
@@ -177,11 +201,13 @@ class Trainer(GeneratorTrainer, ABC):
             if 'optimizer_state_dict' not in checkpoint:
                 raise Exception("model has no optimizer_state_dict")
 
+            # if model has scheduler, re-create.
             if model_name in self.schedulers:
                 self.schedulers[model_name].load_state_dict(checkpoint['scheduler_state_dict'])
                 if 'scheduler_state_dict' not in checkpoint:
                     raise Exception("model has no scheduler_state_dict")
 
+            # if need ignore layers.
             if ignore_layers is not None and len(ignore_layers) > 0:
                 model_dict = {k: v for k, v in self.models[model_name].items()
                               if k not in ignore_layers}
@@ -191,13 +217,20 @@ class Trainer(GeneratorTrainer, ABC):
 
             # self.trainer_spec.set_lr(0.00001)
             fmtl_print("Last checkpoint. ", checkpoint['epoch'], checkpoint['it'])
+            if 'epoch' not in checkpoint:
+                raise Exception("saved checkpoint has no epoch key")
             self.last_epochs[model_name] = checkpoint['epoch']
+
+            if 'it' not in checkpoint:
+                raise Exception("saved checkpoint has no last iteration key.")
             self.iters[model_name] = checkpoint['it']
+
             return checkpoint['epoch'], checkpoint['it']
         except FileNotFoundError as e:
-            print("Failed load model files. No saved model found.")
+            print("Failed load model files {}. No saved model found.".format(model_file))
+            logger.info("No model file to load model file, return default epoch 0, iteration 0")
 
-        return 0
+        return 0, 0
 
     def trainer_iterator(self, model_name: str, last_epoch=0, max_epochs=0):
         """
@@ -210,6 +243,7 @@ class Trainer(GeneratorTrainer, ABC):
         Returns:
 
         """
+        # for notebook we need a bit of hack for tqdm_iter.
         if self.is_notebook:
             tqdm_iter = tnrange(last_epoch, max_epochs)
             return tqdm_iter
@@ -219,10 +253,9 @@ class Trainer(GeneratorTrainer, ABC):
         # early stopping
         early_stopping = None
 
-        max_epochs = self.experiment_specs.epochs()
+        max_epochs = self.trainer_spec.epochs()
         # what tqdm to use notebook for colab or normal one.
-        if self.verbose:
-            fmtl_print("Creating tqdm", last_epoch, max_epochs)
+        logger.info("Creating tqdm last epoch {} max epoch", last_epoch, max_epochs)
 
         if self.is_notebook:
             tqdm_iter = tnrange(last_epoch, max_epochs)
@@ -234,11 +267,11 @@ class Trainer(GeneratorTrainer, ABC):
 
     def create_models(self):
         """
-
-        Returns:
-
+        for each active model, that might consist more than one model,
+        we create a target model
+        :return: nothing, create_model will add each model to a dict[model_name] = model
         """
-        models = self.experiment_specs.get_active_sub_models()
+        models = self.trainer_spec.get_active_sub_models()
         for m in models:
             self.create_model(m)
 
@@ -248,7 +281,7 @@ class Trainer(GeneratorTrainer, ABC):
         Returns:
 
         """
-        models = self.experiment_specs.get_active_sub_models()
+        models = self.trainer_spec.get_active_sub_models()
         for m in models:
             self.load(m)
 
@@ -261,7 +294,7 @@ class Trainer(GeneratorTrainer, ABC):
         Returns:
 
         """
-        if self.experiment_specs.is_fp16_run():
+        if self.trainer_spec.is_fp16_run():
             reduced_loss = self.split_tensor(loss.data).item()
         else:
             reduced_loss = loss.item()
@@ -282,8 +315,8 @@ class Trainer(GeneratorTrainer, ABC):
                             "Failed create {} model".format(model_name))
         model = self.models[model_name]
 
-        optimizer_type = self.experiment_specs.optimizer_type(alias_name)
-        spec = self.experiment_specs
+        optimizer_type = self.trainer_spec.optimizer_type(alias_name)
+        spec = self.trainer_spec
 
         if optimizer_type == 'Adam':
             if self.verbose:
@@ -309,7 +342,7 @@ class Trainer(GeneratorTrainer, ABC):
                                         dampening=spec.dampening(alias_name),
                                         weight_decay=spec.weight_decay(alias_name),
                                         nesterov=spec.nesterov(alias_name))
-        elif self.experiment_specs.optimizer_type == 'none':
+        elif self.trainer_spec.optimizer_type == 'none':
             opt = None
         else:
             raise ValueError("unknown optimizer: {}".format(optimizer_type))
@@ -319,16 +352,16 @@ class Trainer(GeneratorTrainer, ABC):
 
     # @logger.catch()
     def create_optimizers(self):
-        """
-        Create all required optimizers based on model specs.
+        """Create all required optimizers based on model specs.
         Each optimize in self.optimizers dict
         Returns: Nothing
         """
-
-        models = self.experiment_specs.get_active_sub_models()
+        models = self.trainer_spec.get_active_sub_models()
+        if len(models) == 0:
+            logger.warning("trainer spec has no model")
         for model_name in models:
             logger.info("Loading {} optimizer settings".format(model_name))
-            opt_spec_alias = self.experiment_specs.get_sub_model_optimizer(model_name)
+            opt_spec_alias = self.trainer_spec.get_sub_model_optimizer(model_name)
             optimizer = self.create_optimizer(model_name, opt_spec_alias)
             self.optimizers[model_name] = optimizer
 
@@ -342,31 +375,31 @@ class Trainer(GeneratorTrainer, ABC):
         Returns: lr_scheduler
 
         """
-        alias_name = self.experiment_specs.get_sub_model_lr_scheduler(model_name)
+        alias_name = self.trainer_spec.get_sub_model_lr_scheduler(model_name)
         if len(alias_name) == 0:
             if self.verbose:
                 fmtl_print("Model {}".format(model_name), "no scheduler attached")
             return
 
-        lr_scheduler_type = self.experiment_specs.lr_scheduler_type(alias_name)
+        lr_scheduler_type = self.trainer_spec.lr_scheduler_type(alias_name)
         if lr_scheduler_type == 'cos':
             if self.verbose:
                 fmtl_print("Creating {} lr scheduler.".format(alias_name), "cos")
             scheduler = lr_scheduler.CosineAnnealingLR(optimizer,
-                                                       T_max=self.experiment_specs.t_max(alias_name),
-                                                       eta_min=self.experiment_specs.eta_min(alias_name))
+                                                       T_max=self.trainer_spec.t_max(alias_name),
+                                                       eta_min=self.trainer_spec.eta_min(alias_name))
         elif lr_scheduler_type == 'multistep':
             fmtl_print("Creating {} lr scheduler.".format(alias_name), "multistep")
-            fmtl_print("Creating {} milestone.".format(alias_name), self.experiment_specs.milestones(alias_name))
+            fmtl_print("Creating {} milestone.".format(alias_name), self.trainer_spec.milestones(alias_name))
             if self.verbose:
                 fmtl_print("Creating {} lr scheduler.".format(alias_name), "multistep")
             scheduler = lr_scheduler.MultiStepLR(optimizer,
-                                                 milestones=self.experiment_specs.milestones(alias_name),
-                                                 gamma=self.experiment_specs.gamma(alias_name))
+                                                 milestones=self.trainer_spec.milestones(alias_name),
+                                                 gamma=self.trainer_spec.gamma(alias_name))
         elif lr_scheduler_type == 'exp-warmup':
             if self.verbose:
                 fmtl_print("Creating {} lr_scheduler_type.".format(alias_name), "exp-warmup")
-            lr_lambdas = self.experiment_specs.lr_lambdas(alias_name)
+            lr_lambdas = self.trainer_spec.lr_lambdas(alias_name)
             scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambdas)
         elif lr_scheduler_type == 'none' or lr_scheduler is None:
             if self.verbose:
@@ -384,7 +417,7 @@ class Trainer(GeneratorTrainer, ABC):
         Returns:
 
         """
-        models = self.experiment_specs.get_active_sub_models()
+        models = self.trainer_spec.get_active_sub_models()
         for model_name in models:
             if model_name not in self.optimizers:
                 raise Exception("make sure optimizer spec created.")
@@ -393,39 +426,42 @@ class Trainer(GeneratorTrainer, ABC):
 
     def save_if_need(self, model_name, it, epoch, last_epoch=False):
         """
-        Saves model checkpoint, when based on template settings.
-
+        a trainer will call this method, to check if model need to save or not.
         Args:
-            it:
-            model_name:
+            it:  Current iteration counter.
+            model_name: active model
             epoch: current epoch
-            last_epoch
+            last_epoch if it last epoch or not.
         """
         # by default condition to save epoch , if save per iteration we check iteration.
-        if self.experiment_specs.is_save() is False:
+        if self.trainer_spec.is_save() is False:
             return False
 
         if last_epoch is False and it == 0:
             return False
 
+        # model save predicate condition , either iteration or epoch counter.
+        # for large model it make sense to track iteration vs epoch counter.
         save_condition = epoch
-        model_file = self.experiment_specs.model_files.get_model_filename(model_name)
-        if self.experiment_specs.is_save_per_iteration():
+        model_file = self.trainer_spec.model_files.get_model_filename(model_name)
+        if self.trainer_spec.is_save_per_iteration():
             save_condition = it
 
-        if save_condition % self.experiment_specs.epochs_save() == 0 or last_epoch is True:
-            if self.experiment_specs.is_train_verbose():
-                fmt_print('Saving node model {}'.format(model_file))
+        if save_condition % self.trainer_spec.epochs_save() == 0 or last_epoch is True:
+            if self.trainer_spec.is_train_verbose():
+                logger.info('Saving node model {}'.format(model_file))
 
             if model_name in self.schedulers:
+                logger.info("Model saving with optimizer and scheduler state.")
                 torch.save({
                     'epoch': epoch,
                     'it': it,
                     'model_state_dict': self.models[model_name].state_dict(),
                     'optimizer_state_dict': self.optimizers[model_name].state_dict(),
-                    #      'scheduler_state_dict': self.schedulers[model_name].state_dict()
+                    'scheduler_state_dict': self.schedulers[model_name].state_dict()
                 }, model_file)
             else:
+                logger.info("Model saving with optimizer without a scheduler state.")
                 torch.save({
                     'epoch': epoch,
                     'it': it,
@@ -433,9 +469,7 @@ class Trainer(GeneratorTrainer, ABC):
                     'optimizer_state_dict': self.optimizers[model_name].state_dict(),
                     #    'scheduler_state_dict': self.schedulers[model_name].state_dict()
                 }, model_file)
-
             return True
-
         return False
 
     def log_if_needed(self, it, reduced_loss, grad_norm, duration):
@@ -450,7 +484,7 @@ class Trainer(GeneratorTrainer, ABC):
         Returns:
 
         """
-        if self.rank == 0 and it % self.experiment_specs.epochs_log() == 0:
+        if self.rank == 0 and it % self.trainer_spec.epochs_log() == 0:
             print("Train loss {} {:.6f} Grad Norm {:.6f} {:.2f}s/it".format(it,
                                                                             reduced_loss,
                                                                             grad_norm,
@@ -467,7 +501,7 @@ class Trainer(GeneratorTrainer, ABC):
         Returns:
 
         """
-        t_writer = self.experiment_specs.get_tensorboard_writer()
+        t_writer = self.trainer_spec.get_tensorboard_writer()
 
         model.eval()
         with torch.no_grad():
@@ -477,7 +511,7 @@ class Trainer(GeneratorTrainer, ABC):
                 y_pred = model(x)
                 # our loss mel_loss + gate_loss
                 loss = self.criterion(y_pred, y)
-                if self.experiment_specs.is_distributed_run():
+                if self.trainer_spec.is_distributed_run():
                     reduced_val_loss = self.split_tensor(loss.data, self.n_gpus).item()
                 else:
                     reduced_val_loss = loss.item()
@@ -495,7 +529,8 @@ class Trainer(GeneratorTrainer, ABC):
 
     def get_last_iterator(self, model_name):
         """
-
+        Return last iterator,  during a model save each model might have own iterator counter.
+        thus, trainer has a dict that hold self.iters[mode_name] = it
         Args:
             model_name:
 
@@ -518,7 +553,7 @@ class Trainer(GeneratorTrainer, ABC):
             axes[i].imshow(data[i], aspect='auto', origin='bottom',
                            interpolation='none')
 
-    def inference(self, sequences, model_name='encoder'):
+    def inference(self, seq, model_name='encoder'):
         """
 
         Args:
@@ -537,7 +572,7 @@ class Trainer(GeneratorTrainer, ABC):
         model.eval()
 
         with torch.no_grad():
-            mel_outputs, mel_outputs_postnet, _, alignments = model.inference(sequence)
+            mel_outputs, mel_outputs_postnet, _, alignments = model.inference(seq)
             print(mel_outputs.shape)
             print(mel_outputs_postnet.shape)
             print(alignments.shape)
@@ -546,6 +581,80 @@ class Trainer(GeneratorTrainer, ABC):
             #                 mel_outputs_postnet.float().data.cpu().numpy()[0],
             #                 alignments.float().data.cpu().numpy()[0].T))
             return mel_outputs, mel_outputs_postnet, alignments
+
+    def train_epoch(self, model, model_name, optimizer, scheduler=None, save_callback=None):
+        """
+
+        :param model:
+        :param model_name:
+        :param optimizer:
+        :param scheduler:
+        :param save_callback:
+        :return:
+        """
+
+        total_epoch_loss = 0
+        total_accuracy = 0
+        it = self.get_last_iterator(model_name)
+        for batch_idx, batch in enumerate(self.train_loader):
+            # start = time.perf_counter()
+            # for param_group in self.optimizer[model_name].param_groups:
+            #     param_group['lr'] = learning_rate
+            model.zero_grad(set_to_none=True)
+            x, y = model.parse_batch(batch)
+            y_pred = model(x)
+
+            loss = self.criterion(y_pred, y)
+            total_epoch_loss += loss.item()
+            self.metric.update(batch_idx, it, loss.item())
+
+            loss.backward()
+
+            if self.clip_grad:
+                grad_norm = clip_grad_norm_(model.parameters(), self.trainer_spec.grad_clip_thresh)
+
+            optimizer.step()
+            # run lr_scheduler
+            if scheduler is not None:
+                scheduler.step()
+
+            # self.log_if_needed(it, loss, grad_norm, duration)
+            if self.rank == 0 and it != 0 and it % self.trainer_spec.epochs_log() == 0:
+                self.tqdm_iter.set_postfix({'run': it,
+                                            'total_loss': total_epoch_loss,
+                                            'acc': prediction_accuracy,
+                                            'acc_total': prediction_accuracy,
+                                            'grad_norm': grad_norm.item(),
+                                            'device': str(grad_norm.device),
+                                            'batch': batch_idx,
+                                            'batches': self.total_batches,
+                                            'saved run': self.saved_run})
+
+            # run prediction if_needed
+            if it != 0 and it % self.trainer_spec.predict() == 0:
+                prediction_accuracy = self.validate(model, model_name, it)
+                total_accuracy += prediction_accuracy
+
+            # save model checkpoint if needed
+            if self.save_if_need(model_name, it, self.epoch):
+                self.tqdm_iter.set_postfix({'run': it,
+                                            'total_loss': total_epoch_loss,
+                                            'accuracy': prediction_accuracy,
+                                            'grad_norm': grad_norm.item(),
+                                            'device': str(grad_norm.device),
+                                            'batch': batch_idx,
+                                            'batches': self.total_batches,
+                                            'saved run': it})
+                self.saved_run = it
+            self.logger.log_training(loss.item(), grad_norm, optimizer.param_groups[0]['lr'], it)
+
+            self.t_writer.add_hparams(
+                {'lr': optimizer.param_groups[0]['lr'], 'batch_size': self.trainer_spec.batch_size},
+                {'hparam/accuracy': prediction_accuracy, 'hparam/loss': float(loss.item())})
+            it += 1
+
+        self.iters[model_name] = it
+        return it
 
     def train(self, model_name='encoder'):
         """Training and validation logging results to tensorboard and stdout
@@ -564,106 +673,47 @@ class Trainer(GeneratorTrainer, ABC):
         # torch.cuda.manual_seed(self.model_spec.seed())
         #
         self.load_models()
-        t_writer = self.experiment_specs.get_tensorboard_writer()
+        t_writer = self.trainer_spec.get_tensorboard_writer()
 
         if model_name in self.iters:
-            fmtl_print("Epoch saved out of", self.last_epochs[model_name], self.experiment_specs.epochs())
-            fmtl_print("Last iter saved", self.iters[model_name])
+            logger.info("Epoch saved out of", self.last_epochs[model_name], self.trainer_spec.epochs())
+            logger.info("Last iteration saved", self.iters[model_name])
 
         #
         model = self.models[model_name].to(self.device)
-        tqdm_iter = self.trainer_iterator(model_name)
+        self.tqdm_iter = self.trainer_iterator(model_name)
         optimizer = self.optimizers[model_name]
+
         scheduler = None
         if model_name in self.schedulers:
-            print("Model has scheduler")
+            logger.info("Model {} contains a scheduler".format(model_name))
             scheduler = self.schedulers[model_name]
 
-        #
-        if self.experiment_specs.is_distributed_run():
+        if self.trainer_spec.is_distributed_run():
+            logger.info("Running in distributed model. applying gradient reduce.".format(model_name))
             model = apply_gradient_allreduce(model)
 
         it = self.get_last_iterator(model_name)
-        if self.last_epochs[model_name] == self.experiment_specs.epochs():
+        if self.last_epochs[model_name] == self.trainer_spec.epochs():
             prediction_accuracy = self.validate(model, model_name, it)
 
+        self.metric.set_num_iteration(self.trainer_spec.epochs() * len(self.train_loader))
+        self.metric.set_num_batches(len(self.train_loader))
+        self.metric.init()
+        logger.info("Staring training num epochs {}, epoch trained {} num batches {} expected total iteration {}",
+                    self.trainer_spec.epochs(), self.last_epochs, len(self.train_loader),
+                    self.trainer_spec.epochs() * len(self.train_loader))
+
         model.train()
-        tqdm_iter.set_postfix({'run': it})
-        saved_run = it
-        total_accuracy = 0
-        for epoch in tqdm_iter:
-            total_epoch_loss = 0
-            prediction_accuracy = 0.0
-            total_batches = len(self.train_loader)
-            for batch_idx, batch in enumerate(self.train_loader):
-                # start = time.perf_counter()
-                # for param_group in self.optimizer[model_name].param_groups:
-                #     param_group['lr'] = learning_rate
-
-                model.zero_grad(set_to_none=True)
-                x, y = model.parse_batch(batch)
-                y_pred = model(x)
-
-                loss = self.criterion(y_pred, y)
-                total_epoch_loss += loss.item()
-
-                loss.backward()
-                grad_norm = clip_grad_norm_(model.parameters(), self.experiment_specs.grad_clip_thresh)
-                optimizer.step()
-
-                # run lr_scheduler
-                if scheduler is not None:
-                    scheduler.step()
-
-                # self.log_if_needed(it, loss, grad_norm, duration)
-                if self.rank == 0 and it != 0 and it % self.experiment_specs.epochs_log() == 0:
-                    tqdm_iter.set_postfix({'run': it,
-                                           'total_loss': total_epoch_loss,
-                                           'acc': prediction_accuracy,
-                                           'acc_total': prediction_accuracy,
-                                           'grad_norm': grad_norm.item(),
-                                           'device': str(grad_norm.device),
-                                           'batch': batch_idx,
-                                           'batches': total_batches,
-                                           'saved run': saved_run})
-
-                # run prediction
-                if it != 0 and it % self.experiment_specs.predict() == 0:
-                    prediction_accuracy = self.validate(model, model_name, it)
-                    total_accuracy += prediction_accuracy
-
-                # save model checkpoint
-                if self.save_if_need(model_name, it, epoch):
-                    tqdm_iter.set_postfix({'run': it,
-                                           'total_loss': total_epoch_loss,
-                                           'accuracy': prediction_accuracy,
-                                           'grad_norm': grad_norm.item(),
-                                           'device': str(grad_norm.device),
-                                           'batch': batch_idx,
-                                           'batches': total_batches,
-                                           'saved run': it})
-                    saved_run = it
-
-                self.logger.log_training(loss.item(), grad_norm, optimizer.param_groups[0]['lr'], it)
-                # metrics = {'accuracy/accuracy': None, 'loss/loss': None}
-                # hp.hparams_config(
-                #     hparams=[HP_OPTIMIZER],
-                #     metrics=[hp.Metric(METRIC_ACCURACY, display_name='Accuracy')],
-                # )
-                #
-                # h_params = {'This': 1, 'is': 2, 'a': 3, 'test': 4}
-                # t_writer.add_hparams(h_params, metrics)
-                # with SummaryWriter() as w:
-                #     for i in range(5):
-
-                t_writer.add_hparams(
-                    {'lr': optimizer.param_groups[0]['lr'], 'batch_size': self.experiment_specs.batch_size},
-                    {'hparam/accuracy': prediction_accuracy, 'hparam/loss': float(loss.item())})
-
-                # duration = time.perf_counter() - start
-                # print(duration)
-                # self.detach_hidden()
-                it += 1
+        self.total_batches = len(self.train_loader)
+        self.tqdm_iter.set_postfix({'run': it})
+        for epoch in self.tqdm_iter:
+            # update epoch
+            self.epoch = epoch
+            # train epoch's batch
+            self.metric.start_epoch_timer(epoch)
+            self.train_epoch(model, model_name, optimizer)
+            self.metric.update_epoch_timer(epoch)
 
             # model logs
             for name, weight in model.named_parameters():
@@ -673,9 +723,9 @@ class Trainer(GeneratorTrainer, ABC):
             t_writer.flush()
             #  tune.report(loss=(val_loss / val_steps), accuracy=correct / total)
 
-        if self.save_if_need(model_name, it, self.experiment_specs.epochs(), last_epoch=True):
+        if self.save_if_need(model_name, it, self.trainer_spec.epochs(), last_epoch=True):
             if self.verbose:
-                fmtl_print("Saved last epoch", self.experiment_specs.epochs())
+                fmtl_print("Saved last epoch", self.trainer_spec.epochs())
 
         def train_scaled(self, model_name='encoder'):
             """Training and validation logging results to tensorboard and stdout
@@ -698,15 +748,15 @@ class Trainer(GeneratorTrainer, ABC):
             #
             model = self.models[model_name].to(self.device)
             tqdm_iter = self.trainer_iterator(model_name)
-            learning_rate = self.experiment_specs.learning_rate
+            learning_rate = self.trainer_spec.learning_rate
 
             optimizer = self.optimizers[model_name]
             #
-            if self.experiment_specs.is_fp16_run():
+            if self.trainer_spec.is_fp16_run():
                 from apex import amp
                 model, optimizer = amp.initialize(model, optimizer, opt_level='O2')
             #
-            if self.experiment_specs.is_distributed_run():
+            if self.trainer_spec.is_distributed_run():
                 model = apply_gradient_allreduce(model)
             #
             #
@@ -751,7 +801,7 @@ class Trainer(GeneratorTrainer, ABC):
                     #
 
                     self.scaler.scale(loss).backward()
-                    grad_norm = clip_grad_norm_(model.parameters(), self.experiment_specs.grad_clip_thresh)
+                    grad_norm = clip_grad_norm_(model.parameters(), self.trainer_spec.grad_clip_thresh)
                     is_overflow = math.isnan(grad_norm)
 
                     self.scaler.step(optimizer)

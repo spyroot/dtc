@@ -25,22 +25,32 @@ class Encoder(nn.Module):
     """
 
     def __init__(self, experiment_specs: ExperimentSpecs, device):
+        """
+
+        :param experiment_specs:
+        :param device:
+        """
         super(Encoder, self).__init__()
         self.device = device
+
+        self.conv_kernel_size = experiment_specs.encoder_kernel_size
+        self.embedding_dim = experiment_specs.encoder_embedding_dim
+        self.num_conv_layers = experiment_specs.encoder_n_convolutions
+        self.forward_pass_dropout_rate = 0.5
+        self.stride_size = 1
 
         convolutions = []
         for _ in range(experiment_specs.encoder_n_convolutions):
             conv_layer = nn.Sequential(
-                ConvNorm(experiment_specs.encoder_embedding_dim,
-                         experiment_specs.encoder_embedding_dim,
-                         kernel_size=experiment_specs.encoder_kernel_size, stride=1,
+                ConvNorm(self.embedding_dim, self.embedding_dim,
+                         kernel_size=self.conv_kernel_size, stride=1,
                          padding=int((experiment_specs.encoder_kernel_size - 1) / 2),
                          dilation=1, w_init_gain='relu'),
                 nn.BatchNorm1d(experiment_specs.encoder_embedding_dim))
             convolutions.append(conv_layer)
         self.convolutions = nn.ModuleList(convolutions)
 
-        self.lstm = nn.LSTM(experiment_specs.encoder_embedding_dim,
+        self.lstm = nn.LSTM(self.embedding_dim,
                             int(experiment_specs.encoder_embedding_dim / 2), 1,
                             batch_first=True, bidirectional=True)
 
@@ -52,20 +62,16 @@ class Encoder(nn.Module):
         :return:
         """
         for conv in self.convolutions:
-            x = F.dropout(F.relu(conv(x)), 0.5, self.training)
+            x = F.dropout(F.relu(conv(x)), self.forward_pass_dropout_rate, self.training)
 
-        print("shape", x.shape)
         x = x.transpose(1, 2)
-        print("shape", x.shape)
-
+        # print("Len", input_lengths)
         # pytorch tensor are not reversible, hence the conversion
-        input_lengths = input_lengths.cpu().numpy()
+        # input_lengths = input_lengths.cpu().numpy()
         # flipped = torch.fliplr(input_lengths)
 
         x = nn.utils.rnn.pack_padded_sequence(
             x, input_lengths, batch_first=True)
-
-        print("shape", x.shape)
 
         self.lstm.flatten_parameters()
         outputs, _ = self.lstm(x)
@@ -150,7 +156,7 @@ class Tacotron2(nn.Module):
 
         """
         if self.mask_padding and output_lengths is not None:
-            mask = ~get_mask_from_lengths(output_lengths)
+            mask = ~get_mask_from_lengths(output_lengths, self.device)
             mask = mask.expand(self.n_mel_channels, mask.size(0), mask.size(1))
             mask = mask.permute(1, 0, 2)
 
@@ -188,22 +194,17 @@ class Tacotron2(nn.Module):
 
     def inference(self, inputs):
         """
+        During inference pass input to embedding layer
+        transpose shape (batch_size, x ,y ) (batc_size, y, z)
+        Pass to decoder and get output mel , gate and alignments.
 
-        Args:
-            inputs:
-
-        Returns:
-
+        :param inputs:
+        :return:
         """
         embedded_inputs = self.embedding(inputs).transpose(1, 2)
         encoder_outputs = self.encoder.inference(embedded_inputs)
-        mel_outputs, gate_outputs, alignments = self.decoder.inference(
-            encoder_outputs)
-
-        mel_outputs_postnet = self.postnet(mel_outputs)
-        mel_outputs_postnet = mel_outputs + mel_outputs_postnet
-
-        outputs = self.parse_output(
-            [mel_outputs, mel_outputs_postnet, gate_outputs, alignments])
-
-        return outputs
+        mel_outputs, gate_outputs, alignments = self.decoder.inference(encoder_outputs)
+        mel_outputs_post_net = self.postnet(mel_outputs)
+        mel_outputs_post_net = mel_outputs + mel_outputs_post_net
+        return self.parse_output(
+            [mel_outputs, mel_outputs_post_net, gate_outputs, alignments])

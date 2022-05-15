@@ -706,11 +706,14 @@ class ExperimentSpecs:
 
         return 32
 
-    def load(self) -> bool:
+    def is_load_model(self) -> bool:
         """
-        Return true if model must be loaded.
+        Return true if model must be loaded, default will return false.
         """
-        return bool(self.config['load_model'])
+        if 'load_model' in self.config:
+            return bool(self.config['load_model'])
+
+        return False
 
     def is_save(self) -> bool:
         """

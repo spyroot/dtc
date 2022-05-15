@@ -54,3 +54,4 @@ class GeneratorTrainer(ABC, metaclass=ABCMeta):
 
     def set_verbose(self, param):
         self.verbose = param
+

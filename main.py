@@ -1,4 +1,5 @@
 import argparse
+import logging
 from pathlib import Path
 
 import torch
@@ -7,7 +8,6 @@ from loguru import logger
 from model_loader.mel_dataloader import Mel_Dataloader
 from model_loader.mel_dataset_loader import TextMelLoader
 from model_trainer.model_trainer_specs import ExperimentSpecs
-from tacotron2.utils import fmtl_print
 from trainer import Trainer
 
 
@@ -42,10 +42,10 @@ def convert_mel_to_data(encoder_spec, target_dir: str, dataset,
     torch.save(meta, file_name)
     ds = torch.load(file_name)
     if verbose:
-        fmtl_print("Dataset saved", file_name)
-        fmtl_print("Dataset filter length", ds['filter_length'])
-        fmtl_print("Dataset mel channels", ds['n_mel_channels'])
-        fmtl_print("Dataset contains records", len(ds['data']))
+        logger.info("Dataset saved", file_name)
+        logger.info("Dataset filter length", ds['filter_length'])
+        logger.info("Dataset mel channels", ds['n_mel_channels'])
+        logger.info("Dataset contains records", len(ds['data']))
 
     if post_check:
         d = ds['data']
@@ -76,13 +76,13 @@ def convert(trainer_spec, verbose=True):
     test_dataset = TextMelLoader(encoder_spec, list(test_set.values()), "audio_raw")
 
     if verbose:
-        fmtl_print("filter_length", encoder_spec.filter_length())
-        fmtl_print("hop_length", encoder_spec.hop_length())
-        fmtl_print("win_length", encoder_spec.win_length())
-        fmtl_print("n_mel_channels", encoder_spec.n_mel_channels())
-        fmtl_print("sampling_rate", encoder_spec.sampling_rate())
-        fmtl_print("mel_fmin", encoder_spec.mel_fmin())
-        fmtl_print("mel_fmax", encoder_spec.mel_fmax())
+        logging.info("filter_length", encoder_spec.filter_length())
+        logging.info("hop_length", encoder_spec.hop_length())
+        logging.info("win_length", encoder_spec.win_length())
+        logging.info("n_mel_channels", encoder_spec.n_mel_channels())
+        logging.info("sampling_rate", encoder_spec.sampling_rate())
+        logging.info("mel_fmin", encoder_spec.mel_fmin())
+        logging.info("mel_fmax", encoder_spec.mel_fmax())
 
     convert_mel_to_data(encoder_spec, trainer_spec.get_dataset_dir(),
                         train_dataset, trainer_spec.use_dataset, "train")
