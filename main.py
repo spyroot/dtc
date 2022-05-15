@@ -134,7 +134,7 @@ def main(cmd_args):
     """
     _device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     trainer_spec = ExperimentSpecs(verbose=False)
-    print(trainer_spec.model_files.get_dirs())
+    trainer_spec.model_files.build_dir()
 
     if cmd_args.train:
         train(spec=trainer_spec, device=_device)
@@ -171,7 +171,7 @@ if __name__ == '__main__':
     #                     required=False, help='set verbose output')
     # level = logger.level("ERROR")
     # logger.info(f"LOGURU_LEVEL: {os.environ['LOGURU_LEVEL']}")
-    # logger.remove()
+    logger.remove()
     # logger.enable("__main__")
     # logger.add(sys.stderr, level=config.LOG_LEVEL)
     # logger.enable()

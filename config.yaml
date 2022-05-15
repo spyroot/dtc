@@ -109,7 +109,7 @@ settings:
     # early stopping
     early_stopping: True
     # when to log to console
-    epochs_log: 1
+    console_log_rate: 5
     # when to start run a test
     start_test: 20
     # predict to start predict , validate
@@ -117,7 +117,7 @@ settings:
     # use epoch or iteration counter
     predict_per_iteration: True
     # when to save
-    epochs_save: 100
+    epochs_save: 5
     # if we want save per iteration
     save_per_iteration: True
     # fix seed
@@ -167,9 +167,10 @@ lr_schedulers:
     - type: multistep
       milestones: [ 400, 1000 ]
       name: main_lr_scheduler
-    - type: secondary
-      milestones: [ 400, 1000 ]
-      name: secondary
+    - type: ReduceLROnPlateau
+      mode: 'min'   #min, max
+      patience: 10
+      name: dtc_scheduler
 
 # Model definition
 models:

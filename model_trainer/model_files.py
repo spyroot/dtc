@@ -231,7 +231,7 @@ class ModelFiles:
         if 'batch_size' in self._setting:
             batch_size = int(self._setting['batch_size'])
 
-        #time_fmt = strftime("%Y-%m-%d-%H", gmtime())
+        # time_fmt = strftime("%Y-%m-%d-%H", gmtime())
 
         if suffix is None:
             return f"{self.filename}_batch_{str(batch_size)}_epoch_{self.load_epoch()}.{file_type}"

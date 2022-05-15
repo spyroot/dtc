@@ -45,12 +45,13 @@ class Trainer(GeneratorTrainer, ABC):
     """
 
     def __init__(self, trainer_spec: ExperimentSpecs, data_loader,
-                 verbose=False, is_notebook=False, rank=0, n_gpus=1, device=None):
+                 verbose=False, is_notebook=False, rank=0, n_gpus=1, disable_pbar=False, device=None):
         """
 
         :param trainer_spec:
         """
         super(Trainer, self).__init__(verbose=verbose, is_notebook=is_notebook)
+        self.disable_pbar = disable_pbar
         logger.info("Trainer created, active model {}", trainer_spec.get_active_mode())
         # self.model_spec = model_spec
         # self.n_gpus = model_spec['model_spec']
@@ -89,7 +90,7 @@ class Trainer(GeneratorTrainer, ABC):
         # last saved run
         self.saved_run = None
         # total batches
-        self.total_batches = None
+        self.total_batches = len(self.train_loader)
         # clip or not grad
         self.clip_grad = True
 
@@ -101,7 +102,7 @@ class Trainer(GeneratorTrainer, ABC):
         self.metric = Metrics(metric_step_file_path=trainer_spec.model_files.get_metric_file_path(),
                               metric_batch_file_path=trainer_spec.model_files.get_time_file_path(),
                               metric_perf_trace_path=trainer_spec.model_files.get_metric_batch_file_path(),
-                              num_epochs=self.trainer_spec.epochs())
+                              num_epochs=self.trainer_spec.epochs(), num_batches=self.total_batches)
 
         # tensorboard writer
         self.t_writer = None
@@ -145,13 +146,9 @@ class Trainer(GeneratorTrainer, ABC):
         logger.debug("Done initializing distributed")
 
     def create_model(self, model_name):
-        """
-        Method create model.  Later will move to a separate dispatcher creator.
-        Args:
-            model_name:
-
-        Returns:
-
+        """Method create model.  Later will move to a separate dispatcher creator.
+        :param model_name:
+        :return: nothing
         """
         if model_name == 'encoder':
             model = Tacotron2(self.trainer_spec, self.device)
@@ -165,16 +162,13 @@ class Trainer(GeneratorTrainer, ABC):
             self.last_epochs[model_name] = 0
 
     def load(self, model_name: str, to_device=True, ignore_layers=None):
-        """
-        Method loads model from a checkpoint.
-        Args:
-            model_name:
+        """Method loads model from a checkpoint.
+           It will update internal state, that include model, last epoch, last step.
 
-        Returns:
-        :param to_device: load model and make sure , it uploaded to  target device.
-        :param model_name:
-        :param ignore_layers:  a list contain of layers we skip
-
+        :param model_name: - mode name that method need to load
+        :param ignore_layers: - a list contain of layers we skip
+        :param to_device: - if true will load to device indicate as main device
+        :return: epoch, step
         """
         if not self.trainer_spec.is_load_model():
             return 0
@@ -226,6 +220,8 @@ class Trainer(GeneratorTrainer, ABC):
                 raise Exception("saved checkpoint has no last iteration key.")
             self.iters[model_name] = checkpoint['it']
             logger.info("Last checkpoint. epoch {} step {}".format(checkpoint['epoch'], checkpoint['it']))
+            # load metric
+            self.metric.load()
 
             return checkpoint['epoch'], checkpoint['it']
         except FileNotFoundError as e:
@@ -245,7 +241,7 @@ class Trainer(GeneratorTrainer, ABC):
         Returns:
 
         """
-        # for notebook we need a bit of hack for tqdm_iter.
+        # for notebook, we need a bit of hack for tqdm_iter.
         if self.is_notebook:
             tqdm_iter = tnrange(last_epoch, max_epochs)
             return tqdm_iter
@@ -262,9 +258,18 @@ class Trainer(GeneratorTrainer, ABC):
         if self.is_notebook:
             tqdm_iter = tnrange(last_epoch, max_epochs)
         else:
-            tqdm_iter = tqdm(range(last_epoch, max_epochs))
+            tqdm_iter = tqdm(range(last_epoch, max_epochs),
+                             desc=f"Training in progress, device {self.device} total batches {self.total_batches}",
+                             disable=self.disable_pbar)
+            # total=self.get_last_iterator(model_name) * self.total_batches,
+            # desc="training")
 
-        tqdm_iter.set_postfix({'total_epoch_loss': 0})
+        # for b in trange(
+        #         epochs * self., unit_scale=0.1, unit="epoch",
+        #         bar_format="{l_bar}{bar}|{n:.1f}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]"
+        # ):
+
+        #tqdm_iter.set_postfix({'total_epoch_loss': 0})
         return tqdm_iter
 
     def create_models(self):
@@ -595,7 +600,7 @@ class Trainer(GeneratorTrainer, ABC):
         :return:
         """
 
-        total_epoch_loss = 0
+        current_total_loss = 0
         total_accuracy = 0
         step = self.get_last_iterator(model_name)
         for batch_idx, batch in enumerate(self.train_loader):
@@ -607,13 +612,15 @@ class Trainer(GeneratorTrainer, ABC):
             y_pred = model(x)
 
             loss = self.criterion(y_pred, y)
-            total_epoch_loss += loss.item()
-            self.metric.update(batch_idx, step, loss.item())
+            current_total_loss += loss.item()
+            normal_loss = loss.item()
 
             loss.backward()
-
             if self.clip_grad:
                 grad_norm = clip_grad_norm_(model.parameters(), self.trainer_spec.grad_clip_thresh)
+                self.metric.update(batch_idx, step, normal_loss, grad_norm=grad_norm.item())
+            else:
+                self.metric.update(batch_idx, step, normal_loss)
 
             optimizer.step()
             # run lr_scheduler
@@ -623,13 +630,14 @@ class Trainer(GeneratorTrainer, ABC):
             # self.log_if_needed(it, loss, grad_norm, duration)
             if self.rank == 0 and step != 0 and step % self.trainer_spec.console_log_rate() == 0:
                 self.tqdm_iter.set_postfix({'step': step,
-                                            'total_loss': total_epoch_loss,
+                                            'loss': normal_loss,
+                                            'batch_loss': current_total_loss // max(1, batch_idx + 1),
+                                            'avg loss': self.metric.total_mean_loss(),
                                             # 'acc': prediction_accuracy,
                                             # 'acc_total': prediction_accuracy,
                                             'grad_norm': grad_norm.item(),
-                                            'device': str(grad_norm.device),
                                             'batch': batch_idx,
-                                            'batches': self.total_batches,
+                                            'lr': optimizer.param_groups[0]['lr'],
                                             'saved step': self.saved_run})
 
             # run prediction if_needed
@@ -639,27 +647,19 @@ class Trainer(GeneratorTrainer, ABC):
 
             # save model checkpoint if needed
             if self.save_if_need(model_name, step, self.epoch):
-                self.tqdm_iter.set_postfix({'step': step,
-                                            'total_loss': total_epoch_loss,
-                                            # 'accuracy': prediction_accuracy,
-                                            'grad_norm': grad_norm.item(),
-                                            'device': str(grad_norm.device),
-                                            'batch': batch_idx,
-                                            'batches': self.total_batches,
-                                            'saved step': step})
                 self.saved_run = step
 
             hparams = \
                 {
                     'lr': optimizer.param_groups[0]['lr'],
-                    'batch_size': self.trainer_spec.batch_size},\
+                    'batch_size': self.trainer_spec.batch_size}, \
                 {
                     # 'hparam/accuracy': prediction_accuracy,
                     'hparam/loss': float(loss.item()),
                     'hparam/grad_norm': float(grad_norm.item())
-                 }
+                }
 
-            self.tf_logger.log_training(loss.item(), step, grad_norm,
+            self.tf_logger.log_training(normal_loss, step, grad_norm,
                                         optimizer.param_groups[0]['lr'],
                                         hparams)
             step += 1
@@ -713,16 +713,15 @@ class Trainer(GeneratorTrainer, ABC):
         if self.last_epochs[model_name] == self.trainer_spec.epochs():
             prediction_accuracy = self.validate(model, model_name, it)
 
-        self.metric.set_num_iteration(self.trainer_spec.epochs() * len(self.train_loader))
-        self.metric.set_num_batches(len(self.train_loader))
+        # TODO add option if epoch changed after save
+        self.metric.set_num_iteration(self.trainer_spec.epochs() * self.total_batches)
         self.metric.init()
         logger.info("Staring training num epochs {}, epoch trained {} num batches {} expected total iteration {}",
                     self.trainer_spec.epochs(), self.last_epochs, len(self.train_loader),
                     self.trainer_spec.epochs() * len(self.train_loader))
 
         model.train()
-        self.total_batches = len(self.train_loader)
-        self.tqdm_iter.set_postfix({'run': it})
+        self.tqdm_iter.set_postfix({'step': it})
         for epoch in self.tqdm_iter:
             # update epoch
             self.epoch = epoch
