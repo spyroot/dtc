@@ -98,7 +98,10 @@ class Trainer(GeneratorTrainer, ABC):
         #                     format='%(asctime)s %(levelname)s %(message)s',
         #                     filename='/tmp/myapp.log',
         #                     filemode='w')
-        self.metric = Metrics(num_epochs=self.trainer_spec.epochs())
+        self.metric = Metrics(metric_step_file_path=trainer_spec.model_files.get_metric_file_path(),
+                              metric_batch_file_path=trainer_spec.model_files.get_time_file_path(),
+                              metric_perf_trace_path=trainer_spec.model_files.get_metric_batch_file_path(),
+                              num_epochs=self.trainer_spec.epochs())
 
         # tensorboard writer
         self.t_writer = None
@@ -176,7 +179,7 @@ class Trainer(GeneratorTrainer, ABC):
         if not self.trainer_spec.is_load_model():
             return 0
 
-        model_file = self.trainer_spec.model_files.get_model_filename(model_name)
+        model_file = self.trainer_spec.model_files.get_model_file_path(model_name)
         logger.info("Loading model '{}' model file name {}".format(model_name, model_file))
 
         # load trained optimizer state_dict
@@ -443,7 +446,7 @@ class Trainer(GeneratorTrainer, ABC):
         # model save predicate condition , either iteration or epoch counter.
         # for large model it make sense to track iteration vs epoch counter.
         save_condition = epoch
-        model_file = self.trainer_spec.model_files.get_model_filename(model_name)
+        model_file = self.trainer_spec.model_files.get_model_file_path(model_name)
         if self.trainer_spec.is_save_per_iteration():
             save_condition = it
 
@@ -684,7 +687,7 @@ class Trainer(GeneratorTrainer, ABC):
         self.load_models()
         if self.is_trained():
             print("It looks like model already trained. \
-            Check file {}".format(self.trainer_spec.model_files.get_model_filename(model_name)))
+            Check file {}".format(self.trainer_spec.model_files.get_model_file_path(model_name)))
             return
 
         t_writer = self.trainer_spec.get_tensorboard_writer()

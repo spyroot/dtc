@@ -8,7 +8,8 @@ class Metrics:
 
     """
 
-    def __init__(self, num_epochs=0, num_batches=0, num_iteration=0):
+    def __init__(self, metric_step_file_path=None, metric_batch_file_path=None, metric_perf_trace_path=None,
+                 num_epochs=0, num_batches=0, num_iteration=0):
         """
 
         :param num_batches:
@@ -21,6 +22,9 @@ class Metrics:
         self.num_batches = num_batches
         self.num_iteration = num_iteration
         self.epoch_timer = None
+        self.metric_step_file_path = metric_step_file_path
+        self.metric_batch_file_path = metric_batch_file_path
+        self.metric_perf_trace_path = metric_perf_trace_path
 
     def update(self, batch_idx, step, loss):
         """
@@ -32,7 +36,7 @@ class Metrics:
         """
         self.loss[step] = loss
         self.total_loss[batch_idx] += loss
-        logger.info("Batch {} Step {} Loss {} mean {}", batch_idx, step, loss, self.loss.mean())
+        logger.info("Batch {} Step {} Loss {} mean {}", batch_idx, step, loss, self.loss.mean(0)[-1])
 
     def set_num_iteration(self, num_iteration):
         """
@@ -98,4 +102,18 @@ class Metrics:
         :return:
         """
         self.epoch_timer[epoch_idx] = timer() - max(0, self.epoch_timer[epoch_idx])
+        logger.info("Timer {} average {}", self.epoch_timer[epoch_idx], self.epoch_timer.mean(0)[-1])
 
+    def save(self):
+        """
+
+        :return:
+        """
+        if self.metric_step_file_path is not None:
+            np.save(self.metric_step_file_path, self.loss)
+
+        if self.metric_batch_file_path is not None:
+            np.save(self.metric_batch_file_path, self.total_loss)
+
+        if self.metric_perf_trace_path is not None:
+            np.save(self.metric_perf_trace_path, self.epoch_timer)

@@ -22,24 +22,26 @@ class ModelFiles:
         self.dir_walker_callback = dir_walker_callback
 
         self.root_dir = root_dir
-        self._dir_input = root_dir
+        if root_dir == ".":
+            self.root_dir = Path(".").resolve()
+
+        self._dir_input = self.root_dir
+        self._dirs = {}
         self._dir_result = Path(self._dir_input) / Path(self.spec_results_dir())
-        self._dir_log = Path(self._dir_result) / Path(self.spec_log_dir())
         self._model_save_path = self._dir_result / Path(self.model_save_dir())
 
-        self._dir_graph_save = self._dir_result / Path(self.graph_dir())
-        self._dir_figure = self._dir_result / Path(self.figures_dir())
-        self._dir_timing = self._dir_result / Path(self.timing_dir())
+        self._dirs["logs"] = self._dir_result / Path(self.metrics_dir())
+        self._dirs["metric"] = self._dir_result / Path(self.metrics_dir())
+        self._dirs["metric_batch"] = self._dir_result / Path(self.metrics_dir())
+        self._dirs["time_trace"] = self._dir_result / Path(self.timing_dir())
+        self._dirs["figures"] = self._dir_result / Path(self.figures_dir())
+        self._dirs["graphs"] = self._dir_result / Path(self.figures_dir())
+        self._dirs["prediction"] = self._dir_result / Path(self.figures_dir())
 
         # default dir where we store serialized prediction graph as image
-        self._dir_model_prediction = self._dir_result / Path(self.prediction_dir())
+        #  self._dir_model_prediction = self._dir_result / Path(self.prediction_dir())
 
         self.filename = None
-        self.filename_prediction = None
-        self.filename_train = None
-        self.filename_test = None
-        self.filename_metrics = None
-        self.filename_time_traces = None
 
         self._active_model = self.config['use_model']
         self._active_setting = self.config['active_setting']
@@ -65,20 +67,26 @@ class ModelFiles:
 
         self.filename = "{}_{}".format(self._active_model, self.config['active_setting'])
 
-        self.filename_prediction = self.filename + 'predictions_'
-        self.filename_train = self.filename + 'train_'
-        self.filename_test = self.filename + 'test_'
-        self.filename_metrics = self.filename + 'metric_'
-        self.filename_time_traces = self.filename + 'timetrace_'
+    def normalize_dir(self, dir_str):
+        """
 
-        self.training_files = None
+        :param dir_str:
+        :return:
+        """
+        if len(dir_str) > 0 and dir_str[0] == '/':
+            p = Path(dir_str)
+            if p.exists():
+                return str(Path.resolve(dir_str))
+
+        return dir_str
 
     def spec_results_dir(self) -> str:
         """
         Return main directory where all results stored.
         """
         if self.config is not None and 'results_dir' in self.config:
-            return self.config['results_dir']
+            return self.normalize_dir(self.config['results_dir'])
+
         return 'results'
 
     def spec_log_dir(self) -> str:
@@ -86,7 +94,8 @@ class ModelFiles:
         Return directory that used to store logs.
         """
         if self.config is not None and 'log_dir' in self.config:
-            return self.config['log_dir']
+            return self.normalize_dir(self.config['log_dir'])
+
         return 'logs'
 
     def graph_dir(self) -> str:
@@ -94,16 +103,27 @@ class ModelFiles:
         Return directory where store original graphs
         """
         if self.config is not None and 'graph_dir' in self.config:
-            return self.config['graph_dir']
+            return self.normalize_dir(self.config['graph_dir'])
+
         return 'graphs'
 
     def timing_dir(self) -> str:
         """
-        Return directory we use to store time traces
+        Return directory we use to store metrics dir traces
         """
         if self.config is not None and 'timing_dir' in self.config:
-            return self.config['timing_dir']
+            return self.normalize_dir(self.config['timing_dir'])
+
         return 'timing'
+
+    def metrics_dir(self) -> str:
+        """
+        Return directory we use to store time traces
+        """
+        if self.config is not None and 'metrics_dir' in self.config:
+            self.normalize_dir(self.config['metrics_dir'])
+
+        return 'metrics'
 
     def model_save_dir(self) -> str:
         """
@@ -112,7 +132,7 @@ class ModelFiles:
         if self.config is not None and 'model_save_dir' in self.config:
             return self.config['model_save_dir']
 
-        return 'model_save'
+        return 'model'
 
     def prediction_dir(self) -> str:
         """
@@ -143,29 +163,30 @@ class ModelFiles:
         """
         Creates all directories required for trainer.
         """
+        if not os.path.isdir(self._dir_result):
+            os.makedirs(self._model_save_path)
+
         if not os.path.isdir(self._model_save_path):
             os.makedirs(self._model_save_path)
 
-        if not os.path.isdir(self._dir_log):
-            os.makedirs(self._dir_log)
+        for k in self._dirs:
+            if not os.path.isdir(self._dirs[k]):
+                os.makedirs(self._dirs[k])
 
-        if not os.path.isdir(self._dir_graph_save):
-            os.makedirs(self._dir_graph_save)
+    def get_dirs(self):
+        """
 
-        if not os.path.isdir(self._dir_figure):
-            os.makedirs(self._dir_figure)
-
-        if not os.path.isdir(self._dir_timing):
-            os.makedirs(self._dir_timing)
-
-        if not os.path.isdir(self._dir_model_prediction):
-            os.makedirs(self._dir_model_prediction)
+        :return:
+        """
+        return self._dirs
 
     def make_file_dict(self, target_dir, file_ext=None, filter_dict=None):
         """
         Recursively walk and build a dict where key is file name,
         value is dict that store path and metadata.
 
+        :param filter_dict:
+        :param file_ext:
         :param target_dir:
         :return:
         """
@@ -187,15 +208,58 @@ class ModelFiles:
 
         return target_files
 
-    def get_model_log_dir(self):
+    def get_model_log_file_path(self, file_type="log"):
+        """Return log dir
         """
+        return str(self._dirs["logs"] / self.file_name_generator(suffix="metric", file_type=file_type))
 
-        Returns:
-
+    def get_model_log_dir(self, file_type="log"):
+        """Return log dir
         """
-        return self._dir_log
+        if self.config is not None and 'graph_dir' in self.config:
+            return self.normalize_dir(self.config['log_dir'])
 
-    def get_model_filename(self, model_name, file_type='.dat'):
+        return 'log_dir'
+
+    def file_name_generator(self, suffix=None, file_type='dat'):
+        """Default filename generator.
+        :param suffix:
+        :param file_type:
+        :return:
+        """
+        batch_size = 0
+        if 'batch_size' in self._setting:
+            batch_size = int(self._setting['batch_size'])
+
+        #time_fmt = strftime("%Y-%m-%d-%H", gmtime())
+
+        if suffix is None:
+            return f"{self.filename}_batch_{str(batch_size)}_epoch_{self.load_epoch()}.{file_type}"
+
+        return f"{self.filename}_batch_{str(batch_size)}_epoch_{self.load_epoch()}_{suffix}.{file_type}"
+
+    def get_metric_file_path(self, file_type="npy"):
+        """Return full path to a metric path.
+        :param file_type:
+        :return:
+        """
+        return str(self._dirs["metric"] / self.file_name_generator(suffix="metric", file_type=file_type))
+
+    def get_metric_batch_file_path(self, file_type="npy"):
+        """Return full path to a metric path.
+        :param file_type:
+        :return:
+        """
+        return str(self._dirs["metric_batch"] / self.file_name_generator(suffix="metric_batch", file_type=file_type))
+
+    def get_time_file_path(self, file_type="npy"):
+        """Return full path to a metric path.
+        :param file_type:
+        :return:
+        """
+        return str(self._dirs["time_trace"] / self.file_name_generator(suffix="time_trace", file_type=file_type))
+
+    def get_model_file_path(self, model_name, file_type='dat'):
         """
         Returns dict that hold sub-model name and respected checkpoint filename.
         Args:
@@ -203,20 +267,13 @@ class ModelFiles:
             file_type:
 
         Returns:
-
         """
-        batch_size = 0
-        if 'batch_size' in self._setting:
-            batch_size = int(self._setting['batch_size'])
-
         for k in self._model:
             if k == model_name:
-                return str(self._model_save_path / Path(self.filename + '_' + k + '_batch_' +
-                                                        str(batch_size) +
-                                                        '_' + str(self.load_epoch())
-                                                        + file_type))
+                return str(self._model_save_path /
+                           Path(f"{model_name}_{self.file_name_generator(file_type=file_type)}"))
 
-    def model_filenames(self, file_type='.dat'):
+    def model_filenames(self, file_type='dat'):
         """
 
         Returns dict that hold sub-model name and
@@ -226,18 +283,9 @@ class ModelFiles:
         @return:
         """
         models_filenames = {}
-
-        batch_size = 0
-        if 'batch_size' in self._setting:
-            batch_size = int(self._setting['batch_size'])
-
         for k in self._model:
-            models_filenames[k] = str(self._model_save_path / Path(self.filename +
-                                                                   '_' + k + '_batch_' +
-                                                                   str(batch_size) +
-                                                                   '_' +
-                                                                   str(self.load_epoch())
-                                                                   + file_type))
+            models_filenames[k] = str(
+                self._model_save_path / Path(f"{k}_{self.file_name_generator(file_type=file_type)}"))
 
         return models_filenames
 

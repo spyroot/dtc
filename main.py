@@ -134,7 +134,8 @@ def main(cmd_args):
     """
     _device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     trainer_spec = ExperimentSpecs(verbose=False)
-    trainer_spec.model_files.build_dir()
+    print(trainer_spec.model_files.get_dirs())
+
     if cmd_args.train:
         train(spec=trainer_spec, device=_device)
 

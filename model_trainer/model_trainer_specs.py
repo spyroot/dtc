@@ -148,15 +148,16 @@ class ExperimentSpecs:
         """
         Setup tensorflow dir
         """
-        time_fmt = strftime("%Y-%m-%d-%H", gmtime())
-        logger.info("tensorboard log dir {}".format(self.model_files.get_model_log_dir()))
-        logging.basicConfig(filename=str(self.model_files.get_model_log_dir() / Path('train' + time_fmt + '.log')),
-                            level=logging.DEBUG)
+        # time_fmt = strftime("%Y-%m-%d-%H", gmtime())
+        # logger.info("tensorboard log dir {}".format(self.model_files.get_model_log_dir()))
+        # logging.basicConfig(filename=str(self.model_files.get_model_log_dir() / Path('train' + time_fmt + '.log')),
+        #                     level=logging.DEBUG)
 
-        if bool(self.config['regenerate']):
-            logger.info("tensorboard erasing old logs")
-            if os.path.isdir("tensorboard"):
-                shutil.rmtree("tensorboard")
+        # if bool(self.config['regenerate']):
+        #     logger.info("tensorboard erasing old logs")
+        #     if os.path.isdir("tensorboard"):
+        #         shutil.rmtree("tensorboard")
+
         self.writer = SummaryWriter()
 
         # from tensorboard.plugins.hparams import api as hp
