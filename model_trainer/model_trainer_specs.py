@@ -691,8 +691,7 @@ class ExperimentSpecs:
 
     @property
     def batch_size(self):
-        """
-        Return batch size, each dataset has own batch size.
+        """Returns batch size for current active model, each dataset has own batch size.
         Model batch size
         :return:
         """
@@ -1209,7 +1208,8 @@ class ExperimentSpecs:
     def tensorboard_update_rate(self) -> int:
         """
         Setting dictates when to log each epoch statistic.
-        Returns: Default 100
+        Returns: Default update rate is batch_size if batch size > 1
+                 otherwise update rate is batch_size
         """
         if self.is_initialized() is False:
             raise Exception("Training must be initialized first.")
@@ -1218,9 +1218,15 @@ class ExperimentSpecs:
             raise Exception("Initialize settings first")
 
         if 'tensorboard_update' in self._setting:
+            if self.batch_size <= int(self._setting['tensorboard_update']):
+                logger.warning("Tensorboard update rate less than batch size")
+                return 1
             return int(self._setting['tensorboard_update'])
 
-        return 100
+        if self.batch_size == 1:
+            return 1
+
+        return min(self.batch_size, 1)
 
     def get_tensorboard_writer(self):
         return self.writer

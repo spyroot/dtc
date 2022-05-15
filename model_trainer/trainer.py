@@ -82,8 +82,6 @@ class Trainer(GeneratorTrainer, ABC):
         # init trainer
         self.init_trainer()
         self.scaler = None
-        self.tf_logger = TensorboardTrainerLogger(trainer_spec.tensorboard_update_rate())
-
         # tqdm_iter, if we need fix post of iter
         self.tqdm_iter = None
         # current epoch trainer executing.
@@ -95,6 +93,7 @@ class Trainer(GeneratorTrainer, ABC):
         # clip or not grad
         self.clip_grad = True
 
+        self.tf_logger = TensorboardTrainerLogger(trainer_spec.tensorboard_update_rate())
         # logging.basicConfig(level=logging.DEBUG,
         #                     format='%(asctime)s %(levelname)s %(message)s',
         #                     filename='/tmp/myapp.log',
@@ -659,7 +658,8 @@ class Trainer(GeneratorTrainer, ABC):
                  }
 
             self.tf_logger.log_training(loss.item(), step, grad_norm,
-                                        optimizer.param_groups[0]['lr'], hparams)
+                                        optimizer.param_groups[0]['lr'],
+                                        hparams)
             step += 1
 
         self.iters[model_name] = step
