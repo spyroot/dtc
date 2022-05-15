@@ -4,7 +4,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from model_trainer.model_trainer_specs import ExperimentSpecs
+from model_trainer.trainer_specs import ExperimentSpecs
 from models.PreAndPost import Postnet
 from models.decoder import Decoder
 from models.layers import ConvNorm

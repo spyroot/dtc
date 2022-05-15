@@ -3,7 +3,7 @@ import torch
 from torch.autograd import Variable
 from torch import nn
 from torch.nn import functional as F
-from model_trainer.model_trainer_specs import ExperimentSpecs
+from model_trainer.trainer_specs import ExperimentSpecs
 from models.PreAndPost import Prenet
 from models.attention import Attention
 from models.layers import LinearNorm

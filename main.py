@@ -9,7 +9,7 @@ from loguru import logger
 
 from model_loader.mel_dataloader import Mel_Dataloader
 from model_loader.mel_dataset_loader import TextMelLoader
-from model_trainer.model_trainer_specs import ExperimentSpecs
+from model_trainer.trainer_specs import ExperimentSpecs
 from model_trainer.trainer import Trainer
 
 

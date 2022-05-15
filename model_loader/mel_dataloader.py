@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader, DistributedSampler
 from model_loader.mel_dataset_loader import TextMelLoader, TextMelCollate
 from model_trainer.specs import model_spec
 from model_trainer.specs.dtc_spec import DTC
-from model_trainer.model_trainer_specs import ExperimentSpecs
+from model_trainer.trainer_specs import ExperimentSpecs
 from tacotron2.utils import fmtl_print, to_gpu
 
 

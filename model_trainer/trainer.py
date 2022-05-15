@@ -11,12 +11,12 @@ from loguru import logger
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data import DataLoader
 
-from model_trainer.metrics import Metrics
-from model_trainer.training_logger import TensorboardTrainerLogger
+from model_trainer.trainer_metrics import Metrics
+from model_trainer.trainer_logger import TensorboardTrainerLogger
+from model_trainer.trainer_specs import ExperimentSpecs
 from distributed import apply_gradient_allreduce
 from model_loader.mel_dataloader import Mel_Dataloader
 from model_loader.mel_dataset_loader import TextMelLoader
-from model_trainer.model_trainer_specs import ExperimentSpecs
 from models.model import Tacotron2
 from tacotron2.loss_function import Tacotron2Loss
 from tacotron2.utils import fmtl_print, fmt_print
@@ -209,7 +209,7 @@ class Trainer(GeneratorTrainer, ABC):
                 if 'scheduler_state_dict' not in checkpoint:
                     raise Exception("model has no scheduler_state_dict")
 
-            # if need ignore layers.
+            #  ignore layers.
             if ignore_layers is not None and len(ignore_layers) > 0:
                 model_dict = {k: v for k, v in self.models[model_name].items()
                               if k not in ignore_layers}
@@ -218,7 +218,6 @@ class Trainer(GeneratorTrainer, ABC):
                 self.models[model_name] = new_state
 
             # self.trainer_spec.set_lr(0.00001)
-            fmtl_print("Last checkpoint. ", checkpoint['epoch'], checkpoint['it'])
             if 'epoch' not in checkpoint:
                 raise Exception("saved checkpoint has no epoch key")
             self.last_epochs[model_name] = checkpoint['epoch']
@@ -226,6 +225,7 @@ class Trainer(GeneratorTrainer, ABC):
             if 'it' not in checkpoint:
                 raise Exception("saved checkpoint has no last iteration key.")
             self.iters[model_name] = checkpoint['it']
+            logger.info("Last checkpoint. epoch {} step {}".format(checkpoint['epoch'], checkpoint['it']))
 
             return checkpoint['epoch'], checkpoint['it']
         except FileNotFoundError as e:
@@ -427,14 +427,11 @@ class Trainer(GeneratorTrainer, ABC):
             self.create_lr_scheduler(model_name, opt)
 
     def save_if_need(self, model_name, it, epoch, last_epoch=False):
-        """
-        a trainer will call this method, to check if model need to save or not.
-        Args:
-            it:  Current iteration counter.
-            model_name: active model
-            epoch: current epoch
-            last_epoch if it last epoch or not.
-            :param last_epoch:
+        """ Method called by trainer, to check if model need to save or not.
+        :param epoch: current epoch
+        :param it: Current iteration counter.
+        :param model_name:  active model
+        :param last_epoch:
         """
         # by default condition to save epoch , if save per iteration we check iteration.
         if self.trainer_spec.is_save() is False:
@@ -444,7 +441,7 @@ class Trainer(GeneratorTrainer, ABC):
             return False
 
         # model save predicate condition , either iteration or epoch counter.
-        # for large model it make sense to track iteration vs epoch counter.
+        # for large model it makes sense to track iteration vs epoch counter.
         save_condition = epoch
         model_file = self.trainer_spec.model_files.get_model_file_path(model_name)
         if self.trainer_spec.is_save_per_iteration():
@@ -472,6 +469,8 @@ class Trainer(GeneratorTrainer, ABC):
                     'optimizer_state_dict': self.optimizers[model_name].state_dict(),
                     #    'scheduler_state_dict': self.schedulers[model_name].state_dict()
                 }, model_file)
+
+            self.metric.save()
             return True
         return False
 

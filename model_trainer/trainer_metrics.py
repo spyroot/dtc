@@ -8,7 +8,13 @@ class Metrics:
 
     """
 
-    def __init__(self, num_epochs=0, num_batches=0, num_iteration=0):
+    def __init__(self,
+                 metric_step_file_path=None,
+                 metric_batch_file_path=None,
+                 metric_perf_trace_path=None,
+                 num_epochs=0,
+                 num_batches=0,
+                 num_iteration=0):
         """
 
         :param num_batches:
@@ -24,9 +30,9 @@ class Metrics:
         self.epoch_timer = None
 
         # file to save and load metrics
-        self.metric_perf_trace_path = None
-        self.metric_batch_file_path = None
-        self.metric_step_file_path = None
+        self.metric_perf_trace_path = metric_step_file_path
+        self.metric_batch_file_path = metric_batch_file_path
+        self.metric_step_file_path = metric_perf_trace_path
 
     def update(self, batch_idx, step, loss):
         """
