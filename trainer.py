@@ -827,7 +827,7 @@ class Trainer(GeneratorTrainer, ABC):
         num_finished = 0
         for m in models:
             if m in self.last_epochs:
-                if self.trainer_spec.epochs() == self.last_epochs[m]:
+                if int(self.trainer_spec.epochs()) >= int(self.last_epochs[m]):
                     num_finished += 1
 
         if num_finished == len(models):
