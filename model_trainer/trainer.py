@@ -432,6 +432,7 @@ class Trainer(GeneratorTrainer, ABC):
             model_name: active model
             epoch: current epoch
             last_epoch if it last epoch or not.
+            :param last_epoch:
         """
         # by default condition to save epoch , if save per iteration we check iteration.
         if self.trainer_spec.is_save() is False:
@@ -827,7 +828,7 @@ class Trainer(GeneratorTrainer, ABC):
         num_finished = 0
         for m in models:
             if m in self.last_epochs:
-                if int(self.trainer_spec.epochs()) >= int(self.last_epochs[m]):
+                if int(self.last_epochs[m]) >= int(self.trainer_spec.epochs()):
                     num_finished += 1
 
         if num_finished == len(models):

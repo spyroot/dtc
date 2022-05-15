@@ -10,7 +10,7 @@ from loguru import logger
 from model_loader.mel_dataloader import Mel_Dataloader
 from model_loader.mel_dataset_loader import TextMelLoader
 from model_trainer.model_trainer_specs import ExperimentSpecs
-from trainer import Trainer
+from model_trainer.trainer import Trainer
 
 
 def convert_mel_to_data(encoder_spec, target_dir: str, dataset,
@@ -168,7 +168,6 @@ if __name__ == '__main__':
                         required=False, help='set verbose output')
     # parser.add_argument('--load', type=bool, default=False,
     #                     required=False, help='set verbose output')
-
     # level = logger.level("ERROR")
     # logger.info(f"LOGURU_LEVEL: {os.environ['LOGURU_LEVEL']}")
     logger.remove()
