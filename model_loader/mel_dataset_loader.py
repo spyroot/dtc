@@ -89,7 +89,8 @@ class TextMelLoader(torch.utils.data.Dataset):
         :param filename:
         :return:
         """
-        logger.debug("Converting file {} to me", filename)
+
+       # logger.debug("Converting file {} to mel", filename)
         if not self.load_mel_from_disk:
             audio, sampling_rate = load_wav_to_torch(filename)
             if sampling_rate != self.stft.sampling_rate:
