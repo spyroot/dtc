@@ -13,7 +13,7 @@ class Metrics:
 
         :param num_batches:
         """
-        self.file_name = None
+
         self.loss = None
         self.total_loss = None
         self.num_epochs = num_epochs
@@ -22,6 +22,11 @@ class Metrics:
         self.num_batches = num_batches
         self.num_iteration = num_iteration
         self.epoch_timer = None
+
+        # file to save and load metrics
+        self.metric_perf_trace_path = None
+        self.metric_batch_file_path = None
+        self.metric_step_file_path = None
 
     def update(self, batch_idx, step, loss):
         """
@@ -85,16 +90,14 @@ class Metrics:
         return
 
     def start_epoch_timer(self, epoch_idx):
-        """
-
+        """Start epoch timer and save start time.
         :param epoch_idx:
         :return:
         """
         self.epoch_timer[epoch_idx] = timer()
 
     def update_epoch_timer(self, epoch_idx):
-        """
-
+        """Update epoch timer, and update time trace.
         :param epoch_idx:
         :return:
         """
@@ -102,13 +105,7 @@ class Metrics:
         logger.info("Timer {} average {}", self.epoch_timer[epoch_idx], self.epoch_timer.mean(0)[-1])
 
     def save(self):
-        """
-
-    def save(self):
-        if self.file_name is not None and len(self.file_name) > 0:
-            np.save(self.file_name)
-            np.save(self.file_name)
-            np.save(self.file_name)
+        """Method saves all metrics
         :return:
         """
         if self.metric_step_file_path is not None:
@@ -120,9 +117,15 @@ class Metrics:
         if self.metric_perf_trace_path is not None:
             np.save(self.metric_perf_trace_path, self.epoch_timer)
 
-
     def load(self):
-        if self.file_name is not None and len(self.file_name) > 0:
-            np.load(self.file_name)
-            np.load(self.file_name)
-            np.load(self.file_name)
+        """Method loads all metric traces.
+        :return:
+        """
+        if self.metric_step_file_path is not None:
+            self.loss = np.load(self.metric_step_file_path)
+
+        if self.metric_batch_file_path is not None:
+            self.total_loss = np.load(self.metric_batch_file_path)
+
+        if self.metric_perf_trace_path is not None:
+            self.epoch_timer = np.save(self.metric_perf_trace_path, self.epoch_timer)

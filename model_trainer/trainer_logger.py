@@ -23,6 +23,10 @@ class TensorboardTrainerLogger(SummaryWriter):
             step:
 
         Returns:
+        :param learning_rate:
+        :param grad_norm:
+        :param step:
+        :param reduced_loss:
         :param hparams:
 
         """
@@ -35,14 +39,16 @@ class TensorboardTrainerLogger(SummaryWriter):
         self.add_scalar("training.loss", reduced_loss, step)
         self.add_scalar("grad.norm", grad_norm, step)
         self.add_scalar("learning.rate", learning_rate, step)
-        self.add_hparams(hparams)
+        if hparams is not None:
+            self.add_hparams(hparams)
+
         self.flush()
 
     def log_hparams(self, step, tf_hp_dict):
         """
 
+        :param tf_hp_dict:
         :param step:
-        :param dict:
         :return:
         """
         if self.update_rate == 0:
@@ -93,4 +99,3 @@ class TensorboardTrainerLogger(SummaryWriter):
                 torch.sigmoid(gate_outputs[idx]).data.cpu().numpy()),
             iteration, dataformats='HWC')
         self.flush()
-
