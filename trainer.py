@@ -39,6 +39,7 @@ from pathlib import Path
 from timeit import default_timer as timer
 
 
+
 class Trainer(GeneratorTrainer, ABC):
     """
 
@@ -673,6 +674,9 @@ class Trainer(GeneratorTrainer, ABC):
         # torch.cuda.manual_seed(self.model_spec.seed())
         #
         self.load_models()
+        if self.is_trained():
+            print("It looks like model already trained.")
+
         t_writer = self.trainer_spec.get_tensorboard_writer()
 
         if model_name in self.iters:
@@ -811,6 +815,9 @@ class Trainer(GeneratorTrainer, ABC):
                     if self.save_if_need(model_name, iteration, epoch):
                         tqdm_iter.set_postfix({'total_epoch_loss': total_epoch_loss, 'saved': True})
                     iteration += 1
+
+    def is_trained(self):
+        print("Last epoch {}".format(self.last_epochs))
 
 
 def print_optimizer(opt_name):

@@ -71,7 +71,7 @@ class Encoder(nn.Module):
         # flipped = torch.fliplr(input_lengths)
 
         x = nn.utils.rnn.pack_padded_sequence(
-            x, input_lengths, batch_first=True)
+            x, input_lengths.cpu().numpy(), batch_first=True)
 
         self.lstm.flatten_parameters()
         outputs, _ = self.lstm(x)
