@@ -37,6 +37,9 @@ RUN pip install torch torchvision torchaudio --extra-index-url https://download.
 RUN pip install loguru librosa pip install unidecode
 RUN pip install inflect tensorboard ray matplotlib opencv-python tqdm pandas tabulate dill
 
+RUN echo "NCCL_SOCKET_IFNAME=eth0" >> /etc/nccl.conf
+RUN echo "NCCL_DEBUG=INFO" >> /etc/nccl.conf
+
 EXPOSE 22
 EXPOSE 54321/tcp
 CMD ["/usr/sbin/sshd", "-D", "-o", "ListenAddress=0.0.0.0"]
