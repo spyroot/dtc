@@ -47,7 +47,7 @@ class Trainer(GeneratorTrainer, ABC):
     """
 
     def __init__(self, trainer_spec: ExperimentSpecs, data_loader,
-                 verbose=False, is_notebook=False, rank=0, n_gpus=1, disable_pbar=False, device=None):
+                 verbose=False, is_notebook=False, rank=0, n_gpus=2, disable_pbar=False, device=None):
         """
 
         :param trainer_spec:
@@ -128,6 +128,17 @@ class Trainer(GeneratorTrainer, ABC):
         torch.manual_seed(self.trainer_spec.seed())
         torch.cuda.manual_seed(self.trainer_spec.seed())
 
+    def setup(rank, world_size):
+        os.environ['MASTER_ADDR'] = 'localhost'
+        os.environ['MASTER_PORT'] = '12355'
+
+        # initialize the process group
+        dist.init_process_group("gloo", rank=rank, world_size=world_size)
+
+    @staticmethod
+    def cleanup():
+        dist.destroy_process_group()
+
     def init_distributed(self):
         """
 
@@ -135,7 +146,7 @@ class Trainer(GeneratorTrainer, ABC):
         """
         os.environ['MASTER_ADDR'] = 'localhost'
         os.environ['MASTER_PORT'] = '54321'
-
+        os.environ["PL_TORCH_DISTRIBUTED_BACKEND"] = "gloo"
         assert torch.cuda.is_available(), "Distributed mode requires CUDA."
         logger.info("Distributed Available", torch.cuda.device_count())
 
@@ -161,11 +172,15 @@ class Trainer(GeneratorTrainer, ABC):
                 model.decoder.attention_layer.score_mask_value = finfo('float16').min
 
             if self.trainer_spec.is_distributed_run():
-                model = DistributedDataParallel(model, device_ids=[self.rank])
+                model = DistributedDataParallel(model, device_ids=[self.device])
                 # model = apply_gradient_allreduce(model)
 
             self.models[model_name] = model
             self.last_epochs[model_name] = 0
+
+    @staticmethod
+    def cleanup():
+        dist.destroy_process_group()
 
     def load(self, model_name: str, to_device=True, ignore_layers=None):
         """Method loads model from a checkpoint.

@@ -11,6 +11,7 @@ from model_loader.mel_dataloader import Mel_Dataloader
 from model_loader.mel_dataset_loader import TextMelLoader
 from model_trainer.trainer_specs import ExperimentSpecs
 from model_trainer.trainer import Trainer
+import torch.multiprocessing as mp
 
 
 def convert_mel_to_data(encoder_spec, target_dir: str, dataset,
@@ -114,7 +115,7 @@ def train(spec=None, cmd_args=None, device=None, verbose=True, cudnn_bench=False
     logger.debug("Torch allow matmul fp16 {}", torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction)
     logger.debug("Torch cudnn version, {}", torch.backends.cudnn.version())
     logger.debug("Torch backend openmp", torch.backends.openmp)
-
+    mp.spawn(Trainer(spec, dataloader, rank=args.rank, verbose=args.verbose, device=device).train(), join=True)
     Trainer(spec, dataloader, rank=args.rank, verbose=args.verbose, device=device).train()
 
 

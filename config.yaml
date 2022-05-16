@@ -131,8 +131,9 @@ settings:
     # if we distribute
     distributed: True
     # what distributed backend uses.
-    backend: "nccl"
-    url: "tcp://192.168.254.119:54321"
+    #backend: "nccl"
+    backend: "gloo"
+    url: "tcp://localhost:54321"
     cudnn_enabled: True
     cudnn_benchmark: False
 
