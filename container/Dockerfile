@@ -5,7 +5,7 @@ RUN apt-get upgrade -y
 RUN apt-get install -y build-essential
 RUN apt-get install -y libnuma-dev vim openssh-server zsh fzf
 RUN apt-get install -y gcc meson git wget numactl make curl ninja-build python3-pip unzip zip gzip
-RUN apt-get install -y libnuma-dev vim openssh-server zsh fzf net-tools
+RUN apt-get install -y libnuma-dev vim openssh-server zsh fzf net-tools nmap
 
 RUN echo 'root:root' | chpasswd
 RUN sed -i 's/PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
