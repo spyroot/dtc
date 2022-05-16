@@ -13,5 +13,5 @@ docker run --privileged --name dtc_win_build --rm -i -t dtc_win_build bash
 docker run -t -i -v <host_dir>:<container_dir>  ubuntu /bin/bash
 
 docker build -t dtc_rt:v1 .
-docker run -it --gpus=all --rm -p 2223:2223 -p 22:22  dtc_rt:v1 /bin/bash
+docker run -it --gpus=all --rm -p 2222:2222 -p 22:22  dtc_rt:v1 /bin/bash
 docker run -it --gpus=all --rm dtc_rt:v1 /bin/bash
