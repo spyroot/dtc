@@ -194,9 +194,9 @@ class Trainer(GeneratorTrainer, ABC):
                   f"n = {n}, device_ids = {device_ids} \n", end='')
 
             if self.trainer_spec.is_distributed_run():
-                model = Tacotron2(self.trainer_spec, self.device)
-            else:
                 model = Tacotron2(self.trainer_spec, self.device).to(self.rank)
+            else:
+                model = Tacotron2(self.trainer_spec, self.device).to()
 
             if self.trainer_spec.is_fp16_run():
                 model.decoder.attention_layer.score_mask_value = finfo('float16').min
