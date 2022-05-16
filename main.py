@@ -175,6 +175,11 @@ def set_random_seeds(random_seed=0):
     random.seed(random_seed)
 
 
+# CUDA_VISIBLE_DEVICES=0
+# python -c "import torch;print(torch.version.cuda)"
+# NCCL_IB_DISABLE=1
+# os.environ["NCCL_DEBUG"] = "INFO"
+
 def main(cmd_args):
     """
 
