@@ -1,6 +1,7 @@
 import argparse
 import logging
 import os
+import signal
 import sys
 from pathlib import Path
 
@@ -95,6 +96,13 @@ def convert(trainer_spec, verbose=True):
                         test_dataset, trainer_spec.use_dataset, "test")
 
 
+def func(signum, frame):
+    print("You raised a SigInt! Signal handler called with signal", signum)
+
+
+signal.signal(signal.SIGINT, func)
+
+
 def train(spec=None, cmd_args=None, device=None, verbose=True, cudnn_bench=False):
     """
 
@@ -178,7 +186,7 @@ if __name__ == '__main__':
     #                     required=False, help='set verbose output')
     # level = logger.level("ERROR")
     # logger.info(f"LOGURU_LEVEL: {os.environ['LOGURU_LEVEL']}")
-   # logger.remove()
+    # logger.remove()
     # logger.enable("__main__")
     # logger.add(sys.stderr, level=config.LOG_LEVEL)
     # logger.enable()
