@@ -7,6 +7,7 @@ from model_trainer.specs import model_spec
 from model_trainer.specs.dtc_spec import DTC
 from model_trainer.trainer_specs import ExperimentSpecs
 from tacotron2.utils import fmtl_print, to_gpu
+from loguru import logger
 
 
 class Mel_Dataloader:
@@ -74,6 +75,7 @@ class Mel_Dataloader:
             self.collate_fn = TextMelCollate(self.encoder_spec.frames_per_step())
         # test_set
         if self.trainer_spec.is_distributed_run():
+            logger.info("Create distribute sampler rank {} , world size {}", self.rank, self.world_size)
             train_sampler = DistributedSampler(self.train_dataset,
                                                num_replicas=self.world_size,
                                                rank=self.rank)
