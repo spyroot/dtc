@@ -203,6 +203,7 @@ class Trainer(GeneratorTrainer, ABC):
                 model.decoder.attention_layer.score_mask_value = finfo('float16').min
 
             if self.trainer_spec.is_distributed_run():
+                logger.info("Creating DDP")
                 model = DistributedDataParallel(model, device_ids=[self.rank], output_device=self.rank)
                 # model = apply_gradient_allreduce(model)
 
@@ -375,6 +376,8 @@ class Trainer(GeneratorTrainer, ABC):
         if model_name not in self.models:
             raise Exception("config.yaml must contains valid active settings. "
                             "Failed create {} model".format(model_name))
+
+        logger.info("Creating optimizer for {}", model_name, type(self.models[model_name]))
         model = self.models[model_name]
 
         optimizer_type = self.trainer_spec.optimizer_type(alias_name)
