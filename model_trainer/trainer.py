@@ -1,4 +1,5 @@
 import os
+import socket
 import time
 from abc import ABC
 
@@ -159,6 +160,12 @@ class Trainer(GeneratorTrainer, ABC):
         torch.cuda.set_device(self.rank % torch.cuda.device_count())
         print("device", self.rank % torch.cuda.device_count())
         # Initialize distributed communication
+        if self.rank == 1:
+            host = socket.gethostname()
+            address = socket.gethostbyname(host)
+            logger.info("resolve hostname {}".format(host))
+            logger.info("resolve hostname {}".format(address))
+
         torch.distributed.init_process_group(
             backend=self.trainer_spec.get_backend(),
             init_method=self.trainer_spec.dist_url(),

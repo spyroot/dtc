@@ -94,6 +94,7 @@ def convert(trainer_spec, verbose=True):
     convert_mel_to_data(encoder_spec, trainer_spec.get_dataset_dir(),
                         test_dataset, trainer_spec.use_dataset, "test")
 
+
 # def handler(a,b=None):
 #     """
 #
@@ -195,7 +196,7 @@ if __name__ == '__main__':
     #                     required=False, help='set verbose output')
     # level = logger.level("ERROR")
     # logger.info(f"LOGURU_LEVEL: {os.environ['LOGURU_LEVEL']}")
-   # logger.remove()
+    # logger.remove()
     # logger.enable("__main__")
     # logger.add(sys.stderr, level=config.LOG_LEVEL)
     # logger.enable()
