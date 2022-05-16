@@ -1,6 +1,7 @@
 import argparse
 import logging
 import os
+import signal
 import sys
 from pathlib import Path
 
@@ -112,6 +113,13 @@ def convert(trainer_spec, verbose=True):
 #     if sys.platform == "win32":
 #         import win32api
 #         win32api.SetConsoleCtrlHandler(handler, True)
+
+def func(signum, frame):
+    print("You raised a SigInt! Signal handler called with signal", signum)
+
+
+signal.signal(signal.SIGINT, func)
+
 
 def train(spec=None, cmd_args=None, device=None, verbose=True, cudnn_bench=False):
     """
