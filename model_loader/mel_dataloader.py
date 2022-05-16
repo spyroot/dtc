@@ -66,21 +66,22 @@ class Mel_Dataloader:
 
         if pk_dataset['ds_type'] == 'audio_raw':
             self.train_dataset = TextMelLoader(self.encoder_spec,
-                                               list(pk_dataset['train_set'].values()), data_format='audio_raw')
+                                               list(pk_dataset['train_set'].values()),
+                                               data_format='audio_raw')
             self.validation_dataset = TextMelLoader(self.encoder_spec,
                                                     list(pk_dataset['validation_set'].values()),
                                                     data_format='audio_raw')
             self.collate_fn = TextMelCollate(self.encoder_spec.frames_per_step())
-
         # test_set
         if self.trainer_spec.is_distributed_run():
             train_sampler = DistributedSampler(self.train_dataset,
                                                num_replicas=self.world_size,
                                                rank=self.rank)
-            shuffle = False
+            is_shuffle = False
         else:
+            # we shuffle only if on single run otherwise it false.
             train_sampler = None
-            shuffle = True
+            is_shuffle = True
 
         if self.verbose:
             fmtl_print("Dataloader train set contains", len(self.train_dataset))
@@ -90,20 +91,26 @@ class Mel_Dataloader:
             raise Exception("Dataloader received empty train dataset.")
         if len(self.validation_dataset) == 0:
             raise Exception("Dataloader received empty validation dataset.")
-
         if self.trainer_spec.batch_size == 0:
             raise Exception("Dataloader need batch size > 0.")
 
-        self.train_dataloader = DataLoader(self.train_dataset, num_workers=1, shuffle=shuffle,
+        self.train_dataloader = DataLoader(self.train_dataset,
+                                           num_workers=1,
+                                           shuffle=is_shuffle,
                                            sampler=train_sampler,
                                            batch_size=self.trainer_spec.batch_size,
                                            pin_memory=False,
                                            drop_last=True, collate_fn=self.collate_fn)
 
-        self.val_sampler = DistributedSampler(
-            self.validation_dataset) if self.trainer_spec.is_distributed_run() else None
-        self.val_loader = DataLoader(self.validation_dataset, sampler=self.val_sampler, num_workers=1,
-                                     shuffle=False, batch_size=self.trainer_spec.batch_size,
+        self.val_sampler = None
+        if self.trainer_spec.is_distributed_run():
+            self.val_sampler = DistributedSampler(self.validation_dataset, num_replicas=self.world_size, rank=self.rank)
+
+        self.val_loader = DataLoader(self.validation_dataset,
+                                     sampler=self.val_sampler,
+                                     num_workers=1,
+                                     shuffle=is_shuffle,
+                                     batch_size=self.trainer_spec.batch_size,
                                      pin_memory=False, collate_fn=self.collate_fn)
 
     def to_gpu(x):

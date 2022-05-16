@@ -1,3 +1,4 @@
+import os
 import time
 from abc import ABC
 
@@ -115,6 +116,7 @@ class Trainer(GeneratorTrainer, ABC):
 
         """
         if self.trainer_spec.is_distributed_run():
+            logger.info("Starting distributed DDP training")
             self.init_distributed()
 
         self.create_models()
@@ -131,6 +133,9 @@ class Trainer(GeneratorTrainer, ABC):
 
         :return:
         """
+        os.environ['MASTER_ADDR'] = 'localhost'
+        os.environ['MASTER_PORT'] = '54321'
+
         assert torch.cuda.is_available(), "Distributed mode requires CUDA."
         logger.info("Distributed Available", torch.cuda.device_count())
 
@@ -142,8 +147,7 @@ class Trainer(GeneratorTrainer, ABC):
             backend=self.trainer_spec.get_backend(),
             init_method=self.trainer_spec.dist_url(),
             world_size=self.n_gpus,
-            rank=self.rank,
-            group_name=self.group_name())
+            rank=self.rank)
         logger.debug("Done initializing distributed")
 
     def create_model(self, model_name):
