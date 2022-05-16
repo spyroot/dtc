@@ -133,6 +133,7 @@ def signal_handler(sig, frame):
 
 signal.signal(signal.SIGINT, signal_handler)
 
+os.environ["NCCL_DEBUG"] = "INFO"
 
 def train(spec=None, cmd_args=None, device=None, verbose=True, cudnn_bench=False):
     """
