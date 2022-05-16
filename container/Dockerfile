@@ -35,7 +35,7 @@ RUN apt-get install -y ffmpeg
 RUN apt-get install -y tzdata ffmpeg libsndfile1 libtiff-dev libpng-dev meson ninja-build cmake yamllint
 RUN pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu115
 RUN pip install loguru librosa pip install unidecode
-RUN pip install inflect tensorboard ray matplotlib opencv-python tqdm pandas tabulate dill
+RUN pip install inflect tensorboard ray matplotlib opencv-python tqdm pandas tabulate dill iptables iproute2
 
 RUN echo "NCCL_SOCKET_IFNAME=eth0" >> /etc/nccl.conf
 RUN echo "NCCL_DEBUG=INFO" >> /etc/nccl.conf

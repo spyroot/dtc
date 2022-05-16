@@ -16,6 +16,8 @@ from model_trainer.trainer_specs import ExperimentSpecs
 from model_trainer.trainer import Trainer
 import torch.distributed as dist
 
+os.environ["NCCL_DEBUG"] = "INFO"
+os.environ["NCCL_IB_DISABLE"] = "1"
 
 def convert_mel_to_data(encoder_spec, target_dir: str, dataset,
                         dataset_name: str, data_type: str, post_check=True, verbose=True):
@@ -133,8 +135,6 @@ def signal_handler(sig, frame):
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTSTP, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
-
-os.environ["NCCL_DEBUG"] = "INFO"
 
 
 def train(spec=None, cmd_args=None, device=None, verbose=True, cudnn_bench=False):
