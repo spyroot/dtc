@@ -1,0 +1,208 @@
+train: True                 # train or not,  default is True for generation we only need load pre-trained model
+#active: 'grid_small'       # dataset set generated.
+#use_dataset: 'LJSpeechSmallPkl'     # dataset set generated.
+use_dataset: 'LJSpeechSmallRaw'     # dataset set generated.
+use_model: 'dts'            # model to use , it must be defined in models section.
+draw_prediction: True       # at the of training draw.
+load_model: True            # load model or not, and what
+load_epoch: 500             # load model,  last epoch
+save_model: True            # save model,
+regenerate: True            # regenerated,  factor when indicated by epochs_save
+active_setting: small       # indicate what setting to use, so we can switch from debug to production
+evaluate: True              # will run evaluation
+
+root_dir: "."
+log_dir: "logs"
+nil_dir: "timing"
+graph_dir: "graphs"
+results_dir: "results"
+figures_dir: "figures"
+prediction_dir: "prediction"               # where we save prediction
+model_save_dir: "model"                    # where we save model
+metrics_dir: "metrics"                     # metrics dir in case we need store separate metrics
+
+datasets:
+  LJSpeech:
+    ds_type: "audio"
+    dir: "~/Dropbox/Datasets/LJSpeech-1.1"
+    training_meta: ljs_audio_text_train_filelist.txt
+    validation_meta:  ljs_audio_text_val_filelist.txt
+    test_meta: ljs_audio_text_test_filelist.txt
+    meta: metadata.csv
+    recursive: False
+    file_type: "wav"
+  LJSpeechSmallRaw:
+    ds_type: "audio"
+    dir: "/datasets/LJSpeechSmall"
+    format: raw
+    training_meta: ljs_audio_text_train_filelist.txt
+    validation_meta: ljs_audio_text_val_filelist.txt
+    test_meta: ljs_audio_text_test_filelist.txt
+    meta: metadata.csv
+    recursive: False
+    file_type: "wav"
+  LJSpeechSmallPkl:
+    ds_type: "audio"
+    dir: "~/Dropbox/Datasets/LJSpeechSmall"
+    format: tensor_mel
+    training_meta: LJSpeechSmall_train_80.pt
+    validation_meta: LJSpeechSmall_validate_80.pt
+    test_meta: LJSpeechSmall_test_80.pt
+    meta: metadata.csv
+    recursive: False
+    file_type: "wav"
+
+
+settings:
+  # debug mode
+  debug:
+    early_stopping: True
+    epochs_log:  1000
+    start_test:  10
+    epochs_test: 10
+    epochs_save: 10
+    tensorboard_update: 10
+  # baseline
+  mini:
+    # if we need enable early stopping
+    early_stopping: True
+    epochs_log: 1000
+    start_test: 2
+    epochs_test: 2
+    epochs_save: 2
+    tensorboard_update: 10
+  # baseline
+  baseline:
+    early_stopping: True
+    epochs_log:  1000
+    start_test:  100
+    epochs_test: 100
+    epochs_save: 100
+    tensorboard_update: 100
+  # baseline
+  medium:
+    batch_size: 64
+    tensorboard_update: 20      # update rate each step mod tensorboard_update
+    early_stopping: True        # early stopping
+    console_log_rate: 10        # when to log to console
+    start_test: 20              # when to start run a validation test.
+    epochs_test: 20             # epoch mod epochs_test_rate to start testing
+    epochs_save: 5              # when to save
+    save_per_iteration: True    # if we want save per iteration for large model make sense not to wait
+    seed: 1234                  # fix seed
+    epochs: 2                   # total epochs
+    iters_per_checkpoint: 10    #
+    fp16: False                 # fp16 or fp32
+    distributed: False          # if we distribute
+    backend: "nccl"              # what distributed backend uses.
+    url: "tcp://localhost:54321"
+    cudnn_enabled: True
+    cudnn_benchmark: False
+  small:
+    batch_size: 64
+    # tensorboard update rate
+    tensorboard_update: 20
+    # early stopping
+    early_stopping: True
+    # when to log to console
+    console_log_rate: 5
+    # when to start run a test
+    start_test: 20
+    # predict to start predict , validate
+    predict: 10
+    # use epoch or iteration counter
+    predict_per_iteration: True
+    # when to save
+    epochs_save: 5
+    # if we want save per iteration
+    save_per_iteration: True
+    # fix seed
+    seed: 1234
+    #
+    epochs: 500
+    #
+    iters_per_checkpoint: 1000
+    # fp16 or fp32
+    fp16: False
+    # if we distribute
+    distributed: True
+    # what distributed backend uses.
+    backend: "nccl"
+    url: "tcp://192.168.254.230:54321"
+    master_address: 192.168.254.230
+    master_port: 54321
+    cudnn_enabled: True
+    cudnn_benchmark: False
+
+optimizers:
+  node_optimizer:
+    eps: 1e-8
+    weight_decay: 0
+    amsgrad: False
+    momentum=0:
+    betas: [0.9, 0.999]
+    type: Adam
+  edge_optimizer:
+    eps: 1e-8
+    weight_decay: 0
+    amsgrad: False
+    momentum=0:
+    betas: [ 0.9, 0.999 ]
+    type: Adam
+  tacotron2_optimizer:
+    type: Adam
+    weight_decay: 1e-6
+    betas: [ 0.9, 0.999 ]
+    learning_rate: 1e-3
+    amsgrad: False
+    eps: 1e-8
+
+# lr_schedulers definition
+lr_schedulers:
+    - type: multistep
+      milestones: [ 400, 1000 ]
+      name: main_lr_scheduler
+    - type: ReduceLROnPlateau
+      mode: 'min'   #min, max
+      patience: 10
+      name: dtc_scheduler
+
+# Model definition
+models:
+  # this pure model specific, single model can describe both edges and nodes
+  # in case we need use single model for edge and node prediction task ,
+  # use keyword single_model: model_name
+  dts:
+    encoder:
+      model: tacotron2
+      optimizer: tacotron2_optimizer
+#      lr_scheduler: main_lr_scheduler
+      has_input: True
+      has_output: True
+      max_wav_value: 32768.0
+      frames_per_step: 1
+      sampling_rate: 22050
+      filter_length: 1024
+      hop_length: 256
+      win_length: 1024
+      n_mel_channels: 80
+      mel_fmin: 0.0
+      mel_fmax: 8000.0
+#    edge_model:
+#      name: Test
+#      model: GraphLSTM
+#      optimizer: edge_optimizer
+#      lr_scheduler: main_lr_scheduler
+#      input_size: 1
+  GraphLstmRnn:
+    node_model:
+      model: GraphLSTM
+      optimizer: node_optimizer
+      lr_scheduler: main_lr_scheduler
+      has_input: True
+      has_output: True
+    edge_model:
+      model: GraphLSTM
+      optimizer: edge_optimizer
+      lr_scheduler: main_lr_scheduler
+      input_size: 1
