@@ -103,7 +103,7 @@ def train(spec=None, device=None, verbose=True, cudnn_bench=False):
     :param verbose: if we need verbose output
     :return:
     """
-    dataloader = Mel_Dataloader(spec, verbose=True)
+    dataloader = Mel_Dataloader(spec, rank=rank, verbose=True)
     torch.backends.cudnn.enabled = True
     if cudnn_bench:
         torch.backends.cudnn.benchmark = True
@@ -176,5 +176,6 @@ if __name__ == '__main__':
     # logger.add(sys.stderr, level=config.LOG_LEVEL)
     # logger.enable()
     args = parser.parse_args()
+
     cuda_device_count = torch.cuda.device_count()
     main(args)
