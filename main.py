@@ -162,6 +162,19 @@ def dataloader_dry(cmd_args, trainer_specs, verbose=False):
         data_loader.benchmark_read()
 
 
+def set_random_seeds(random_seed=0):
+    """
+
+    :param random_seed:
+    :return:
+    """
+    torch.manual_seed(random_seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    np.random.seed(random_seed)
+    random.seed(random_seed)
+
+
 def main(cmd_args):
     """
 
@@ -170,18 +183,13 @@ def main(cmd_args):
     """
     _device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     trainer_spec = ExperimentSpecs(verbose=False)
+    if trainer_spec.is_distributed_run():
+        set_random_seeds(trainer_spec.seed())
+
     trainer_spec.model_files.build_dir()
 
     if cmd_args.train:
         train(spec=trainer_spec, cmd_args=cmd_args, device=_device)
-
-
-def set_random_seeds(random_seed=0):
-    torch.manual_seed(random_seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-    np.random.seed(random_seed)
-    random.seed(random_seed)
 
 
 if __name__ == '__main__':
