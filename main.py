@@ -94,7 +94,7 @@ def convert(trainer_spec, verbose=True):
                         test_dataset, trainer_spec.use_dataset, "test")
 
 
-def train(spec=None, device=None, verbose=True, cudnn_bench=False):
+def train(spec=None, cmd_args=None, device=None, verbose=True, cudnn_bench=False):
     """
 
     :param spec: trainer spec, a config
@@ -103,7 +103,10 @@ def train(spec=None, device=None, verbose=True, cudnn_bench=False):
     :param verbose: if we need verbose output
     :return:
     """
-    dataloader = Mel_Dataloader(spec, rank=rank, verbose=True)
+    if int(cmd_args.rank) == 0:
+        logger.info("Staring rank zero node")
+
+    dataloader = Mel_Dataloader(spec, rank=cmd_args.rank, verbose=True)
     torch.backends.cudnn.enabled = True
     if cudnn_bench:
         torch.backends.cudnn.benchmark = True
@@ -137,13 +140,12 @@ def main(cmd_args):
     trainer_spec.model_files.build_dir()
 
     if cmd_args.train:
-        train(spec=trainer_spec, device=_device)
+        train(spec=trainer_spec, cmd_args=cmd_args, device=_device)
 
 
 if __name__ == '__main__':
     """
     """
-
     parser = argparse.ArgumentParser()
     parser.add_argument('-o', '--output_directory', type=str,
                         help='directory to save checkpoints')
@@ -176,6 +178,5 @@ if __name__ == '__main__':
     # logger.add(sys.stderr, level=config.LOG_LEVEL)
     # logger.enable()
     args = parser.parse_args()
-
     cuda_device_count = torch.cuda.device_count()
     main(args)
