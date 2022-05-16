@@ -190,7 +190,9 @@ class Trainer(GeneratorTrainer, ABC):
                 model.decoder.attention_layer.score_mask_value = finfo('float16').min
 
             if self.trainer_spec.is_distributed_run():
-                model = DistributedDataParallel(model, device_ids=[self.dev_id], output_device=self.dev_id).to(self.rank)
+                model = DistributedDataParallel(model,
+                                                device_ids=[self.rank % torch.cuda.device_count()],
+                                                output_device=self.rank % torch.cuda.device_count()).to(self.rank)
                 # model = apply_gradient_allreduce(model)
 
             self.models[model_name] = model
