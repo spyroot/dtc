@@ -135,9 +135,8 @@ settings:
     backend: "gloo"
 #    url: "tcp://192.168.254.230:54321"
 #    master_address: 192.168.254.230
-    url: "tcp://localhost:54321"
-    master_address: localhost
-
+    url: "tcp://192.168.254.230:54321"
+    master_address: 192.168.254.230
     master_port: 54321
     cudnn_enabled: True
     cudnn_benchmark: False
