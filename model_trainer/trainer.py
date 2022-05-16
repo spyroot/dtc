@@ -128,24 +128,24 @@ class Trainer(GeneratorTrainer, ABC):
         torch.manual_seed(self.trainer_spec.seed())
         torch.cuda.manual_seed(self.trainer_spec.seed())
 
-    def setup(rank, world_size):
-        os.environ['MASTER_ADDR'] = 'localhost'
-        os.environ['MASTER_PORT'] = '12355'
+    #def setup(rank, world_size):
+        # os.environ['MASTER_ADDR'] = 'localhost'
+        # os.environ['MASTER_PORT'] = '12355'
+        #
+        # # initialize the process group
+        # dist.init_process_group("gloo", rank=rank, world_size=world_size)
 
-        # initialize the process group
-        dist.init_process_group("gloo", rank=rank, world_size=world_size)
-
-    @staticmethod
-    def cleanup():
-        dist.destroy_process_group()
+    # @staticmethod
+    # def cleanup():
+    #     dist.destroy_process_group()
 
     def init_distributed(self):
         """
 
         :return:
         """
-        os.environ['MASTER_ADDR'] = 'localhost'
-        os.environ['MASTER_PORT'] = '54321'
+        # os.environ['MASTER_ADDR'] = 'localhost'
+        # os.environ['MASTER_PORT'] = '54321'
         os.environ["PL_TORCH_DISTRIBUTED_BACKEND"] = "gloo"
         assert torch.cuda.is_available(), "Distributed mode requires CUDA."
         logger.info("Distributed Available", torch.cuda.device_count())

@@ -134,6 +134,8 @@ settings:
     #backend: "nccl"
     backend: "gloo"
     url: "tcp://localhost:54321"
+    master_address: localhost
+    master_port:
     cudnn_enabled: True
     cudnn_benchmark: False
 
