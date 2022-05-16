@@ -34,8 +34,8 @@ RUN ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519
 RUN apt-get install -y ffmpeg
 RUN apt-get install -y tzdata ffmpeg libsndfile1 libtiff-dev libpng-dev meson ninja-build cmake yamllint
 RUN pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu115 \
-RUN pip install loguru librosa pip install unidecode \
-    install inflect tensorboard ray matplotlib opencv-python tqdm pandas tabulate dill
+RUN pip install loguru librosa pip install unidecode
+RUN pip install inflect tensorboard ray matplotlib opencv-python tqdm pandas tabulate dill
 
 EXPOSE 22
 EXPOSE 54321/tcp
