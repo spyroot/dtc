@@ -1,5 +1,5 @@
 FROM nvcr.io/nvidia/tensorrt:22.04-py3
-RUN apt-get update && apt-get install -y tzdata
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y tzdata
 RUN apt-get upgrade -y
 RUN apt-get install -y build-essential
 RUN apt-get install -y libnuma-dev vim openssh-server zsh fzf
