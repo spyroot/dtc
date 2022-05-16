@@ -19,6 +19,7 @@ import torch.distributed as dist
 os.environ["NCCL_DEBUG"] = "INFO"
 os.environ["NCCL_IB_DISABLE"] = "1"
 
+
 def convert_mel_to_data(encoder_spec, target_dir: str, dataset,
                         dataset_name: str, data_type: str, post_check=True, verbose=True):
     """
@@ -252,4 +253,3 @@ if __name__ == '__main__':
     args = parser.parse_args()
     cuda_device_count = torch.cuda.device_count()
     main(args)
-
