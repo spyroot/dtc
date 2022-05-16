@@ -47,7 +47,7 @@ class Trainer(GeneratorTrainer, ABC):
     """
 
     def __init__(self, trainer_spec: ExperimentSpecs, data_loader,
-                 verbose=False, is_notebook=False, rank=0, n_gpus=2, disable_pbar=False, device=None):
+                 verbose=False, is_notebook=False, rank=0, world_size=2, disable_pbar=False, device=None):
         """
 
         :param trainer_spec:
@@ -60,7 +60,7 @@ class Trainer(GeneratorTrainer, ABC):
         # self.rank = model_spec['model_spec']
         # self.group_name = model_spec['group_name']
 
-        self.n_gpus = n_gpus
+        self.n_gpus = world_size
         self.device = device
         self.schedulers = {}
         self.optimizers = {}
@@ -152,13 +152,14 @@ class Trainer(GeneratorTrainer, ABC):
 
         # Set cuda device so everything is done on the right GPU.
         torch.cuda.set_device(self.rank % torch.cuda.device_count())
-
+        print("device", self.rank % torch.cuda.device_count())
         # Initialize distributed communication
         torch.distributed.init_process_group(
             backend=self.trainer_spec.get_backend(),
             init_method=self.trainer_spec.dist_url(),
             world_size=self.n_gpus,
             rank=self.rank)
+        print("Done init")
         logger.debug("Done initializing distributed")
 
     def create_model(self, model_name):
@@ -172,7 +173,7 @@ class Trainer(GeneratorTrainer, ABC):
                 model.decoder.attention_layer.score_mask_value = finfo('float16').min
 
             if self.trainer_spec.is_distributed_run():
-                model = DistributedDataParallel(model, device_ids=[self.device])
+                model = DistributedDataParallel(model, device_ids=[self.device]).to(self.rank)
                 # model = apply_gradient_allreduce(model)
 
             self.models[model_name] = model
@@ -200,7 +201,10 @@ class Trainer(GeneratorTrainer, ABC):
         # load trained optimizer state_dict
         try:
             if to_device:
-                self.models[model_name].to(self.device)
+                if self.trainer_spec.is_distributed_run():
+                    self.models[model_name].to(self.rank)
+                else:
+                    self.models[model_name].to(self.device)
 
             if to_device:
                 checkpoint = torch.load(model_file, map_location=self.device)
@@ -465,6 +469,10 @@ class Trainer(GeneratorTrainer, ABC):
 
         if last_epoch is False and it == 0:
             return False
+
+        # in case we run distributed no need save.
+        if trainer.trainer_spec.is_distributed_run() and self.rank > 0:
+            return
 
         # model save predicate condition , either iteration or epoch counter.
         # for large model it makes sense to track iteration vs epoch counter.

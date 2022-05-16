@@ -107,7 +107,7 @@ def train(spec=None, cmd_args=None, device=None, verbose=True, cudnn_bench=False
     if int(cmd_args.rank) == 0:
         logger.info("Staring rank zero node")
 
-    dataloader = Mel_Dataloader(spec, rank=cmd_args.rank, verbose=True)
+    dataloader = Mel_Dataloader(spec, rank=cmd_args.rank, world_size=cmd_args.world_size, verbose=True)
     torch.backends.cudnn.enabled = True
     if cudnn_bench:
         torch.backends.cudnn.benchmark = True
@@ -116,7 +116,11 @@ def train(spec=None, cmd_args=None, device=None, verbose=True, cudnn_bench=False
     logger.debug("Torch cudnn version, {}", torch.backends.cudnn.version())
     logger.debug("Torch backend openmp", torch.backends.openmp)
     mp.spawn(Trainer(spec, dataloader, rank=args.rank, verbose=args.verbose, device=device).train(), join=True)
-    Trainer(spec, dataloader, rank=args.rank, verbose=args.verbose, device=device).train()
+    Trainer(spec,
+            dataloader,
+            rank=int(args.rank),
+            world_size=int(cmd_args.world_size),
+            verbose=args.verbose, device=device).train()
 
 
 def dataloader_dry(cmd_args, trainer_specs, verbose=False):
@@ -154,7 +158,7 @@ if __name__ == '__main__':
                         help='directory to save tensorboard logs')
     parser.add_argument('--warm_start', action='store_true',
                         help='load model weights only, ignore specified layers')
-    parser.add_argument('--n_gpus', type=int, default=1,
+    parser.add_argument('--world_size', type=int, default=1,
                         required=False, help='number of gpus')
     parser.add_argument('--rank', type=int, default=0,
                         required=False, help='rank of current gpu')
