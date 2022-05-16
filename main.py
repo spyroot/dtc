@@ -114,11 +114,11 @@ def convert(trainer_spec, verbose=True):
 #         import win32api
 #         win32api.SetConsoleCtrlHandler(handler, True)
 
-def func(signum, frame):
-    print("You raised a SigInt! Signal handler called with signal", signum)
-
-
-signal.signal(signal.SIGINT, func)
+# def func(signum, frame):
+#     print("You raised a SigInt! Signal handler called with signal", signum)
+#
+#
+# signal.signal(signal.SIGINT, func)
 
 
 def train(spec=None, cmd_args=None, device=None, verbose=True, cudnn_bench=False):
