@@ -156,7 +156,7 @@ class Trainer(GeneratorTrainer, ABC):
         os.environ["PL_TORCH_DISTRIBUTED_BACKEND"] = "gloo"
         assert torch.cuda.is_available(), "Distributed mode requires CUDA."
         logger.info("Distributed Available".format(torch.cuda.device_count()))
-        logger.info("Distribute protocol nccl available {}".format(torch.distributed.is_initialized()))
+        logger.info("Distribute protocol nccl available {}".format(torch.distributed.is_nccl_available()))
         logger.info("Distribute protocol mpi available {}".format(torch.distributed.is_mpi_available()))
         logger.info("Distribute protocol glow available {}".format(torch.distributed.is_gloo_available()))
         logger.info("Distribute endpoint {} my rank {}".format(self.trainer_spec.get_backend(), self.rank))
@@ -193,8 +193,16 @@ class Trainer(GeneratorTrainer, ABC):
             if self.trainer_spec.is_fp16_run():
                 model.decoder.attention_layer.score_mask_value = finfo('float16').min
 
+            n = torch.cuda.device_count() // self.n_gpus
+            device_ids = list(range(self.rank * n, (self.rank + 1) * n))
+
+            print(
+                    f"[{os.getpid()}] rank = {dist.get_rank()}, "
+                    + f"world_size = {dist.get_world_size()}, n = {n}, device_ids = {device_ids} \n", end=''
+            )
+
             if self.trainer_spec.is_distributed_run():
-                model = DistributedDataParallel(model, device_ids=[self.rank])
+                model = DistributedDataParallel(model, device_ids=device_ids)
                 # model = apply_gradient_allreduce(model)
 
             self.models[model_name] = model
