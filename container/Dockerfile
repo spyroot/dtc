@@ -32,6 +32,10 @@ RUN update-rc.d ssh defaults
 RUN ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519
 #COPY --chown=ubuntu:root "./files/authorized_keys" /home/ubuntu/.ssh/authorized_keys
 # Setup default command and/or parameters.
+RUN pip install loguru librosa pip install unidecode \
+    install inflect tensorboard ray matplotlib opencv-python tqdm pandas tabulate dill
+RUN apt-get install -y ffmpeg
+RUN apt-get install -y tzdata ffmpeg libsndfile1 libtiff-dev libpng-dev meson ninja-build cmake yamllint
 EXPOSE 22
 EXPOSE 54321/tcp
 CMD ["/usr/sbin/sshd", "-D", "-o", "ListenAddress=0.0.0.0"]

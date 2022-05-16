@@ -13,5 +13,11 @@ docker run --privileged --name dtc_win_build --rm -i -t dtc_win_build bash
 docker run -t -i -v <host_dir>:<container_dir>  ubuntu /bin/bash
 
 docker build -t dtc_rt:v1 .
-docker run -it --gpus=all --rm -p 2222:2222 -p 22:22  dtc_rt:v1 /bin/bash
+docker run -it --gpus=all --rm -p 2222:2222 -p 22:22 -p 54321:54321 -p 54321:54321 dtc_rt:v1 /bin/bash
 docker run -it --gpus=all --rm dtc_rt:v1 /bin/bash
+
+docker run --gpus=all --rm -p 2222:2222 -p 22:22 -p 54322:54322 -p 54321:54321 dtc_rt:v1
+
+docker run --gpus=all --rm -p 2222:22 -p 54321:54321 -v ~\Dropbox\Datasets:/datasets dtc_rt:v1
+
+docker run --gpus=all --rm -p 2222:22 -p 54321:54321 -v ${PWD}:/datasets --workdir=/datasets dtc_rt:v1
