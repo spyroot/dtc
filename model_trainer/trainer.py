@@ -193,8 +193,9 @@ class Trainer(GeneratorTrainer, ABC):
                   f"world_size = {dist.get_world_size()}, "
                   f"n = {n}, device_ids = {device_ids} \n", end='')
 
+            print("DEVICE", self.device)
             if self.trainer_spec.is_distributed_run():
-                model = Tacotron2(self.trainer_spec, self.device).to(self.rank)
+                model = Tacotron2(self.trainer_spec, self.device).to(self.device)
             else:
                 model = Tacotron2(self.trainer_spec, self.device).to(self.device)
 
