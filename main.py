@@ -1,10 +1,12 @@
 import argparse
 import logging
 import os
+import random
 import signal
 import sys
 from pathlib import Path
 
+import numpy as np
 import torch
 from loguru import logger
 
@@ -172,6 +174,14 @@ def main(cmd_args):
 
     if cmd_args.train:
         train(spec=trainer_spec, cmd_args=cmd_args, device=_device)
+
+
+def set_random_seeds(random_seed=0):
+    torch.manual_seed(random_seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    np.random.seed(random_seed)
+    random.seed(random_seed)
 
 
 if __name__ == '__main__':

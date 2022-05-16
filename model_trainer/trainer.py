@@ -203,7 +203,7 @@ class Trainer(GeneratorTrainer, ABC):
                 model.decoder.attention_layer.score_mask_value = finfo('float16').min
 
             if self.trainer_spec.is_distributed_run():
-                model = DistributedDataParallel(model, device_ids=device_ids)
+                model = DistributedDataParallel(model, device_ids=[self.rank], output_device=self.rank)
                 # model = apply_gradient_allreduce(model)
 
             self.models[model_name] = model
@@ -742,7 +742,9 @@ class Trainer(GeneratorTrainer, ABC):
         # torch.manual_seed(self.model_spec.seed())
         # torch.cuda.manual_seed(self.model_spec.seed())
         #
-        self.load_models()
+        if self.rank == 0:
+            self.load_models()
+
         if self.is_trained():
             print("It looks like model already trained. \
             Check file {}".format(self.trainer_spec.model_files.get_model_file_path(model_name)))
@@ -764,9 +766,9 @@ class Trainer(GeneratorTrainer, ABC):
             logger.info("Model {} contains a scheduler".format(model_name))
             scheduler = self.schedulers[model_name]
 
-        if self.trainer_spec.is_distributed_run():
-            logger.info("Running in distributed model. applying gradient reduce.".format(model_name))
-            model = apply_gradient_allreduce(model)
+        # if self.trainer_spec.is_distributed_run():
+        #     logger.info("Running in distributed model. applying gradient reduce.".format(model_name))
+        #     model = apply_gradient_allreduce(model)
 
         it = self.get_last_iterator(model_name)
         if self.last_epochs[model_name] == self.trainer_spec.epochs():
@@ -1010,7 +1012,10 @@ if __name__ == '__main__':
     # if is_convert:
     #     convert()
     #
-    # create_loader()
+    #
+    #
+    #
+    # _loader()
     #
     torch.backends.cudnn.enabled = True
     # torch.backends.cudnn.benchmark = True
