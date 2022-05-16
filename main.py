@@ -95,6 +95,23 @@ def convert(trainer_spec, verbose=True):
     convert_mel_to_data(encoder_spec, trainer_spec.get_dataset_dir(),
                         test_dataset, trainer_spec.use_dataset, "test")
 
+# def handler(a,b=None):
+#     """
+#
+#     :param a:
+#     :param b:
+#     :return:
+#     """
+#     sys.exit(1)
+#
+# def install_handler():
+#     """
+#
+#     :return:
+#     """
+#     if sys.platform == "win32":
+#         import win32api
+#         win32api.SetConsoleCtrlHandler(handler, True)
 
 def func(signum, frame):
     print("You raised a SigInt! Signal handler called with signal", signum)

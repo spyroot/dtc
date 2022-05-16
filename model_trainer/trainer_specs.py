@@ -643,9 +643,31 @@ class ExperimentSpecs:
 
         return "nccl"
 
-    def dist_url(self):
+    def get_master_address(self):
         """
+        Return model backend setting such as nccl
+        :return:
+        """
+        if 'backend' in self._setting:
+            if self._verbose:
+                fmtl_print("Model backend", self._setting['master_address'])
+            return str(self._setting['master_address'])
 
+        return "localhost"
+
+    def get_master_port(self):
+        """Return a DDP tcp port
+        :return:
+        """
+        if 'backend' in self._setting:
+            if self._verbose:
+                fmtl_print("Model backend", self._setting['master_port'])
+            return str(self._setting['master_port'])
+
+        return "54321"
+
+    def dist_url(self):
+        """Return tcp url used for DDP.
         :return:
         """
         if 'url' in self._setting:
