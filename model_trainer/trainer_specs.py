@@ -640,7 +640,8 @@ class ExperimentSpecs:
             if self._verbose:
                 fmtl_print("Model backend", self._setting['backend'])
             return self._setting['backend']
-        return False
+
+        return "nccl"
 
     def dist_url(self):
         """

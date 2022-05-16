@@ -18,11 +18,13 @@ class Mel_Dataloader:
     torch.Size([64])
     """
 
-    def __init__(self, experiment_specs: ExperimentSpecs, verbose=False):
+    def __init__(self, experiment_specs: ExperimentSpecs, rank=0, world_size=1, verbose=False):
         """
 
         :param experiment_specs:
         """
+        self.rank = rank
+        self.world_size = world_size
         self.val_loader = None
         self.val_sampler = None
         self.trainer_spec: ExperimentSpecs = experiment_specs
@@ -72,7 +74,9 @@ class Mel_Dataloader:
 
         # test_set
         if self.trainer_spec.is_distributed_run():
-            train_sampler = DistributedSampler(self.train_dataset)
+            train_sampler = DistributedSampler(self.train_dataset,
+                                               num_replicas=self.world_size,
+                                               rank=self.rank)
             shuffle = False
         else:
             train_sampler = None

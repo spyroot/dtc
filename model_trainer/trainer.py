@@ -27,6 +27,7 @@ from generator_trainer import GeneratorTrainer
 from tqdm import tqdm, tnrange
 import torch.optim.lr_scheduler as lr_scheduler
 from torch import optim
+from torch.nn.parallel import DistributedDataParallel
 from torch.autograd import Variable
 import numpy as np
 from ray import tune
@@ -137,12 +138,12 @@ class Trainer(GeneratorTrainer, ABC):
         torch.cuda.set_device(self.rank % torch.cuda.device_count())
 
         # Initialize distributed communication
-        # dist.init_process_group(
-        #     backend=self.model_spec.get_backend(),
-        #     init_method=self.model_spec.dist_url(),
-        #     world_size=self.n_gpus(),
-        #     rank=self.rank(),
-        #     group_name=self.group_name())
+        torch.distributed.init_process_group(
+            backend=self.trainer_spec.get_backend(),
+            init_method=self.trainer_spec.dist_url(),
+            world_size=self.n_gpus,
+            rank=self.rank,
+            group_name=self.group_name())
         logger.debug("Done initializing distributed")
 
     def create_model(self, model_name):
@@ -156,7 +157,8 @@ class Trainer(GeneratorTrainer, ABC):
                 model.decoder.attention_layer.score_mask_value = finfo('float16').min
 
             if self.trainer_spec.is_distributed_run():
-                model = apply_gradient_allreduce(model)
+                model = DistributedDataParallel(model, device_ids=[self.rank])
+                # model = apply_gradient_allreduce(model)
 
             self.models[model_name] = model
             self.last_epochs[model_name] = 0

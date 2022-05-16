@@ -70,7 +70,7 @@ class DistributedDataParallel(Module):
             dist.broadcast(p, 0)
 
         def allreduce_params():
-            if (self.needs_reduction):
+            if self.needs_reduction:
                 self.needs_reduction = False
                 buckets = {}
                 for param in self.module.parameters():
@@ -144,7 +144,7 @@ def apply_gradient_allreduce(module):
         dist.broadcast(p, 0)
 
     def allreduce_params():
-        if (module.needs_reduction):
+        if module.needs_reduction:
             module.needs_reduction = False
             buckets = {}
             for param in module.parameters():
