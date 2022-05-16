@@ -185,14 +185,16 @@ class Trainer(GeneratorTrainer, ABC):
         :return: nothing
         """
         if model_name == 'encoder':
-            model = Tacotron2(self.trainer_spec, self.device)
+            if self.trainer_spec.is_distributed_run():
+                model = Tacotron2(self.trainer_spec, self.device)
+            else:
+                model = Tacotron2(self.trainer_spec, self.device).to(self.rank)
+
             if self.trainer_spec.is_fp16_run():
                 model.decoder.attention_layer.score_mask_value = finfo('float16').min
 
             if self.trainer_spec.is_distributed_run():
-                model = DistributedDataParallel(model,
-                                                device_ids=[self.rank % torch.cuda.device_count()],
-                                                output_device=self.rank % torch.cuda.device_count()).to(self.rank)
+                model = DistributedDataParallel(model, device_ids=[self.rank])
                 # model = apply_gradient_allreduce(model)
 
             self.models[model_name] = model
