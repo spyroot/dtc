@@ -75,13 +75,14 @@ class Trainer(GeneratorTrainer, ABC):
         self.dataloader = data_loader
         self.train_loader, self.validation_loader, self.collate_fn = data_loader.get_loader()
         self.rank = rank
-
+        #
         self.criterion = Tacotron2Loss()
+        # dict store all model
         self.models = {}
+        # store last epoch
         self.last_epochs = {}
         # dict holds model name = last iterator value
         self.iters = {}
-
         # init trainer
         self.init_trainer()
         self.scaler = None
@@ -144,11 +145,15 @@ class Trainer(GeneratorTrainer, ABC):
 
         :return:
         """
-        # os.environ['MASTER_ADDR'] = 'localhost'
-        # os.environ['MASTER_PORT'] = '54321'
+        os.environ['MASTER_ADDR'] = self.trainer_spec.get_master_address()
+        os.environ['MASTER_PORT'] = self.trainer_spec.get_master_port()
         os.environ["PL_TORCH_DISTRIBUTED_BACKEND"] = "gloo"
         assert torch.cuda.is_available(), "Distributed mode requires CUDA."
-        logger.info("Distributed Available", torch.cuda.device_count())
+        logger.info("Distributed Available".format(torch.cuda.device_count()))
+        logger.info("Distribute protocol nccl available {}".format(torch.distributed.is_initialized()))
+        logger.info("Distribute protocol mpi available {}".format(torch.distributed.is_mpi_available()))
+        logger.info("Distribute protocol glow available {}".format(torch.distributed.is_gloo_available()))
+        logger.info("Distribute endpoint {} my rank {}".format(self.trainer_spec.get_backend(), self.rank))
 
         # Set cuda device so everything is done on the right GPU.
         torch.cuda.set_device(self.rank % torch.cuda.device_count())
