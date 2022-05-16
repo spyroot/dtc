@@ -145,8 +145,10 @@ class Trainer(GeneratorTrainer, ABC):
 
         :return:
         """
-        os.environ['MASTER_ADDR'] = self.trainer_spec.get_master_address()
-        os.environ['MASTER_PORT'] = self.trainer_spec.get_master_port()
+        if self.rank != 0:
+            os.environ['MASTER_ADDR'] = self.trainer_spec.get_master_address()
+            os.environ['MASTER_PORT'] = self.trainer_spec.get_master_port()
+
         os.environ["PL_TORCH_DISTRIBUTED_BACKEND"] = "gloo"
         assert torch.cuda.is_available(), "Distributed mode requires CUDA."
         logger.info("Distributed Available".format(torch.cuda.device_count()))
@@ -157,7 +159,7 @@ class Trainer(GeneratorTrainer, ABC):
 
         # Set cuda device so everything is done on the right GPU.
         torch.cuda.set_device(self.rank % torch.cuda.device_count())
-        print("device", self.rank % torch.cuda.device_count())
+        logger.info("Set cuda device".format(self.rank % torch.cuda.device_count()))
         # Initialize distributed communication
         torch.distributed.init_process_group(
             backend=self.trainer_spec.get_backend(),
