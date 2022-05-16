@@ -9,11 +9,17 @@ RUN apt-get install -y libnuma-dev vim openssh-server zsh fzf net-tools
 
 RUN echo 'root:root' | chpasswd
 RUN sed -i 's/PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+RUN sed -i "/Port/s/^#//g" /etc/ssh/sshd_config
+RUN sed -i "/AddressFamily/s/^#//g" /etc/ssh/sshd_config
+RUN sed -i "/PermitEmptyPasswords/s/^#//g" /etc/ssh/sshd_config
+
 RUN sed 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g' -i /etc/pam.d/sshd
 RUN mkdir /var/run/sshd
 RUN bash -c 'install -m755 <(printf "#!/bin/sh\nexit 0") /usr/sbin/policy-rc.d'
 RUN ex +'%s/^#\zeListenAddress/\1/g' -scwq /etc/ssh/sshd_config
 RUN ex +'%s/^#\zeHostKey .*ssh_host_.*_key/\1/g' -scwq /etc/ssh/sshd_config
+RUN echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
+
 RUN RUNLEVEL=1 dpkg-reconfigure openssh-server
 RUN ssh-keygen -A -v
 RUN update-rc.d ssh defaults
