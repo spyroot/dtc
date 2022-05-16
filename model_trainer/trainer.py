@@ -208,10 +208,6 @@ class Trainer(GeneratorTrainer, ABC):
             self.models[model_name] = model
             self.last_epochs[model_name] = 0
 
-    @staticmethod
-    def cleanup():
-        dist.destroy_process_group()
-
     def load(self, model_name: str, to_device=True, ignore_layers=None):
         """Method loads model from a checkpoint.
            It will update internal state, that include model, last epoch, last step.
