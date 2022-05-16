@@ -208,6 +208,9 @@ def main(cmd_args):
     if cmd_args.train:
         train(spec=trainer_spec, cmd_args=cmd_args, device=_device)
 
+    if trainer_spec.is_distributed_run():
+        dist.destroy_process_group()
+
 
 if __name__ == '__main__':
     """
@@ -246,3 +249,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
     cuda_device_count = torch.cuda.device_count()
     main(args)
+
