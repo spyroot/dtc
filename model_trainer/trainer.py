@@ -156,7 +156,7 @@ class Trainer(GeneratorTrainer, ABC):
         os.environ["PL_TORCH_DISTRIBUTED_BACKEND"] = "gloo"
         assert torch.cuda.is_available(), "Distributed mode requires CUDA."
         logger.info("Distributed Available".format(torch.cuda.device_count()))
-        logger.info("Distribute protocol nccl available {}".format(torch.distributed.is_initialized()))
+        logger.info("Distribute protocol nccl available {}".format(torch.distributed.is_nccl_available()))
         logger.info("Distribute protocol mpi available {}".format(torch.distributed.is_mpi_available()))
         logger.info("Distribute protocol glow available {}".format(torch.distributed.is_gloo_available()))
         logger.info("Distribute endpoint {} my rank {}".format(self.trainer_spec.get_backend(), self.rank))
@@ -185,16 +185,26 @@ class Trainer(GeneratorTrainer, ABC):
         :return: nothing
         """
         if model_name == 'encoder':
+
+            n = torch.cuda.device_count() // self.n_gpus
+            print("NUM gpus", n)
+            device_ids = list(range(self.rank * n, (self.rank + 1) * n))
+            print(f"[{os.getpid()}] rank = {dist.get_rank()}, "
+                  f"world_size = {dist.get_world_size()}, "
+                  f"n = {n}, device_ids = {device_ids} \n", end='')
+
+            print("DEVICE", self.device)
             if self.trainer_spec.is_distributed_run():
-                model = Tacotron2(self.trainer_spec, self.device)
+                model = Tacotron2(self.trainer_spec, self.device).to(self.device)
             else:
-                model = Tacotron2(self.trainer_spec, self.device).to(self.rank)
+                model = Tacotron2(self.trainer_spec, self.device).to(self.device)
 
             if self.trainer_spec.is_fp16_run():
                 model.decoder.attention_layer.score_mask_value = finfo('float16').min
 
             if self.trainer_spec.is_distributed_run():
-                model = DistributedDataParallel(model, device_ids=[self.rank])
+                logger.info("Creating DDP")
+                model = DistributedDataParallel(model, device_ids=[self.rank], output_device=self.rank)
                 # model = apply_gradient_allreduce(model)
 
             self.models[model_name] = model
@@ -366,6 +376,8 @@ class Trainer(GeneratorTrainer, ABC):
         if model_name not in self.models:
             raise Exception("config.yaml must contains valid active settings. "
                             "Failed create {} model".format(model_name))
+
+        logger.info("Creating optimizer for {}", model_name, type(self.models[model_name]))
         model = self.models[model_name]
 
         optimizer_type = self.trainer_spec.optimizer_type(alias_name)
@@ -733,7 +745,9 @@ class Trainer(GeneratorTrainer, ABC):
         # torch.manual_seed(self.model_spec.seed())
         # torch.cuda.manual_seed(self.model_spec.seed())
         #
-        self.load_models()
+        if self.rank == 0:
+            self.load_models()
+
         if self.is_trained():
             print("It looks like model already trained. \
             Check file {}".format(self.trainer_spec.model_files.get_model_file_path(model_name)))
@@ -755,9 +769,9 @@ class Trainer(GeneratorTrainer, ABC):
             logger.info("Model {} contains a scheduler".format(model_name))
             scheduler = self.schedulers[model_name]
 
-        if self.trainer_spec.is_distributed_run():
-            logger.info("Running in distributed model. applying gradient reduce.".format(model_name))
-            model = apply_gradient_allreduce(model)
+        # if self.trainer_spec.is_distributed_run():
+        #     logger.info("Running in distributed model. applying gradient reduce.".format(model_name))
+        #     model = apply_gradient_allreduce(model)
 
         it = self.get_last_iterator(model_name)
         if self.last_epochs[model_name] == self.trainer_spec.epochs():
@@ -1001,7 +1015,10 @@ if __name__ == '__main__':
     # if is_convert:
     #     convert()
     #
-    # create_loader()
+    #
+    #
+    #
+    # _loader()
     #
     torch.backends.cudnn.enabled = True
     # torch.backends.cudnn.benchmark = True

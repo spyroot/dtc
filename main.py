@@ -1,10 +1,12 @@
 import argparse
 import logging
 import os
+import random
 import signal
 import sys
 from pathlib import Path
 
+import numpy as np
 import torch
 from loguru import logger
 
@@ -114,11 +116,11 @@ def convert(trainer_spec, verbose=True):
 #         import win32api
 #         win32api.SetConsoleCtrlHandler(handler, True)
 
-def func(signum, frame):
-    print("You raised a SigInt! Signal handler called with signal", signum)
-
-
-signal.signal(signal.SIGINT, func)
+# def func(signum, frame):
+#     print("You raised a SigInt! Signal handler called with signal", signum)
+#
+#
+# signal.signal(signal.SIGINT, func)
 
 
 def train(spec=None, cmd_args=None, device=None, verbose=True, cudnn_bench=False):
@@ -160,6 +162,19 @@ def dataloader_dry(cmd_args, trainer_specs, verbose=False):
         data_loader.benchmark_read()
 
 
+def set_random_seeds(random_seed=0):
+    """
+
+    :param random_seed:
+    :return:
+    """
+    torch.manual_seed(random_seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    np.random.seed(random_seed)
+    random.seed(random_seed)
+
+
 def main(cmd_args):
     """
 
@@ -168,6 +183,9 @@ def main(cmd_args):
     """
     _device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     trainer_spec = ExperimentSpecs(verbose=False)
+    if trainer_spec.is_distributed_run():
+        set_random_seeds(trainer_spec.seed())
+
     trainer_spec.model_files.build_dir()
 
     if cmd_args.train:
