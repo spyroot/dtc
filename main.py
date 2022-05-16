@@ -15,6 +15,7 @@ from model_loader.mel_dataset_loader import TextMelLoader
 from model_trainer.trainer_specs import ExperimentSpecs
 from model_trainer.trainer import Trainer
 import torch.multiprocessing as mp
+import torch.distributed as dist
 
 
 def convert_mel_to_data(encoder_spec, target_dir: str, dataset,
@@ -116,16 +117,27 @@ def convert(trainer_spec, verbose=True):
 #         import win32api
 #         win32api.SetConsoleCtrlHandler(handler, True)
 
-# def func(signum, frame):
-#     print("You raised a SigInt! Signal handler called with signal", signum)
-#
-#
-# signal.signal(signal.SIGINT, func)
+
+def cleanup():
+    """
+
+    :return:
+    """
+    dist.destroy_process_group()
+
+
+def signal_handler(sig, frame):
+    dist.destroy_process_group()
+    sys.exit(0)
+
+
+signal.signal(signal.SIGINT, signal_handler)
 
 
 def train(spec=None, cmd_args=None, device=None, verbose=True, cudnn_bench=False):
     """
 
+    :param cmd_args:
     :param spec: trainer spec, a config
     :param cudnn_bench: if we need run cudnn bench
     :param device: device where run
@@ -143,7 +155,7 @@ def train(spec=None, cmd_args=None, device=None, verbose=True, cudnn_bench=False
     logger.debug("Torch allow matmul fp16 {}", torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction)
     logger.debug("Torch cudnn version, {}", torch.backends.cudnn.version())
     logger.debug("Torch backend openmp", torch.backends.openmp)
-    mp.spawn(Trainer(spec, dataloader, rank=args.rank, verbose=args.verbose, device=device).train(), join=True)
+
     Trainer(spec,
             dataloader,
             rank=int(args.rank),

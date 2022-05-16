@@ -141,8 +141,6 @@ class Trainer(GeneratorTrainer, ABC):
         # dist.init_process_group("gloo", rank=rank, world_size=world_size)
 
     # @staticmethod
-    # def cleanup():
-    #     dist.destroy_process_group()
 
     def init_distributed(self):
         """
