@@ -162,7 +162,7 @@ class Trainer(GeneratorTrainer, ABC):
         torch.cuda.set_device(self.rank % torch.cuda.device_count())
         logger.info("Set cuda device".format(self.rank % torch.cuda.device_count()))
         # Initialize distributed communication
-        if self.rank == 1:
+        if self.rank == 0:
             host = socket.gethostname()
             address = socket.gethostbyname(host)
             logger.info("resolve hostname {}".format(host))
