@@ -147,11 +147,11 @@ class Trainer(GeneratorTrainer, ABC):
 
         :return:
         """
-        if self.rank != 0:
-            os.environ['MASTER_ADDR'] = self.trainer_spec.get_master_address()
-            os.environ['MASTER_PORT'] = self.trainer_spec.get_master_port()
+      #  if self.rank != 0:
+        os.environ['MASTER_ADDR'] = self.trainer_spec.get_master_address()
+        os.environ['MASTER_PORT'] = self.trainer_spec.get_master_port()
 
-        os.environ["PL_TORCH_DISTRIBUTED_BACKEND"] = "nccl"
+        #os.environ["PL_TORCH_DISTRIBUTED_BACKEND"] = "nccl"
         assert torch.cuda.is_available(), "Distributed mode requires CUDA."
         logger.info("Distributed Available".format(torch.cuda.device_count()))
         logger.info("Distribute protocol nccl available {}".format(torch.distributed.is_nccl_available()))
