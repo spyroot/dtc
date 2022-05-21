@@ -130,6 +130,7 @@ class Trainer(GeneratorTrainer, ABC):
         if self.trainer_spec.is_distributed_run():
             logger.info("Starting distributed DDP training")
             self.init_distributed()
+            dist.barrier()
 
         self.create_models()
         self.create_optimizers()
@@ -166,7 +167,7 @@ class Trainer(GeneratorTrainer, ABC):
         logger.info("Distribute endpoint {} my rank {}".format(self.trainer_spec.get_backend(), self.rank))
 
         # Set cuda device so everything is done on the right GPU.
-       # torch.cuda.set_device(self.rank % torch.cuda.device_count())
+        # torch.cuda.set_device(self.rank % torch.cuda.device_count())
         logger.info("Set cuda device".format(self.rank % torch.cuda.device_count()))
         # Initialize distributed communication
         if self.rank == 0:
@@ -182,7 +183,6 @@ class Trainer(GeneratorTrainer, ABC):
                 rank=self.rank)
         print("Done init")
         logger.debug("Done initializing distributed")
-        dist.barrier()
 
     def create_model(self, model_name):
         """Method create model.  Later will move to a separate dispatcher creator.
@@ -198,20 +198,24 @@ class Trainer(GeneratorTrainer, ABC):
                 # print(f"[{os.getpid()}] rank = {dist.get_rank()}, "
                 #       f"world_size = {dist.get_world_size()}, "
                 #       f"n = {n}, device_ids = {device_ids} \n", end='')
+                torch.cuda.set_device(self.rank)
+                self.device = torch.device(f"cuda:{self.rank}")
                 model = Tacotron2(self.trainer_spec, self.device).to(self.device)
+                logger.info("Creating DDP")
+                model = DistributedDataWrapper(model, device_ids=[self.rank], output_device=self.rank)
             else:
                 model = Tacotron2(self.trainer_spec, self.device).to(self.device)
 
             if self.trainer_spec.is_fp16_run():
                 model.decoder.attention_layer.score_mask_value = finfo('float16').min
 
-            if self.trainer_spec.is_distributed_run():
-                logger.info("Creating DDP")
-                model = DistributedDataWrapper(model, device_ids=[self.rank], output_device=self.rank)
-                # model = apply_gradient_allreduce(model)
-                self.device = torch.device(f"cuda:{dist.get_rank()}")
-                # model.nn_model.to(self.device)
-               # model.to(self.device)
+            # if self.trainer_spec.is_distributed_run():
+            #     logger.info("Creating DDP")
+            #     model = DistributedDataWrapper(model, device_ids=[self.rank], output_device=self.rank)
+            #     # model = apply_gradient_allreduce(model)
+            #     self.device = torch.device(f"cuda:{dist.get_rank()}")
+            #     # model.nn_model.to(self.device)
+            #    # model.to(self.device)
 
             self.models[model_name] = model
             self.last_epochs[model_name] = 0

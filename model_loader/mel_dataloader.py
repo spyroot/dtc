@@ -96,6 +96,11 @@ class Mel_Dataloader:
         if self.trainer_spec.batch_size == 0:
             raise Exception("Dataloader need batch size > 0.")
 
+        if self.trainer_spec.is_distributed_run():
+            self.batch_size = int(self.trainer_spec.batch_size/ float(self.world_size))
+        else:
+            self.batch_size = self.trainer_spec.batch_size
+
         self.train_dataloader = DataLoader(self.train_dataset,
                                            num_workers=1,
                                            shuffle=is_shuffle,
@@ -106,13 +111,15 @@ class Mel_Dataloader:
 
         self.val_sampler = None
         if self.trainer_spec.is_distributed_run():
-            self.val_sampler = DistributedSampler(self.validation_dataset, num_replicas=self.world_size, rank=self.rank)
+            self.val_sampler = DistributedSampler(self.validation_dataset,
+                                                  num_replicas=self.world_size,
+                                                  rank=self.rank)
 
         self.val_loader = DataLoader(self.validation_dataset,
                                      sampler=self.val_sampler,
                                      num_workers=1,
                                      shuffle=is_shuffle,
-                                     batch_size=self.trainer_spec.batch_size,
+                                     batch_size=self.batch_size,
                                      pin_memory=False, collate_fn=self.collate_fn)
 
     def to_gpu(x):
