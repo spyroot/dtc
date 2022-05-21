@@ -11,6 +11,8 @@ class DistributedDataWrapper(DistributedDataParallel):
 
     def __init__(self, module: Module, device_ids=None, output_device=None):
         super(DistributedDataWrapper, self).__init__(module=module, device_ids=device_ids, output_device=output_device)
+        self.device_ids = device_ids
+        self.output_device = output_device
         self._module = module
 
         # for p in self.module.state_dict().values():
