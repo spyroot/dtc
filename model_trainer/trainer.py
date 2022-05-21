@@ -206,7 +206,7 @@ class Trainer(GeneratorTrainer, ABC):
 
             if self.trainer_spec.is_distributed_run():
                 logger.info("Creating DDP")
-                model = DistributedDataWrapper(model, device_ids=[self.device], output_device=self.device)
+                model = DistributedDataWrapper(model, device_ids=[self.rank], output_device=self.rank)
                 # model = apply_gradient_allreduce(model)
 
             self.models[model_name] = model
