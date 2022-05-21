@@ -3,7 +3,6 @@ import socket
 import time
 from abc import ABC
 
-import ray
 import torch
 import torch.distributed as dist
 import math
@@ -32,8 +31,14 @@ from torch import optim
 from torch.nn.parallel import DistributedDataParallel
 from torch.autograd import Variable
 import numpy as np
-from ray import tune
-from ray.tune.schedulers import ASHAScheduler
+try:
+    import ray
+    from ray import tune
+    from ray.tune.schedulers import ASHAScheduler
+except ImportError:
+    logger.info("ray not found")
+    pass
+
 import matplotlib.pylab as plt
 
 from text import sequence_to_text, text_to_sequence
