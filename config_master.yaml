@@ -96,11 +96,9 @@ settings:
     fp16: False                 # fp16 or fp32
     distributed: False          # if we distribute
     backend: "nccl"              # what distributed backend uses.
-    #
     url: "tcp://localhost:54321"
-    #
+    master_address: localhost
     cudnn_enabled: True
-    #
     cudnn_benchmark: False
   small:
     batch_size: 64
@@ -134,9 +132,7 @@ settings:
     backend: "nccl"
     #backend: "gloo"
     url: "tcp://localhost:54321"
-    #master_address: 192.168.254.230
-#    url: "tcp://localhost:54321"
-#    master_address: localhost
+    master_address: localhost
     master_port: 54321
     cudnn_enabled: True
     cudnn_benchmark: False
