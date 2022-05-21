@@ -706,11 +706,11 @@ class Trainer(GeneratorTrainer, ABC):
                                             'batch': batch_idx,
                                             'lr': optimizer.param_groups[0]['lr'],
                                             'saved step': self.saved_run})
-
-            # run prediction if_needed
-            if step != 0 and step % self.trainer_spec.predict() == 0:
-                prediction_accuracy = self.validate(model, model_name, step)
-                total_accuracy += prediction_accuracy
+            #
+            # # run prediction if_needed
+            # if step != 0 and step % self.trainer_spec.predict() == 0:
+            #     prediction_accuracy = self.validate(model, model_name, step)
+            #     total_accuracy += prediction_accuracy
 
             # save model checkpoint if needed
             if self.rank == 0 and self.save_if_need(model_name, step, self.epoch):
@@ -743,12 +743,12 @@ class Trainer(GeneratorTrainer, ABC):
         :return:
         """
         text_padded, input_lengths, mel_padded, gate_padded, output_lengths = batch
-        text_padded = to_gpu(text_padded, self.device).long()
-        input_lengths = to_gpu(input_lengths, self.device).long()
-        max_len = torch.max(input_lengths.data, self.device).item()
-        mel_padded = to_gpu(mel_padded, self.device).float()
-        gate_padded = to_gpu(gate_padded, self.device).float()
-        output_lengths = to_gpu(output_lengths, self.device).long()
+        text_padded = to_gpu(text_padded, self.device).long().to_device(self.device)
+        input_lengths = to_gpu(input_lengths, self.device).long().to_device(self.device)
+        max_len = torch.max(input_lengths.data, self.device).item().to_device(self.device)
+        mel_padded = to_gpu(mel_padded, self.device).float().to_device(self.device)
+        gate_padded = to_gpu(gate_padded, self.device).float().to_device(self.device)
+        output_lengths = to_gpu(output_lengths, self.device).long().to_device(self.device)
 
         return (text_padded, input_lengths, mel_padded, max_len, output_lengths), (mel_padded, gate_padded)
 

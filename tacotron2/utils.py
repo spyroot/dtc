@@ -88,4 +88,4 @@ def to_gpu(x, device):
     x = x.contiguous()
     if torch.cuda.is_available():
         x = x.cuda(non_blocking=True)
-    return torch.autograd.Variable(x, device=device)
+    return torch.autograd.Variable(x)
