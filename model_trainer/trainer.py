@@ -193,6 +193,7 @@ class Trainer(GeneratorTrainer, ABC):
                 n = torch.cuda.device_count() // self.n_gpus
                 logger.info("Number gpu on the node {} device".format(n, self.device))
                 device_ids = list(range(self.rank * n, (self.rank + 1) * n))
+                print("############### DEVICE IDS", device_ids)
                 # print(f"[{os.getpid()}] rank = {dist.get_rank()}, "
                 #       f"world_size = {dist.get_world_size()}, "
                 #       f"n = {n}, device_ids = {device_ids} \n", end='')
