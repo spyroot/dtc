@@ -217,8 +217,6 @@ def init_process(
     backend='nccl'  # the best for CUDA
 ):
     # information used for rank 0
-    os.environ['MASTER_ADDR'] = '127.0.0.1'
-    os.environ['MASTER_PORT'] = '29500'
     dist.init_process_group(backend, rank=rank, world_size=world_size)
     dist.barrier()
     setup_for_distributed(rank == 0)
@@ -228,11 +226,6 @@ def init_process(
 if __name__ == "__main__":
     world_size = 2
     processes = []
-    mp.set_start_method("spawn")
-    for rank in range(world_size):
-        p = mp.Process(target=init_process, args=(rank, world_size, run))
-        p.start()
-        processes.append(p)
-
-    for p in processes:
-        p.join()
+    os.environ['MASTER_ADDR'] = '127.0.0.1'
+    os.environ['MASTER_PORT'] = '29500'
+    init_process(0, world_size, run)
