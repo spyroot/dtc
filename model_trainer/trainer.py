@@ -181,6 +181,7 @@ class Trainer(GeneratorTrainer, ABC):
                 rank=self.rank)
         print("Done init")
         logger.debug("Done initializing distributed")
+        dist.barrier()
 
     def create_model(self, model_name):
         """Method create model.  Later will move to a separate dispatcher creator.
@@ -742,14 +743,19 @@ class Trainer(GeneratorTrainer, ABC):
         :return:
         """
         text_padded, input_lengths, mel_padded, gate_padded, output_lengths = batch
-        text_padded = to_gpu(text_padded).long()
-        input_lengths = to_gpu(input_lengths).long()
-        max_len = torch.max(input_lengths.data).item()
-        mel_padded = to_gpu(mel_padded).float()
-        gate_padded = to_gpu(gate_padded).float()
-        output_lengths = to_gpu(output_lengths).long()
+        text_padded = to_gpu(text_padded, self.device).long()
+        input_lengths = to_gpu(input_lengths, self.device).long()
+        max_len = torch.max(input_lengths.data, self.device).item()
+        mel_padded = to_gpu(mel_padded, self.device).float()
+        gate_padded = to_gpu(gate_padded, self.device).float()
+        output_lengths = to_gpu(output_lengths, self.device).long()
 
         return (text_padded, input_lengths, mel_padded, max_len, output_lengths), (mel_padded, gate_padded)
+
+    def cleanup(self, rank):
+        # dist.cleanup()
+        dist.destroy_process_group()
+        print(f"Rank {rank} is done.")
 
     def train(self, model_name='encoder'):
         """Training and validation logging results to tensorboard and stdout
@@ -767,8 +773,12 @@ class Trainer(GeneratorTrainer, ABC):
         # torch.manual_seed(self.model_spec.seed())
         # torch.cuda.manual_seed(self.model_spec.seed())
         #
-        if self.rank == 0:
-            self.load_models()
+        # if self.rank == 0:
+        #     self.load_models()
+
+        if self.trainer_spec.is_distributed_run():
+            torch.cuda.set_device(self.rank)
+        torch.cuda.empty_cache()
 
         if self.is_trained():
             print("It looks like model already trained. \
@@ -831,6 +841,9 @@ class Trainer(GeneratorTrainer, ABC):
         if self.rank == 0 and self.save_if_need(model_name, it, self.trainer_spec.epochs(), last_epoch=True):
             if self.verbose:
                 fmtl_print("Saved last epoch", self.trainer_spec.epochs())
+
+        self.cleanup()
+
 
         def train_scaled(self, model_name='encoder'):
             """Training and validation logging results to tensorboard and stdout
