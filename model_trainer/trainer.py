@@ -210,8 +210,8 @@ class Trainer(GeneratorTrainer, ABC):
                 model = DistributedDataWrapper(model, device_ids=[self.rank], output_device=self.rank)
                 # model = apply_gradient_allreduce(model)
                 self.device = torch.device(f"cuda:{dist.get_rank()}")
-                model.nn_model.to(self.device)
-                model.to(self.device)
+                # model.nn_model.to(self.device)
+               # model.to(self.device)
 
             self.models[model_name] = model
             self.last_epochs[model_name] = 0
