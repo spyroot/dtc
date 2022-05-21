@@ -158,9 +158,9 @@ def init_distributed(spec=None, rank=0, world_size=0):
         print("Empty trainer spec.")
         sys.exit()
 
-    if rank != 0:
-        os.environ['MASTER_ADDR'] = spec.get_master_address()
-        os.environ['MASTER_PORT'] = spec.get_master_port()
+    #if rank != 0:
+    os.environ['MASTER_ADDR'] = spec.get_master_address()
+    os.environ['MASTER_PORT'] = spec.get_master_port()
     # os.environ["PL_TORCH_DISTRIBUTED_BACKEND"] = "nccl"
     assert torch.cuda.is_available(), "Distributed mode requires CUDA."
     logger.info("Distributed Available".format(torch.cuda.device_count()))
