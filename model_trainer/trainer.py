@@ -11,6 +11,8 @@ from loguru import logger
 
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data import DataLoader
+import dill
+from pathlib import Path
 
 from model_trainer.trainer_metrics import Metrics
 from model_trainer.trainer_logger import TensorboardTrainerLogger
@@ -152,11 +154,10 @@ class Trainer(GeneratorTrainer, ABC):
 
         :return:
         """
-      #  if self.rank != 0:
+        #  if self.rank != 0:
         os.environ['MASTER_ADDR'] = self.trainer_spec.get_master_address()
         os.environ['MASTER_PORT'] = self.trainer_spec.get_master_port()
-
-        #os.environ["PL_TORCH_DISTRIBUTED_BACKEND"] = "nccl"
+        # os.environ["PL_TORCH_DISTRIBUTED_BACKEND"] = "nccl"
         assert torch.cuda.is_available(), "Distributed mode requires CUDA."
         logger.info("Distributed Available".format(torch.cuda.device_count()))
         logger.info("Distribute protocol nccl available {}".format(torch.distributed.is_nccl_available()))
@@ -647,6 +648,12 @@ class Trainer(GeneratorTrainer, ABC):
             #                 alignments.float().data.cpu().numpy()[0].T))
             return mel_outputs, mel_outputs_postnet, alignments
 
+    # def average_gradients(model):
+    #     size = float(dist.get_world_size())
+    #     for param in model.parameters():
+    #         dist.all_reduce(param.grad.data, op=dist.ReduceOp.SUM)
+    #         param.grad.data /= size
+    #
     def train_epoch(self, model, model_name, optimizer, scheduler=None, save_callback=None):
         """
 
@@ -704,8 +711,10 @@ class Trainer(GeneratorTrainer, ABC):
                 total_accuracy += prediction_accuracy
 
             # save model checkpoint if needed
-            if self.save_if_need(model_name, step, self.epoch):
+            if self.rank == 0 and self.save_if_need(model_name, step, self.epoch):
                 self.saved_run = step
+
+            dist.barrier()
 
             hparams = \
                 {
@@ -905,20 +914,6 @@ class Trainer(GeneratorTrainer, ABC):
 
         return False
 
-
-def print_optimizer(opt_name):
-    """
-
-    Returns:
-
-    """
-    optimizer_name = experiment_specs.get_sub_model_optimizer(opt_name)
-    fmtl_print("Model optimizer", optimizer_name)
-    fmtl_print("optimizer type", experiment_specs.optimizer_type(optimizer_name))
-    fmtl_print("optimizer lr rate", experiment_specs.optimizer_learning_rate(optimizer_name))
-    fmtl_print("optimizer weight_decay type", experiment_specs.weight_decay(optimizer_name))
-
-
 #
 # def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
 #     config = {
@@ -967,65 +962,7 @@ def print_optimizer(opt_name):
 # else:
 # test_best_model(best_trial)
 
-import dill
-from pathlib import Path
 
-if __name__ == '__main__':
-    """
-    """
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-o', '--output_directory', type=str,
-                        help='directory to save checkpoints')
-    parser.add_argument('-l', '--log_directory', type=str,
-                        help='directory to save tensorboard logs')
-    parser.add_argument('--warm_start', action='store_true',
-                        help='load model weights only, ignore specified layers')
-    parser.add_argument('--n_gpus', type=int, default=1,
-                        required=False, help='number of gpus')
-    parser.add_argument('--rank', type=int, default=0,
-                        required=False, help='rank of current gpu')
-    parser.add_argument('--group_name', type=str, default='group_name',
-                        required=False, help='Distributed group name')
-    parser.add_argument('--verbose', type=str, default='store_true',
-                        required=False, help='set verbose output')
-
-    args = parser.parse_args()
-
-    cuda_device_count = torch.cuda.device_count()
-    is_benchmark_read = False
-    is_train = True
-    is_convert = False
-    is_inference = True
-
-    # main()
-    experiment_specs = ExperimentSpecs(verbose=False)
-    experiment_specs.model_files.build_dir()
-    #
-    dataloader = Mel_Dataloader(experiment_specs, verbose=True)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if is_benchmark_read:
-        dataloader.create()
-        dataloader.benchmark_read()
-    #
-    # if is_convert:
-    #     convert()
-    #
-    #
-    #
-    #
-    # _loader()
-    #
-    torch.backends.cudnn.enabled = True
-    # torch.backends.cudnn.benchmark = True
-    #
-    print(torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction)
-    print(torch.backends.cudnn.version())
-    print(torch.backends.openmp)
-
-    trainer = Trainer(experiment_specs, dataloader, rank=args.rank, verbose=args.verbose, device=device)
-    if is_train:
-        trainer.train()
     #
     # if is_inference:
     #     # trainer = Trainer(experiment_specs, dataloader, verbose=True, device=device)
