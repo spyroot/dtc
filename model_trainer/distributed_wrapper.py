@@ -7,9 +7,10 @@ from torch.nn.parallel import DistributedDataParallel
 
 class DistributedDataWrapper(DistributedDataParallel):
 
-    def __init__(self, module):
-        super(DistributedDataParallel, self).__init__()
-        self._module = module
+    def __init__(self, **kwargs):
+        super(DistributedDataParallel, **kwargs).__init__()
+        print(kwargs)
+        self._module = kwargs.module
 
         # for p in self.module.state_dict().values():
         #     if not torch.is_tensor(p):
