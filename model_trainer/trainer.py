@@ -69,10 +69,7 @@ class Trainer(GeneratorTrainer, ABC):
         self.trainer_spec = trainer_spec
 
         self.n_gpus = world_size
-        if self.trainer_spec.is_distributed_run():
-            self.device = torch.device(f"cuda:{dist.get_rank()}")
-        else:
-            self.device = device
+        self.device = device
 
         self.schedulers = {}
         self.optimizers = {}
@@ -210,8 +207,11 @@ class Trainer(GeneratorTrainer, ABC):
 
             if self.trainer_spec.is_distributed_run():
                 logger.info("Creating DDP")
-                model = DistributedDataWrapper(model, device_ids=[self.rank], output_device=self.rank).to(self.device)
+                model = DistributedDataWrapper(model, device_ids=[self.rank], output_device=self.rank)
                 # model = apply_gradient_allreduce(model)
+                self.device = torch.device(f"cuda:{dist.get_rank()}")
+                model.model.to(self.device)
+                model.to(self.device)
 
             self.models[model_name] = model
             self.last_epochs[model_name] = 0
