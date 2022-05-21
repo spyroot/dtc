@@ -8,6 +8,7 @@ import torch
 import math
 
 from loguru import logger
+import torch.distributed as dist
 
 import dill
 from pathlib import Path
