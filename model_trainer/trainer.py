@@ -745,7 +745,7 @@ class Trainer(GeneratorTrainer, ABC):
         text_padded, input_lengths, mel_padded, gate_padded, output_lengths = batch
         text_padded = to_gpu(text_padded, self.device).long()
         input_lengths = to_gpu(input_lengths, self.device).long()
-        max_len = torch.max(input_lengths.data, self.device).item()
+        max_len = torch.max(input_lengths.data).item()
         mel_padded = to_gpu(mel_padded, self.device).float()
         gate_padded = to_gpu(gate_padded, self.device).float()
         output_lengths = to_gpu(output_lengths, self.device).long()
