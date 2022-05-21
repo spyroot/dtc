@@ -81,13 +81,11 @@ def load_filepaths_and_text(filename, split="|"):
 def to_gpu(x, device):
     """
 
-    Args:
-        x:
-
-    Returns:
-
+    :param x:
+    :param device:
+    :return:
     """
-    x = x.contiguous(device=device)
+    x = x.contiguous()
     if torch.cuda.is_available():
         x = x.cuda(non_blocking=True)
     return torch.autograd.Variable(x, device=device)
