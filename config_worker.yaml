@@ -134,8 +134,7 @@ settings:
     backend: "nccl"
     url: "tcp://192.168.254.205:54321"
     master_address:  192.168.254.205
-#    url: "tcp://localhost:54321"
-#    master_address: localhost
+    master_address: localhost
     master_port: 54321
     cudnn_enabled: True
     cudnn_benchmark: False
