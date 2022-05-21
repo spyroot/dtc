@@ -680,10 +680,12 @@ class Trainer(GeneratorTrainer, ABC):
         :return:
         """
 
-        if self.trainer_spec.is_distributed_run():
-            device = torch.device(f"cuda:{dist.get_rank()}")
-        else:
-            device = self.device
+        device = self.device
+
+        # if self.trainer_spec.is_distributed_run():
+        #     device = torch.device(f"cuda:{dist.get_rank()}")
+        # else:
+        #     device = self.device
 
         current_total_loss = 0
         total_accuracy = 0
