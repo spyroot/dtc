@@ -13,7 +13,7 @@ class DistributedDataWrapper(DistributedDataParallel):
         super(DistributedDataWrapper, self).__init__(module=module, device_ids=device_ids, output_device=output_device)
         self.device_ids = device_ids
         self.output_device = output_device
-        self._module = module
+        self.nn_model = module
 
         # for p in self.module.state_dict().values():
         #     if not torch.is_tensor(p):
@@ -21,7 +21,7 @@ class DistributedDataWrapper(DistributedDataParallel):
         #     dist.broadcast(p, 0)
 
     def train(self, mode: bool = True):
-        return self._module.train()
+        return self.nn_model.train()
 
     #     def allreduce_params():
     #         if self.needs_reduction:
