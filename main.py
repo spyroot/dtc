@@ -20,7 +20,7 @@ import torch.distributed as dist
 os.environ["NCCL_DEBUG"] = "INFO"
 os.environ["NCCL_IB_DISABLE"] = "1"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-os.environ["LOCAL_RANK"] = 0
+os.environ["LOCAL_RANK"] = "0"
 
 # docker network create -d macvlan --subnet=192.168.254.0/24 --ip-range=192.168.254.64/29 --gateway=192.168.254.100 -o parent=eth0 macvlan macvlan_mode=bridge
 # docker run --gpus=all --rm --network macvlan -v ${PWD}:/datasets --workdir=/datasets dtc_rt:v1
