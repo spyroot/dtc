@@ -73,11 +73,12 @@ class TacotronSTFT(torch.nn.Module):
         -------
         mel_output: torch.FloatTensor of shape (B, n_mel_channels, T)
         """
-        assert (torch.min(y.data) >= -1)
-        assert (torch.max(y.data) <= 1)
+        # assert (torch.min(y.data) >= -1)
+        # assert (torch.max(y.data) <= 1)
 
         magnitudes, phases = self.stft_fn.transform(y)
         magnitudes = magnitudes.data
         mel_output = torch.matmul(self.mel_basis, magnitudes)
         mel_output = self.spectral_normalize(mel_output)
+
         return mel_output

@@ -19,6 +19,17 @@ import torch.distributed as dist
 os.environ["NCCL_DEBUG"] = "INFO"
 os.environ["NCCL_IB_DISABLE"] = "1"
 
+# docker network create -d macvlan --subnet=192.168.254.0/24 --ip-range=192.168.254.64/29 --gateway=192.168.254.100 -o parent=eth0 macvlan macvlan_mode=bridge
+# docker run --gpus=all --rm --network macvlan -v ${PWD}:/datasets --workdir=/datasets dtc_rt:v1
+# docker run --gpus=all --rm --network mynet -v ${PWD}:/datasets --workdir=/datasets dtc_rt:v1
+
+
+# docker network create -d macvlan --subnet=192.168.254.0/24 --gateway=192.168.254.100 -o ipvlan_mode=l2 -o parent=eth0 ipvlan_net
+
+# docker run --gpus=all --rm --network ipvlan_net --ip 192.168.254.232 -v ${PWD}:/datasets --workdir=/datasets dtc_rt:v1
+#
+# docker run --gpus=all --rm --network bridge --ip 192.168.254.232 -v ${PWD}:/datasets --workdir=/datasets dtc_rt:v1
+
 
 def convert_mel_to_data(encoder_spec, target_dir: str, dataset,
                         dataset_name: str, data_type: str, post_check=True, verbose=True):
