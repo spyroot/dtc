@@ -9,8 +9,8 @@ from torch.nn.parallel import DistributedDataParallel
 
 class DistributedDataWrapper(DistributedDataParallel):
 
-    def __init__(self):
-        super(DistributedDataParallel, self).__init__()
+    def __init__(self, module: Module, device_ids=None, output_device=None):
+        super(DistributedDataParallel, self).__init__(module=module, device_ids=device_ids, output_device=output_device)
        # self._module = module
 
         # for p in self.module.state_dict().values():
