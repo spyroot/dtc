@@ -2,6 +2,7 @@ from typing import Optional
 
 import torch
 import torch.distributed as dist
+from torch import T
 from torch.nn.modules import Module
 from torch.autograd import Variable
 from torch.nn.parallel import DistributedDataParallel
@@ -18,8 +19,8 @@ class DistributedDataWrapper(DistributedDataParallel):
         #         continue
         #     dist.broadcast(p, 0)
 
-    def train(self):
-        self._module.train()
+    def train(self: T, mode: bool = True) -> T:
+        return self._module.train()
 
     #     def allreduce_params():
     #         if self.needs_reduction:
