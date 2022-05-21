@@ -31,9 +31,9 @@ from generator_trainer import GeneratorTrainer
 from tqdm import tqdm, tnrange
 import torch.optim.lr_scheduler as lr_scheduler
 from torch import optim
-from torch.nn.parallel import DistributedDataParallel
-from torch.autograd import Variable
-import numpy as np
+# from torch.nn.parallel import DistributedDataParallel
+# from torch.autograd import Variable
+# import numpy as np
 
 try:
     import ray
