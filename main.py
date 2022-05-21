@@ -222,8 +222,9 @@ def main(cmd_args):
     trainer_spec = ExperimentSpecs(spec_config=cmd_args.config, verbose=False)
     if cmd_args.mode.strip().upper().lower() == 'standalone':
         trainer_spec.set_distributed(False)
-    else:
-        trainer_spec.set_distributed(True)
+    elif cmd_args.mode.strip().upper().lower() == 'distributed':
+        trainer_spec.set_distributed(False)
+
 
     if trainer_spec.is_distributed_run():
         set_random_seeds(trainer_spec.seed())
@@ -279,7 +280,6 @@ if __name__ == '__main__':
     # logger.add(sys.stderr, level=config.LOG_LEVEL)
     # logger.enable()
     args = parser.parse_args()
-
     cuda_device_count = torch.cuda.device_count()
 
     try:
