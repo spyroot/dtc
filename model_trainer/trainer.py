@@ -189,10 +189,15 @@ class Trainer(GeneratorTrainer, ABC):
         :param model_name:
         :return: nothing
         """
+        print("DIST RANK {}", dist.get_rank())
+        # device = torch.device(f"cuda:{int(args.rank)}")
+
         if model_name == 'encoder':
             if self.trainer_spec.is_distributed_run():
+                device = torch.device(f"cuda:{dist.get_rank()}")
+
                 n = torch.cuda.device_count() // self.n_gpus
-                logger.info("Number gpu on the node {} device".format(n, self.device))
+                logger.info("Number gpu on the node {} device".format(n, device))
                 device_ids = list(range(self.rank * n, (self.rank + 1) * n))
                 print("############### DEVICE IDS", device_ids)
                 # print(f"[{os.getpid()}] rank = {dist.get_rank()}, "
@@ -202,7 +207,7 @@ class Trainer(GeneratorTrainer, ABC):
                 # self.device = torch.device(f"cuda:{self.rank}")
                 logger.info("Creating DDP")
                 #torch.cuda.set_device()
-                model = Tacotron2(self.trainer_spec, self.device).to(self.device)
+                model = Tacotron2(self.trainer_spec, device).to(device)
                 model = DistributedDataWrapper(model, device_ids=[self.rank], output_device=self.rank)
             else:
                 model = Tacotron2(self.trainer_spec, self.device).to(self.device)
