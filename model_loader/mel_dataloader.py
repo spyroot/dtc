@@ -77,8 +77,7 @@ class Mel_Dataloader:
         if self.trainer_spec.is_distributed_run():
             logger.info("Create distribute sampler rank {} , world size {}", self.rank, self.world_size)
             train_sampler = DistributedSampler(self.train_dataset,
-                                               num_replicas=self.world_size,
-                                               rank=self.rank)
+                                               num_replicas=self.world_size)
             is_shuffle = False
         else:
             # we shuffle only if on single run otherwise it false.
@@ -113,7 +112,7 @@ class Mel_Dataloader:
         if self.trainer_spec.is_distributed_run():
             self.val_sampler = DistributedSampler(self.validation_dataset,
                                                   num_replicas=self.world_size,
-                                                  rank=self.rank)
+                                                )
 
         self.val_loader = DataLoader(self.validation_dataset,
                                      sampler=self.val_sampler,
