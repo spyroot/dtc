@@ -22,7 +22,7 @@ from model_loader.mel_dataloader import Mel_Dataloader
 from model_loader.mel_dataset_loader import TextMelLoader
 from models.model import Tacotron2
 from tacotron2.loss_function import Tacotron2Loss
-from tacotron2.utils import fmtl_print, fmt_print
+from tacotron2.utils import fmtl_print, fmt_print, to_gpu
 from numpy import finfo
 from torch.nn.utils import clip_grad_norm_
 import argparse
@@ -573,7 +573,7 @@ class Trainer(GeneratorTrainer, ABC):
         with torch.no_grad():
             total_prediction_loss = 0.0
             for i, batch in enumerate(self.validation_loader):
-                x, y = model.parse_batch(batch)
+                x, y = self.parse_batch(batch)
                 y_pred = model(x)
                 # our loss mel_loss + gate_loss
                 loss = self.criterion(y_pred, y)
@@ -673,7 +673,7 @@ class Trainer(GeneratorTrainer, ABC):
             # for param_group in self.optimizer[model_name].param_groups:
             #     param_group['lr'] = learning_rate
             model.zero_grad(set_to_none=True)
-            x, y = model.parse_batch(batch)
+            x, y = self.parse_batch(batch)
             y_pred = model(x)
 
             loss = self.criterion(y_pred, y)
@@ -733,6 +733,23 @@ class Trainer(GeneratorTrainer, ABC):
 
         self.iters[model_name] = step
         return step
+
+    def parse_batch(self, batch):
+        """
+
+        :param batch:
+        :return:
+        """
+        text_padded, input_lengths, mel_padded, gate_padded, output_lengths = batch
+        text_padded = to_gpu(text_padded).long()
+        input_lengths = to_gpu(input_lengths).long()
+        max_len = torch.max(input_lengths.data).item()
+        mel_padded = to_gpu(mel_padded).float()
+        gate_padded = to_gpu(gate_padded).float()
+        output_lengths = to_gpu(output_lengths).long()
+
+        return (text_padded, input_lengths, mel_padded, max_len, output_lengths), (mel_padded, gate_padded)
+
 
     def train(self, model_name='encoder'):
         """Training and validation logging results to tensorboard and stdout
@@ -872,7 +889,7 @@ class Trainer(GeneratorTrainer, ABC):
                     #     param_group['lr'] = learning_rate
 
                     model.zero_grad()
-                    x, y = model.parse_batch(batch)
+                    x, y = self.parse_batch(batch)
                     with torch.cuda.amp.autocast():
                         y_pred = model(x)
 
