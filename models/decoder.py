@@ -22,8 +22,6 @@ class Decoder(nn.Module):
         self.encoder_spec = self.model_spec.get_encoder()
         self.device = device
 
-        print("Decode", self.experiment_specs.n_frames_per_step)
-
         self.n_mel_channels = self.encoder_spec.n_mel_channels()
         self.n_frames_per_step = self.experiment_specs.n_frames_per_step
         self.encoder_embedding_dim = self.experiment_specs.encoder_embedding_dim

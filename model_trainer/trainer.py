@@ -183,16 +183,13 @@ class Trainer(GeneratorTrainer, ABC):
         :return: nothing
         """
         if model_name == 'encoder':
-
-            n = torch.cuda.device_count() // self.n_gpus
-            print("NUM gpus", n)
-            device_ids = list(range(self.rank * n, (self.rank + 1) * n))
-            print(f"[{os.getpid()}] rank = {dist.get_rank()}, "
-                  f"world_size = {dist.get_world_size()}, "
-                  f"n = {n}, device_ids = {device_ids} \n", end='')
-
-            print("DEVICE", self.device)
             if self.trainer_spec.is_distributed_run():
+                n = torch.cuda.device_count() // self.n_gpus
+                logger.info("Number gpu on the node {} device".format(n, self.device))
+                device_ids = list(range(self.rank * n, (self.rank + 1) * n))
+                print(f"[{os.getpid()}] rank = {dist.get_rank()}, "
+                      f"world_size = {dist.get_world_size()}, "
+                      f"n = {n}, device_ids = {device_ids} \n", end='')
                 model = Tacotron2(self.trainer_spec, self.device).to(self.device)
             else:
                 model = Tacotron2(self.trainer_spec, self.device).to(self.device)
@@ -498,7 +495,7 @@ class Trainer(GeneratorTrainer, ABC):
             return False
 
         # in case we run distributed no need save.
-        if trainer.trainer_spec.is_distributed_run() and self.rank > 0:
+        if self.trainer_spec.is_distributed_run() and self.rank > 0:
             return
 
         # model save predicate condition , either iteration or epoch counter.

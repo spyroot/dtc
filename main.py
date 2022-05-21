@@ -19,6 +19,7 @@ import torch.distributed as dist
 os.environ["NCCL_DEBUG"] = "INFO"
 os.environ["NCCL_IB_DISABLE"] = "1"
 
+
 # docker network create -d macvlan --subnet=192.168.254.0/24 --ip-range=192.168.254.64/29 --gateway=192.168.254.100 -o parent=eth0 macvlan macvlan_mode=bridge
 # docker run --gpus=all --rm --network macvlan -v ${PWD}:/datasets --workdir=/datasets dtc_rt:v1
 # docker run --gpus=all --rm --network mynet -v ${PWD}:/datasets --workdir=/datasets dtc_rt:v1
@@ -145,7 +146,8 @@ def signal_handler(sig, frame):
 
 
 signal.signal(signal.SIGINT, signal_handler)
-signal.signal(signal.SIGTSTP, signal_handler)
+if os.name != 'nt':
+    signal.signal(signal.SIGTSTP, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
 
 
@@ -160,7 +162,10 @@ def train(spec=None, cmd_args=None, device=None, verbose=True, cudnn_bench=False
     :return:
     """
     if int(cmd_args.rank) == 0:
-        logger.info("Staring rank zero node")
+        logger.info("Staring rank zero node.")
+
+    if spec.is_distributed_run():
+        logger.info("Staring training in distributed settings.")
 
     dataloader = Mel_Dataloader(spec, rank=cmd_args.rank, world_size=cmd_args.world_size, verbose=True)
     torch.backends.cudnn.enabled = True
@@ -214,7 +219,13 @@ def main(cmd_args):
     :return:
     """
     _device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    trainer_spec = ExperimentSpecs(verbose=False)
+    trainer_spec = ExperimentSpecs(spec_config=cmd_args.config, verbose=False)
+    if cmd_args.mode.strip().upper().lower() == 'standalone':
+        trainer_spec.set_distributed(False)
+    elif cmd_args.mode.strip().upper().lower() == 'distributed':
+        trainer_spec.set_distributed(False)
+
+
     if trainer_spec.is_distributed_run():
         set_random_seeds(trainer_spec.seed())
 
@@ -253,6 +264,13 @@ if __name__ == '__main__':
                         required=False, help='set verbose output')
     parser.add_argument('--benchmark', type=bool, default=False,
                         required=False, help='set verbose output')
+    parser.add_argument('--config', type=str, help='set config file',
+                        default='config.yaml',
+                        required=False)
+    parser.add_argument('--mode', type=str, default="standalone",
+                        help='run trainer in distributed or standalone',
+                        required=False)
+
     # parser.add_argument('--load', type=bool, default=False,
     #                     required=False, help='set verbose output')
     # level = logger.level("ERROR")
@@ -263,4 +281,9 @@ if __name__ == '__main__':
     # logger.enable()
     args = parser.parse_args()
     cuda_device_count = torch.cuda.device_count()
-    main(args)
+
+    try:
+        main(args)
+    except FileNotFoundError as file_error:
+        print("File not found ", str(file_error))
+        sys.exit(2)

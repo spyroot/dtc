@@ -24,7 +24,7 @@ metrics_dir: "metrics"                     # metrics dir in case we need store s
 datasets:
   LJSpeech:
     ds_type: "audio"
-    dir: "/mnt/c/Users/neros/Dropbox/Datasets/LJSpeech-1.1"
+    dir: "~/Dropbox/Datasets/LJSpeech-1.1"
     training_meta: ljs_audio_text_train_filelist.txt
     validation_meta:  ljs_audio_text_val_filelist.txt
     test_meta: ljs_audio_text_test_filelist.txt
@@ -33,7 +33,7 @@ datasets:
     file_type: "wav"
   LJSpeechSmallRaw:
     ds_type: "audio"
-    dir: "/mnt/c/Users/neros/Dropbox/Datasets/LJSpeechSmall"
+    dir: "~/Dropbox/Datasets/LJSpeechSmall"
 #    dir: "~/Dropbox/Datasets/LJSpeechSmall"
     format: raw
     training_meta: ljs_audio_text_train_filelist.txt
@@ -44,7 +44,7 @@ datasets:
     file_type: "wav"
   LJSpeechSmallPkl:
     ds_type: "audio"
-    dir: "/mnt/c/Users/neros/Dropbox/Datasets/LJSpeechSmall"
+    dir: "~/Dropbox/Datasets/LJSpeechSmall"
     format: tensor_mel
     training_meta: LJSpeechSmall_train_80.pt
     validation_meta: LJSpeechSmall_validate_80.pt
@@ -131,9 +131,10 @@ settings:
     # if we distribute
     distributed: True
     # what distributed backend uses.
-    backend: "nccl"
-    url: "tcp://192.168.254.205:54321"
-    master_address:  192.168.254.205
+    #backend: "nccl"
+    backend: "gloo"
+    url: "tcp://localhost:54321"
+    master_address: 192.168.254.230
 #    url: "tcp://localhost:54321"
 #    master_address: localhost
     master_port: 54321
