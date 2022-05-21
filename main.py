@@ -203,6 +203,7 @@ def train(spec=None, cmd_args=None, device=None, verbose=True, cudnn_bench=False
     if spec.is_distributed_run():
         logger.info("Staring training in distributed settings. rank {} world size {}".format(args.rank, args.world_size))
         init_distributed(spec, int(args.rank), int(args.world_size))
+        device = torch.device(f"cuda:{int(args.rank)}")
         dist.barrier()
 
     dataloader = Mel_Dataloader(spec, rank=cmd_args.rank, world_size=cmd_args.world_size, verbose=True)

@@ -674,6 +674,11 @@ class Trainer(GeneratorTrainer, ABC):
         :return:
         """
 
+        if self.trainer_spec.is_distributed_run():
+            device = torch.device(f"cuda:{dist.get_rank()}")
+        else:
+            device = self.device
+
         current_total_loss = 0
         total_accuracy = 0
         step = self.get_last_iterator(model_name)
@@ -808,7 +813,14 @@ class Trainer(GeneratorTrainer, ABC):
             logger.info("Last iteration saved", self.iters[model_name])
 
         #
+        if self.trainer_spec.is_distributed_run():
+            device = torch.device(f"cuda:{dist.get_rank()}")
+        else:
+            device = self.device
+
+        self.criterion.to(device)
         model = self.models[model_name].to(self.device)
+
         self.tqdm_iter = self.trainer_iterator(model_name)
         optimizer = self.optimizers[model_name]
 
