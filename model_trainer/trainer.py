@@ -66,6 +66,7 @@ class Trainer(GeneratorTrainer, ABC):
         # self.n_gpus = model_spec['model_spec']
         # self.rank = model_spec['model_spec']
         # self.group_name = model_spec['group_name']
+        self.trainer_spec = trainer_spec
 
         self.n_gpus = world_size
         if self.trainer_spec.is_distributed_run():
@@ -76,7 +77,6 @@ class Trainer(GeneratorTrainer, ABC):
         self.schedulers = {}
         self.optimizers = {}
 
-        self.trainer_spec = trainer_spec
         if not trainer_spec.is_initialized():
             raise Exception("you need initialize trainer specs first.")
 
