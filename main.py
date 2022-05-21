@@ -23,12 +23,8 @@ os.environ["NCCL_IB_DISABLE"] = "1"
 # docker network create -d macvlan --subnet=192.168.254.0/24 --ip-range=192.168.254.64/29 --gateway=192.168.254.100 -o parent=eth0 macvlan macvlan_mode=bridge
 # docker run --gpus=all --rm --network macvlan -v ${PWD}:/datasets --workdir=/datasets dtc_rt:v1
 # docker run --gpus=all --rm --network mynet -v ${PWD}:/datasets --workdir=/datasets dtc_rt:v1
-
-
 # docker network create -d macvlan --subnet=192.168.254.0/24 --gateway=192.168.254.100 -o ipvlan_mode=l2 -o parent=eth0 ipvlan_net
-
 # docker run --gpus=all --rm --network ipvlan_net --ip 192.168.254.232 -v ${PWD}:/datasets --workdir=/datasets dtc_rt:v1
-#
 # docker run --gpus=all --rm --network bridge --ip 192.168.254.232 -v ${PWD}:/datasets --workdir=/datasets dtc_rt:v1
 
 
@@ -222,6 +218,7 @@ def main(cmd_args):
     trainer_spec = ExperimentSpecs(spec_config=cmd_args.config, verbose=False)
     if cmd_args.mode.strip().upper().lower() == 'standalone':
         trainer_spec.set_distributed(False)
+        sys.exit(1)
     elif cmd_args.mode.strip().upper().lower() == 'distributed':
         trainer_spec.set_distributed(True)
 
@@ -265,7 +262,7 @@ if __name__ == '__main__':
     parser.add_argument('--config', type=str, help='set config file',
                         default='config.yaml',
                         required=False)
-    parser.add_argument('--mode', type=str, default="standalone",
+    parser.add_argument('--mode', type=str, default="",
                         help='run trainer in distributed or standalone',
                         required=False)
 
