@@ -201,7 +201,7 @@ class Trainer(GeneratorTrainer, ABC):
                 # torch.cuda.set_device(self.rank)
                 # self.device = torch.device(f"cuda:{self.rank}")
                 logger.info("Creating DDP")
-                torch.cuda.set_device(dist.get_rank())
+                #torch.cuda.set_device()
                 model = Tacotron2(self.trainer_spec, self.device).to(self.device)
                 model = DistributedDataWrapper(model, device_ids=[self.rank], output_device=self.rank)
             else:
