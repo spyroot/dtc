@@ -223,14 +223,12 @@ def main(cmd_args):
     if cmd_args.mode.strip().upper().lower() == 'standalone':
         trainer_spec.set_distributed(False)
     elif cmd_args.mode.strip().upper().lower() == 'distributed':
-        trainer_spec.set_distributed(False)
-
+        trainer_spec.set_distributed(True)
 
     if trainer_spec.is_distributed_run():
         set_random_seeds(trainer_spec.seed())
 
     trainer_spec.model_files.build_dir()
-
     if cmd_args.train:
         train(spec=trainer_spec, cmd_args=cmd_args, device=_device)
 
