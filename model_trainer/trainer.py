@@ -757,6 +757,12 @@ class Trainer(GeneratorTrainer, ABC):
         dist.destroy_process_group()
         print(f"Rank {rank} is done.")
 
+    def reduce_tensor(self, tensor, n_gpus):
+        rt = tensor.clone()
+        dist.all_reduce(rt, op=dist.reduce_op.SUM)
+        rt /= n_gpus
+        return rt
+
     def train(self, model_name='encoder'):
         """Training and validation logging results to tensorboard and stdout
 
@@ -777,7 +783,7 @@ class Trainer(GeneratorTrainer, ABC):
         #     self.load_models()
 
         if self.trainer_spec.is_distributed_run():
-            torch.cuda.set_device(self.rank)
+            torch.cuda.set_device(self.device)
         torch.cuda.empty_cache()
 
         if self.is_trained():
