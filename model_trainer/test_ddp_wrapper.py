@@ -1,8 +1,6 @@
 import os
-
 import torch
 from torch.nn.modules import Module
-
 from distributed_wrapper import DistributedDataWrapper
 
 
@@ -43,13 +41,13 @@ def init_distributed():
     torch.distributed.init_process_group(
             backend="nccl",
             init_method="tcp://localhost:54321",
-            world_size=2,
+            world_size=1,
             rank=0)
 
 
-_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-init_distributed()
-torch.cuda.set_device(0 % torch.cuda.device_count())
-ll = LinearNorm(in_dim=128, out_dim=128).to(_device)
-model = DistributedDataWrapper(ll, device_ids=[0], output_device=0)
-model.train()
+# _device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# init_distributed()
+# torch.cuda.set_device(0 % torch.cuda.device_count())
+# ll = LinearNorm(in_dim=128, out_dim=128).to(_device)
+# model = DistributedDataWrapper(ll, device_ids=[0], output_device=0)
+# model.train()

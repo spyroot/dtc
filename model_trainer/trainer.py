@@ -4,13 +4,11 @@ import time
 from abc import ABC
 
 import torch
-import torch.distributed as dist
+# import torch.distributed as dist
 import math
 
 from loguru import logger
 
-from torch.utils.data.distributed import DistributedSampler
-from torch.utils.data import DataLoader
 import dill
 from pathlib import Path
 
@@ -18,9 +16,7 @@ from model_trainer.distributed_wrapper import DistributedDataWrapper
 from model_trainer.trainer_metrics import Metrics
 from model_trainer.trainer_logger import TensorboardTrainerLogger
 from model_trainer.trainer_specs import ExperimentSpecs
-from distributed import apply_gradient_allreduce
-from model_loader.mel_dataloader import Mel_Dataloader
-from model_loader.mel_dataset_loader import TextMelLoader
+#from distributed import apply_gradient_allreduce
 from models.model import Tacotron2
 from tacotron2.loss_function import Tacotron2Loss
 from tacotron2.utils import fmtl_print, fmt_print, to_gpu
@@ -195,9 +191,9 @@ class Trainer(GeneratorTrainer, ABC):
                 n = torch.cuda.device_count() // self.n_gpus
                 logger.info("Number gpu on the node {} device".format(n, self.device))
                 device_ids = list(range(self.rank * n, (self.rank + 1) * n))
-                print(f"[{os.getpid()}] rank = {dist.get_rank()}, "
-                      f"world_size = {dist.get_world_size()}, "
-                      f"n = {n}, device_ids = {device_ids} \n", end='')
+                # print(f"[{os.getpid()}] rank = {dist.get_rank()}, "
+                #       f"world_size = {dist.get_world_size()}, "
+                #       f"n = {n}, device_ids = {device_ids} \n", end='')
                 model = Tacotron2(self.trainer_spec, self.device).to(self.device)
             else:
                 model = Tacotron2(self.trainer_spec, self.device).to(self.device)
@@ -678,8 +674,8 @@ class Trainer(GeneratorTrainer, ABC):
             x, y = self.parse_batch(batch)
             y_pred = model(x)
 
-            if hparams.distributed_run:
-                reduced_loss = dist.reduce_tensor(loss.data, n_gpus).item()
+            # if self.trainer_spec.is_distributed_run():
+            #     reduced_loss = dist.reduce_tensor(loss.data, n_gpus).item()
             loss = self.criterion(y_pred, y)
             current_total_loss += loss.item()
             normal_loss = loss.item()
@@ -718,7 +714,7 @@ class Trainer(GeneratorTrainer, ABC):
             if self.rank == 0 and self.save_if_need(model_name, step, self.epoch):
                 self.saved_run = step
 
-            dist.barrier()
+            #dist.barrier()
 
             hparams = \
                 {
@@ -809,8 +805,8 @@ class Trainer(GeneratorTrainer, ABC):
                     self.trainer_spec.epochs(), self.last_epochs, len(self.train_loader),
                     self.trainer_spec.epochs() * len(self.train_loader))
 
-        if self.trainer_spec.is_distributed_run():
-            model = dist
+        # if self.trainer_spec.is_distributed_run():
+        #     model = dist
         model.train()
         self.tqdm_iter.set_postfix({'step': it})
         for epoch in self.tqdm_iter:
@@ -862,8 +858,8 @@ class Trainer(GeneratorTrainer, ABC):
                 from apex import amp
                 model, optimizer = amp.initialize(model, optimizer, opt_level='O2')
             #
-            if self.trainer_spec.is_distributed_run():
-                model = apply_gradient_allreduce(model)
+        #    if self.trainer_spec.is_distributed_run():
+               # model = apply_gradient_allreduce(model)
             #
             #
             # # logger = prepare_directories_and_logger(
