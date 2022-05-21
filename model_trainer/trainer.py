@@ -33,6 +33,7 @@ from torch import optim
 from torch.nn.parallel import DistributedDataParallel
 from torch.autograd import Variable
 import numpy as np
+
 try:
     import ray
     from ray import tune
@@ -140,12 +141,12 @@ class Trainer(GeneratorTrainer, ABC):
         torch.manual_seed(self.trainer_spec.seed())
         torch.cuda.manual_seed(self.trainer_spec.seed())
 
-    #def setup(rank, world_size):
-        # os.environ['MASTER_ADDR'] = 'localhost'
-        # os.environ['MASTER_PORT'] = '12355'
-        #
-        # # initialize the process group
-        # dist.init_process_group("gloo", rank=rank, world_size=world_size)
+    # def setup(rank, world_size):
+    # os.environ['MASTER_ADDR'] = 'localhost'
+    # os.environ['MASTER_PORT'] = '12355'
+    #
+    # # initialize the process group
+    # dist.init_process_group("gloo", rank=rank, world_size=world_size)
 
     # @staticmethod
 
@@ -176,10 +177,10 @@ class Trainer(GeneratorTrainer, ABC):
             logger.info("resolve hostname {}".format(address))
 
         torch.distributed.init_process_group(
-            backend=self.trainer_spec.get_backend(),
-            init_method=self.trainer_spec.dist_url(),
-            world_size=self.n_gpus,
-            rank=self.rank)
+                backend=self.trainer_spec.get_backend(),
+                init_method=self.trainer_spec.dist_url(),
+                world_size=self.n_gpus,
+                rank=self.rank)
         print("Done init")
         logger.debug("Done initializing distributed")
 
@@ -322,7 +323,7 @@ class Trainer(GeneratorTrainer, ABC):
         #         bar_format="{l_bar}{bar}|{n:.1f}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]"
         # ):
 
-        #tqdm_iter.set_postfix({'total_epoch_loss': 0})
+        # tqdm_iter.set_postfix({'total_epoch_loss': 0})
         return tqdm_iter
 
     def create_models(self):
@@ -676,6 +677,8 @@ class Trainer(GeneratorTrainer, ABC):
             x, y = self.parse_batch(batch)
             y_pred = model(x)
 
+            if hparams.distributed_run:
+                reduced_loss = dist.reduce_tensor(loss.data, n_gpus).item()
             loss = self.criterion(y_pred, y)
             current_total_loss += loss.item()
             normal_loss = loss.item()
@@ -750,7 +753,6 @@ class Trainer(GeneratorTrainer, ABC):
 
         return (text_padded, input_lengths, mel_padded, max_len, output_lengths), (mel_padded, gate_padded)
 
-
     def train(self, model_name='encoder'):
         """Training and validation logging results to tensorboard and stdout
 
@@ -806,6 +808,8 @@ class Trainer(GeneratorTrainer, ABC):
                     self.trainer_spec.epochs(), self.last_epochs, len(self.train_loader),
                     self.trainer_spec.epochs() * len(self.train_loader))
 
+        if self.trainer_spec.is_distributed_run():
+            model = dist
         model.train()
         self.tqdm_iter.set_postfix({'step': it})
         for epoch in self.tqdm_iter:
@@ -824,7 +828,7 @@ class Trainer(GeneratorTrainer, ABC):
             t_writer.flush()
             #  tune.report(loss=(val_loss / val_steps), accuracy=correct / total)
 
-        if self.save_if_need(model_name, it, self.trainer_spec.epochs(), last_epoch=True):
+        if self.rank == 0 and self.save_if_need(model_name, it, self.trainer_spec.epochs(), last_epoch=True):
             if self.verbose:
                 fmtl_print("Saved last epoch", self.trainer_spec.epochs())
 
@@ -980,71 +984,71 @@ class Trainer(GeneratorTrainer, ABC):
 # test_best_model(best_trial)
 
 
-    #
-    # if is_inference:
-    #     # trainer = Trainer(experiment_specs, dataloader, verbose=True, device=device)
-    #     # text = "Hello world, I missed you so much."
-    #     # utils = torch.hub.load('NVIDIA/DeepLearningExamples:torchhub', 'nvidia_tts_utils')
-    #     # sequences, lengths = utils.prepare_input_sequence([text])
-    #
-    #     text = "artist would have difficulty in doing such accurate work"
-    #     sequence = np.array(text_to_sequence(text, ['english_cleaners']))[None, :]
-    #     sequence = torch.autograd.Variable(torch.from_numpy(sequence)).cuda().long()
-    #
-    #     # model_math = 'fp16'
-    #     waveglow = torch.hub.load('NVIDIA/DeepLearningExamples:torchhub', 'nvidia_waveglow')
-    #     waveglow = waveglow.remove_weightnorm(waveglow)
-    #     waveglow = waveglow.to('cuda')
-    #     waveglow.eval()
-    #
-    #     with torch.no_grad():
-    #         print(sequence)
-    #         mel_outputs, mel_outputs_post_net, alignments = trainer.inference(sequence)
-    #         audio_from_mel = waveglow.infer(mel_outputs)
-    #         audio_from_post = waveglow.infer(mel_outputs_post_net)
-    #         print("waveglow return mel", audio_from_mel.shape)
-    #         print("waveglow return post", audio_from_post.shape)
-    #
-    #         audio_numpy_mel = audio_from_mel[0].data.cpu().numpy()
-    #         audio_numpy_post = audio_from_post[0].data.cpu().numpy()
-    #         #
-    #         rate = 22050
-    #         from scipy.io.wavfile import write
-    #
-    #         write("audio_mel.wav", rate, audio_numpy_mel)
-    #         write("audio_from_post.wav", rate, audio_numpy_post)
+#
+# if is_inference:
+#     # trainer = Trainer(experiment_specs, dataloader, verbose=True, device=device)
+#     # text = "Hello world, I missed you so much."
+#     # utils = torch.hub.load('NVIDIA/DeepLearningExamples:torchhub', 'nvidia_tts_utils')
+#     # sequences, lengths = utils.prepare_input_sequence([text])
+#
+#     text = "artist would have difficulty in doing such accurate work"
+#     sequence = np.array(text_to_sequence(text, ['english_cleaners']))[None, :]
+#     sequence = torch.autograd.Variable(torch.from_numpy(sequence)).cuda().long()
+#
+#     # model_math = 'fp16'
+#     waveglow = torch.hub.load('NVIDIA/DeepLearningExamples:torchhub', 'nvidia_waveglow')
+#     waveglow = waveglow.remove_weightnorm(waveglow)
+#     waveglow = waveglow.to('cuda')
+#     waveglow.eval()
+#
+#     with torch.no_grad():
+#         print(sequence)
+#         mel_outputs, mel_outputs_post_net, alignments = trainer.inference(sequence)
+#         audio_from_mel = waveglow.infer(mel_outputs)
+#         audio_from_post = waveglow.infer(mel_outputs_post_net)
+#         print("waveglow return mel", audio_from_mel.shape)
+#         print("waveglow return post", audio_from_post.shape)
+#
+#         audio_numpy_mel = audio_from_mel[0].data.cpu().numpy()
+#         audio_numpy_post = audio_from_post[0].data.cpu().numpy()
+#         #
+#         rate = 22050
+#         from scipy.io.wavfile import write
+#
+#         write("audio_mel.wav", rate, audio_numpy_mel)
+#         write("audio_from_post.wav", rate, audio_numpy_post)
 
-    # mel_outputs, mel_outputs_postnet, _, alignments = model.inference(sequence)
-    # plot_data((mel_outputs.float().data.cpu().numpy()[0],
-    #            mel_outputs_postnet.float().data.cpu().numpy()[0],
-    #            alignments.float().data.cpu().numpy()[0].T))
+# mel_outputs, mel_outputs_postnet, _, alignments = model.inference(sequence)
+# plot_data((mel_outputs.float().data.cpu().numpy()[0],
+#            mel_outputs_postnet.float().data.cpu().numpy()[0],
+#            alignments.float().data.cpu().numpy()[0].T))
 
-    # train_loader, val_loader, xx = dataloader.create()
-    # for i, batch in enumerate(train_loader):
-    #     print(dir(batch))
+# train_loader, val_loader, xx = dataloader.create()
+# for i, batch in enumerate(train_loader):
+#     print(dir(batch))
 
-    # model.zero_grad()
-    # x, y = model.parse_batch(batch)
-    # y_pred = model(x)
+# model.zero_grad()
+# x, y = model.parse_batch(batch)
+# y_pred = model(x)
 
-    # trainer.train()
+# trainer.train()
 
-    # train_set = TextMelLoader(encoder_spec, list(training_set.values()))
-    #
-    # start = timeit.timeit()
-    # print("hello")
-    # end = timeit.timeit()
-    # for mel, text in train_set:
-    #     mel, text = train_set.__getitem__(0)
-    # print(end - start)
+# train_set = TextMelLoader(encoder_spec, list(training_set.values()))
+#
+# start = timeit.timeit()
+# print("hello")
+# end = timeit.timeit()
+# for mel, text in train_set:
+#     mel, text = train_set.__getitem__(0)
+# print(end - start)
 
-    # print("size of dataset", len(train_set))
-    # print(text.shape)
-    # print(mel.shape)
-    # model_trainer_spec.build_training_set_from_files()
-    # print(model_trainer_spec.dataset_specs['dir'])
-    # training_set, validation_set, test_set = model_trainer_spec.get_audio_ds_files()
-    # trainer = Trainer(model_trainer_spec)
-    # train_set = TextMelLoader(model_trainer_spec, list(training_set.values()))
-    # val_set = TextMelLoader(hparams.validation_files, hparams)
-    # collate_fn = TextMelCollate(hparams.n_frames_per_step)
+# print("size of dataset", len(train_set))
+# print(text.shape)
+# print(mel.shape)
+# model_trainer_spec.build_training_set_from_files()
+# print(model_trainer_spec.dataset_specs['dir'])
+# training_set, validation_set, test_set = model_trainer_spec.get_audio_ds_files()
+# trainer = Trainer(model_trainer_spec)
+# train_set = TextMelLoader(model_trainer_spec, list(training_set.values()))
+# val_set = TextMelLoader(hparams.validation_files, hparams)
+# collate_fn = TextMelCollate(hparams.n_frames_per_step)
