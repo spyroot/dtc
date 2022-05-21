@@ -68,7 +68,11 @@ class Trainer(GeneratorTrainer, ABC):
         # self.group_name = model_spec['group_name']
 
         self.n_gpus = world_size
-        self.device = device
+        if self.trainer_spec.is_distributed_run():
+            self.device = torch.device(f"cuda:{dist.get_rank()}")
+        else:
+            self.device = device
+
         self.schedulers = {}
         self.optimizers = {}
 
