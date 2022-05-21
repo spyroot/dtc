@@ -810,6 +810,8 @@ class Trainer(GeneratorTrainer, ABC):
         model.train()
         self.tqdm_iter.set_postfix({'step': it})
         for epoch in self.tqdm_iter:
+            dist.barrier()
+
             # update epoch
             self.epoch = epoch
             # train epoch's batch
