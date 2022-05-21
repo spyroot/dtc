@@ -782,8 +782,8 @@ class Trainer(GeneratorTrainer, ABC):
         # if self.rank == 0:
         #     self.load_models()
 
-        if self.trainer_spec.is_distributed_run():
-            torch.cuda.set_device(self.device)
+        # if self.trainer_spec.is_distributed_run():
+        #     #torch.cuda.set_device(self.device)
         torch.cuda.empty_cache()
 
         if self.is_trained():
