@@ -129,8 +129,8 @@ class Trainer(GeneratorTrainer, ABC):
         """
         if self.trainer_spec.is_distributed_run():
             logger.info("Starting distributed DDP training")
-            self.init_distributed()
-            dist.barrier()
+            # self.init_distributed()
+            # dist.barrier()
 
         self.create_models()
         self.create_optimizers()

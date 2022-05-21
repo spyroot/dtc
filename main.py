@@ -5,6 +5,7 @@ import random
 import signal
 import sys
 from pathlib import Path
+from socket import socket
 
 import numpy as np
 import torch
@@ -147,6 +148,41 @@ if os.name != 'nt':
 signal.signal(signal.SIGTERM, signal_handler)
 
 
+def init_distributed(self):
+    """
+
+    :return:
+    """
+    #  if self.rank != 0:
+    os.environ['MASTER_ADDR'] = self.trainer_spec.get_master_address()
+    os.environ['MASTER_PORT'] = self.trainer_spec.get_master_port()
+    # os.environ["PL_TORCH_DISTRIBUTED_BACKEND"] = "nccl"
+    assert torch.cuda.is_available(), "Distributed mode requires CUDA."
+    logger.info("Distributed Available".format(torch.cuda.device_count()))
+    logger.info("Distribute protocol nccl available {}".format(torch.distributed.is_nccl_available()))
+    logger.info("Distribute protocol mpi available {}".format(torch.distributed.is_mpi_available()))
+    logger.info("Distribute protocol glow available {}".format(torch.distributed.is_gloo_available()))
+    logger.info("Distribute endpoint {} my rank {}".format(self.trainer_spec.get_backend(), self.rank))
+
+    # Set cuda device so everything is done on the right GPU.
+    # torch.cuda.set_device(self.rank % torch.cuda.device_count())
+    logger.info("Set cuda device".format(self.rank % torch.cuda.device_count()))
+    # Initialize distributed communication
+    if self.rank == 0:
+        host = socket.gethostname()
+        address = socket.gethostbyname(host)
+        logger.info("resolve hostname {}".format(host))
+        logger.info("resolve hostname {}".format(address))
+
+    torch.distributed.init_process_group(
+            backend=self.trainer_spec.get_backend(),
+            init_method=self.trainer_spec.dist_url(),
+            world_size=self.n_gpus,
+            rank=self.rank)
+    print("Done init")
+    logger.debug("Done initializing distributed")
+
+
 def train(spec=None, cmd_args=None, device=None, verbose=True, cudnn_bench=False):
     """
 
@@ -162,6 +198,8 @@ def train(spec=None, cmd_args=None, device=None, verbose=True, cudnn_bench=False
 
     if spec.is_distributed_run():
         logger.info("Staring training in distributed settings.")
+        init_distributed()
+        dist.barrier()
 
     dataloader = Mel_Dataloader(spec, rank=cmd_args.rank, world_size=cmd_args.world_size, verbose=True)
     torch.backends.cudnn.enabled = True
