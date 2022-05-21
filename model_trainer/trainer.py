@@ -166,7 +166,7 @@ class Trainer(GeneratorTrainer, ABC):
         logger.info("Distribute endpoint {} my rank {}".format(self.trainer_spec.get_backend(), self.rank))
 
         # Set cuda device so everything is done on the right GPU.
-        torch.cuda.set_device(self.rank % torch.cuda.device_count())
+       # torch.cuda.set_device(self.rank % torch.cuda.device_count())
         logger.info("Set cuda device".format(self.rank % torch.cuda.device_count()))
         # Initialize distributed communication
         if self.rank == 0:
