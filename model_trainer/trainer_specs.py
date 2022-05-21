@@ -23,10 +23,10 @@ class ExperimentSpecs:
 
     """
 
-    def __init__(self, template_file_name='config.yaml', verbose=False):
+    def __init__(self, spec_config='config.yaml', verbose=False):
         """
 
-        :param template_file_name:
+        :param spec_config:
         :param verbose:
         """
 
@@ -37,10 +37,10 @@ class ExperimentSpecs:
         self.config_file_name = None
         current_dir = os.path.dirname(os.path.realpath(__file__))
 
-        if isinstance(template_file_name, str):
-            logger.info("Loading {} file.", template_file_name)
+        if isinstance(spec_config, str):
+            logger.info("Loading {} file.", spec_config)
             # a file name or io.string
-            self.config_file_name = Path(template_file_name)
+            self.config_file_name = Path(spec_config)
 
         self._verbose = verbose
 
@@ -308,7 +308,8 @@ class ExperimentSpecs:
                 logger.info("Reading configuration file from {}".format(self.config_file_name))
                 self.config = yaml.load(stream, Loader=yaml.FullLoader)
             except yaml.YAMLError as exc:
-                print(exc)
+                print("Check file with yaml linter it has error. ", str(exc))
+                sys.exit(2)
 
         self.read_config()
 
@@ -1260,3 +1261,11 @@ class ExperimentSpecs:
 
     def is_initialized(self) -> bool:
         return self._initialized
+
+    def set_distributed(self, value):
+        """
+         Update if distributed run or not.
+        :return:
+        """
+        if self.is_initialized and 'distributed' in self._setting:
+            self._setting['distributed'] = value

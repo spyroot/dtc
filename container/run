@@ -1,0 +1,4 @@
+# example
+docker run --gpus=all --rm -p 2222:22 -p 54321:54321 --network mynet --ip 172.168.0.230 -v ${PWD}:/datasets --workdir=/datasets dtc_rt:v1
+# example two
+docker run --gpus=all --rm --network bridge --ip 192.168.254.234 --publish-all -v ${PWD}:/datasets --workdir=/datasets dtc_rt:v1
