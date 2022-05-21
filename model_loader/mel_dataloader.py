@@ -105,7 +105,7 @@ class Mel_Dataloader:
                                            shuffle=is_shuffle,
                                            sampler=train_sampler,
                                            batch_size=self.trainer_spec.batch_size,
-                                           pin_memory=False,
+                                           pin_memory=True,
                                            drop_last=True, collate_fn=self.collate_fn)
 
         self.val_sampler = None
@@ -117,9 +117,10 @@ class Mel_Dataloader:
         self.val_loader = DataLoader(self.validation_dataset,
                                      sampler=self.val_sampler,
                                      num_workers=1,
+                                     pin_memory=True,
                                      shuffle=is_shuffle,
                                      batch_size=self.batch_size,
-                                     pin_memory=False, collate_fn=self.collate_fn)
+                                     collate_fn=self.collate_fn)
 
     def to_gpu(x):
         """

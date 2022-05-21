@@ -693,7 +693,7 @@ class Trainer(GeneratorTrainer, ABC):
             # for param_group in self.optimizer[model_name].param_groups:
             #     param_group['lr'] = learning_rate
             model.zero_grad(set_to_none=True)
-            x, y = self.parse_batch(batch)
+            x, y = self.parse_batch(batch, device)
             y_pred = model(x)
 
             # if self.trainer_spec.is_distributed_run():
@@ -756,22 +756,23 @@ class Trainer(GeneratorTrainer, ABC):
         self.iters[model_name] = step
         return step
 
-    def parse_batch(self, batch):
+    def parse_batch(self, batch, device):
         """
 
+        :param device:
         :param batch:
         :return:
         """
         text_padded, input_lengths, mel_padded, gate_padded, output_lengths = batch
-        text_padded = to_gpu(text_padded, self.device).long()
-        input_lengths = to_gpu(input_lengths, self.device).long()
+        text_padded = to_gpu(text_padded, device).long()
+        input_lengths = to_gpu(input_lengths, device).long()
         max_len = torch.max(input_lengths.data).item()
-        mel_padded = to_gpu(mel_padded, self.device).float()
-        gate_padded = to_gpu(gate_padded, self.device).float()
-        output_lengths = to_gpu(output_lengths, self.device).long()
+        mel_padded = to_gpu(mel_padded, device).float()
+        gate_padded = to_gpu(gate_padded, device).float()
+        output_lengths = to_gpu(output_lengths, device).long()
 
         print("tensor locations", text_padded.get_device())
-        return (text_padded, input_lengths, mel_padded, max_len, output_lengths), (mel_padded, gate_padded)
+        return (text_padded.to(), input_lengths, mel_padded, max_len, output_lengths), (mel_padded, gate_padded)
 
     def cleanup(self, rank):
         # dist.cleanup()
