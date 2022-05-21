@@ -15,12 +15,6 @@ from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.distributed import DistributedSampler
 import math
 
-os.environ["NCCL_DEBUG"] = "INFO"
-os.environ["NCCL_IB_DISABLE"] = "1"
-
-os.environ["NCCL_DEBUG"] = "INFO"
-os.environ["NCCL_IB_DISABLE"] = "1"
-
 
 def get_dataset():
     world_size = dist.get_world_size()
@@ -232,7 +226,6 @@ def init_process(
 if __name__ == "__main__":
     world_size = 1
     processes = []
-    os.environ['MASTER_ADDR'] = '192.168.254.205'
+    os.environ['MASTER_ADDR'] = '127.0.0.1'
     os.environ['MASTER_PORT'] = '29500'
-    #init_process(1, world_size, run)
     init_process(0, world_size, run)
