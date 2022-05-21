@@ -21,6 +21,8 @@ os.environ["NCCL_DEBUG"] = "INFO"
 os.environ["NCCL_IB_DISABLE"] = "1"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 os.environ["LOCAL_RANK"] = "0"
+os.environ["RANK"] = "0"
+os.environ["WORLD_SIZE"] = "2"
 
 # docker network create -d macvlan --subnet=192.168.254.0/24 --ip-range=192.168.254.64/29 --gateway=192.168.254.100 -o parent=eth0 macvlan macvlan_mode=bridge
 # docker run --gpus=all --rm --network macvlan -v ${PWD}:/datasets --workdir=/datasets dtc_rt:v1
@@ -291,6 +293,9 @@ if __name__ == '__main__':
                         required=False, help='number of gpus')
     parser.add_argument('--rank', type=int, default=0,
                         required=False, help='rank of current gpu')
+    parser.add_argument('--local_rank', type=str, default="",
+                        help='run trainer in distributed or standalone',
+                        required=False)
     parser.add_argument('--group_name', type=str, default='group_name',
                         required=False, help='Distributed group name')
     parser.add_argument('--verbose', type=bool, default='store_true',
