@@ -14,6 +14,7 @@ from torch.utils.data import DataLoader
 import dill
 from pathlib import Path
 
+from model_trainer.distributed_wrapper import DistributedDataWrapper
 from model_trainer.trainer_metrics import Metrics
 from model_trainer.trainer_logger import TensorboardTrainerLogger
 from model_trainer.trainer_specs import ExperimentSpecs
@@ -206,7 +207,7 @@ class Trainer(GeneratorTrainer, ABC):
 
             if self.trainer_spec.is_distributed_run():
                 logger.info("Creating DDP")
-                model = DistributedDataParallel(model, device_ids=[self.rank], output_device=self.rank)
+                model = DistributedDataWrapper(model, device_ids=[self.rank], output_device=self.rank)
                 # model = apply_gradient_allreduce(model)
 
             self.models[model_name] = model
