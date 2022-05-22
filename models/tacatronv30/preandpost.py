@@ -2,8 +2,8 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from models.layers import ConvNorm
-from models.layers import LinearNorm
+from .layers import ConvNorm
+from .layers import LinearNorm
 
 
 class Prenet(nn.Module):
@@ -73,6 +73,11 @@ class Postnet(nn.Module):
         )
 
     def forward(self, x):
+        """
+
+        :param x:
+        :return:
+        """
         for i in range(len(self.convolutions) - 1):
             x = F.dropout(torch.tanh(self.convolutions[i](x)), 0.5, self.training)
         x = F.dropout(self.convolutions[-1](x), 0.5, self.training)

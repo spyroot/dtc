@@ -1,6 +1,4 @@
 import torch
-import torch
-from torch.autograd import Variable
 from torch import nn
 from torch.nn import functional as F
 
@@ -10,8 +8,9 @@ from .location import LocationLayer
 
 class Attention(nn.Module):
     """
-
+    Attention layer used by decoder to keep attention
     """
+
     def __init__(self, attention_rnn_dim, embedding_dim, attention_dim,
                  attention_location_n_filters, attention_location_kernel_size):
         super(Attention, self).__init__()
@@ -45,7 +44,7 @@ class Attention(nn.Module):
         processed_query = self.query_layer(query.unsqueeze(1))
         processed_attention_weights = self.location_layer(attention_weights_cat)
         energies = self.v(torch.tanh(
-            processed_query + processed_attention_weights + processed_memory))
+                processed_query + processed_attention_weights + processed_memory))
 
         energies = energies.squeeze(-1)
         return energies
@@ -62,7 +61,7 @@ class Attention(nn.Module):
         mask: binary mask for padded data
         """
         alignment = self.get_alignment_energies(
-            attention_hidden_state, processed_memory, attention_weights_cat)
+                attention_hidden_state, processed_memory, attention_weights_cat)
 
         if mask is not None:
             alignment.data.masked_fill_(mask, self.score_mask_value)

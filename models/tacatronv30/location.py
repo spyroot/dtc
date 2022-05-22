@@ -1,8 +1,11 @@
-from models.layers import ConvNorm, LinearNorm
+from .layers import ConvNorm, LinearNorm
 from torch import nn
 
 
 class LocationLayer(nn.Module):
+    """
+    Location layer used by attention layer.
+    """
     def __init__(self, attention_n_filters, attention_kernel_size, attention_dim):
         super(LocationLayer, self).__init__()
         padding = int((attention_kernel_size - 1) / 2)

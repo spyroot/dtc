@@ -1,13 +1,13 @@
-from math import sqrt
 import torch
 from torch.autograd import Variable
 from torch import nn
 from torch.nn import functional as F
 from model_trainer.trainer_specs import ExperimentSpecs
-from .PreAndPost import Prenet
+from .preandpost import Prenet
 from .attention import Attention
 from .layers import LinearNorm
 from tacotron2.utils import get_mask_from_lengths
+
 
 class Decoder(nn.Module):
     """

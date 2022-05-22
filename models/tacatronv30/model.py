@@ -2,13 +2,13 @@ from math import sqrt
 
 import torch
 from torch import nn
-from torch.nn import functional as F
+from torch import Tensor
 
 from model_trainer.trainer_specs import ExperimentSpecs
-from models.PreAndPost import Postnet
-from models.decoder import Decoder
-from models.layers import ConvNorm
 from tacotron2.utils import to_gpu, get_mask_from_lengths
+from .preandpost import Postnet
+from .decoder import Decoder
+from .encoder import Encoder
 
 
 class Tacotron3(nn.Module):
@@ -19,9 +19,10 @@ class Tacotron3(nn.Module):
     def __init__(self, experiment_specs: ExperimentSpecs, device):
         """
 
-        :param hparams:
+        :param experiment_specs:
+        :param device:
         """
-        super(Tacotron2, self).__init__()
+        super(Tacotron3, self).__init__()
         self.experiment_specs = experiment_specs
         self.model_trainer_spec = experiment_specs
         self.model_spec = experiment_specs.get_model_spec()
