@@ -1269,7 +1269,7 @@ class ExperimentSpecs:
         Return true if trainer spec properly initialized and parsed read all yaml file.
         :return:
         """
-        if self._initialized and self._setting is None:
+        if self._initialized and self._setting is not None:
             return True
         return False
 
@@ -1293,4 +1293,3 @@ class ExperimentSpecs:
             return bool(self._setting['grad_clipping'])
 
         return False
-
