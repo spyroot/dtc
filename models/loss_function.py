@@ -55,7 +55,7 @@ class Tacotron2Loss(nn.Module):
 
         p1d = (0, 1024 - gate_target.shape[1])
         gate_target_reshaped = F.pad(gate_target, p1d, "constant", 0)
-        print("gate padded", gate_target_reshaped)
+        print("gate padded", gate_target_reshaped.shape)
         # nn.BCELoss(reduction='sum')(recon_images, gate_target_reshaped) + self.kl_loss(encoding).sum()
 
         # plot_mel_fbank(mel_filters_librosa, "Mel Filter Bank - librosa")
