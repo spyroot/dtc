@@ -1,6 +1,9 @@
 import librosa
 from torch import nn
 import torch
+from torch.distributions.kl import kl_divergence
+from torch.distributions.normal import Normal
+from torch.distributions.kl import kl_divergence
 
 
 class Tacotron2Loss(nn.Module):
@@ -12,6 +15,7 @@ class Tacotron2Loss(nn.Module):
                  n_mel_channels=80, sampling_rate=22050, mel_fmin=0.0, sr=22050, n_fft=2048, fmax=8000,
                  mel_fmax=8000.0):
         super(Tacotron2Loss, self).__init__()
+        self.reconstruction_loss = nn.BCELoss(reduction='sum')
 
         # self.mel_filters_librosa = self.mel_filters_librosa = librosa.filters.mel(
         #         sr=sampling_rate,
@@ -21,6 +25,14 @@ class Tacotron2Loss(nn.Module):
         #         norm="slaney",
         #         htk=True,
         # ).T
+
+    def kl_loss(self, q_dist):
+        """
+
+        :param q_dist:
+        :return:
+        """
+        return kl_divergence(q_dist, Normal(torch.zeros_like(q_dist.mean), torch.ones_like(q_dist.stddev))).sum(-1)
 
     def forward(self, model_output, targets):
         """
@@ -32,12 +44,14 @@ class Tacotron2Loss(nn.Module):
         mel_target.requires_grad = False
         gate_target.requires_grad = False
 
-        mel_out, mel_out_post_net, gate_out, _ , decoding, q_dist = model_output
+        mel_out, mel_out_post_net, gate_out, _ , recon_images, encoding = model_output
         gate_targeT = gate_target.view(-1, 1)
         gate_outT = gate_out.view(-1, 1)
 
         mel_loss = nn.MSELoss()(mel_out, mel_target) + nn.MSELoss()(mel_out_post_net, mel_target)
         gate_loss = nn.BCEWithLogitsLoss()(gate_targeT, gate_outT)
+
+        self.reconstruction_loss(recon_images, gate_out) + self.kl_loss(encoding).sum()
 
         # plot_mel_fbank(mel_filters_librosa, "Mel Filter Bank - librosa")
         # mse = torch.square(mel_filters - mel_filters_librosa).mean().item()
