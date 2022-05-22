@@ -116,6 +116,7 @@ class Trainer(GeneratorTrainer, ABC):
         self.last_epochs = {}
         # dict holds model name = last iterator value
         self.iters = {}
+        #
         self.scaler = None
         # tqdm_iter, if we need fix post of iter
         self.tqdm_iter = None
@@ -869,7 +870,13 @@ class Trainer(GeneratorTrainer, ABC):
         gate_padded = to_gpu(gate_padded, device).float()
         output_lengths = to_gpu(output_lengths, device).long()
 
-        print("tensor locations", text_padded.get_device())
+        assert text_padded.get_device() == 0
+        assert input_lengths == 0
+        assert max_len == 0
+        assert mel_padded == 0
+        assert gate_padded == 0
+        assert output_lengths == 0
+
         return (text_padded.to(), input_lengths, mel_padded, max_len, output_lengths), (mel_padded, gate_padded)
 
     def cleanup(self, rank):
