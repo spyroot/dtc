@@ -17,11 +17,10 @@ class VaeEncoder(nn.Module):
     Encoder Class
     Values:
     im_chan: the number of channels of the output image, a scalar
-            MNIST is black-and-white (1 channel), so that's our default.
     hidden_dim: the inner dimension, a scalar
     """
 
-    def __init__(self, im_chan=1, output_chan=32, hidden_dim=16):
+    def __init__(self, im_chan=1, output_chan=1024, hidden_dim=512):
         super(VaeEncoder, self).__init__()
         self.z_dim = output_chan
         self.disc = nn.Sequential(
@@ -76,7 +75,7 @@ class VaeDecoder(nn.Module):
     hidden_dim: the inner dimension, a scalar
     """
 
-    def __init__(self, z_dim=32, im_chan=1, hidden_dim=64):
+    def __init__(self, z_dim=1024, im_chan=1, hidden_dim=512):
         super(VaeDecoder, self).__init__()
         self.z_dim = z_dim
         self.gen = nn.Sequential(
@@ -159,8 +158,8 @@ class Tacotron3(nn.Module):
         self.decoder = Decoder(experiment_specs, device=self.device)
         self.postnet = Postnet(experiment_specs, device=self.device)
 
-        # self.vae_encode = VaeEncoder(output_chan=512)
-        # self.vae_decode = VaeDecoder(z_dim=512)
+        self.vae_encode = VaeEncoder(output_chan=1024)
+        self.vae_decode = VaeDecoder(z_dim=1024)
 
     def reparameterize(self, mu, logvar, mi=False):
         """
@@ -236,6 +235,14 @@ class Tacotron3(nn.Module):
         mel_outputs, gate_outputs, alignments = self.decoder(
                 encoder_outputs, mels, memory_lengths=text_lengths)
 
+        # >> > p1d = (0, 1024 - t2d.shape[1])
+        # >> > y = torch.nn.functional.pad(t2d, p1d, "constant", 0)
+        #
+        q_mean, q_stddev = self.vae_encode(gate_outputs)
+        q_dist = Normal(q_mean, q_stddev)
+        z_sample = q_dist.rsample()
+        decoding = self.vae_decode(z_sample)
+
         print("gate_out dim", gate_outputs.shape)
         # rom
         # torch.distributions.kl
@@ -251,10 +258,6 @@ class Tacotron3(nn.Module):
         #     loss = reconstruction_loss(recon_images, images) + kl_divergence_loss(encoding).sum()
         #     loss.backward()
         #     vae_opt.step()
-        # q_mean, q_stddev = self.vae_encode(gate_outputs)
-        # q_dist = Normal(q_mean, q_stddev)
-        # z_sample = q_dist.rsample()
-        # decoding = self.vae_decode(z_sample)
 
         # q_mean, q_stddev = self.encode(embedded_inputs)
         # q_dist = Normal(q_mean, q_stddev)
@@ -274,12 +277,12 @@ class Tacotron3(nn.Module):
         mel_outputs_postnet = self.postnet(mel_outputs)
         mel_outputs_postnet = mel_outputs + mel_outputs_postnet
 
-        # return self.parse_output(
-        #         [mel_outputs, mel_outputs_postnet, gate_outputs, alignments, decoding, q_dist],
-        #         output_lengths)
         return self.parse_output(
-                [mel_outputs, mel_outputs_postnet, gate_outputs, alignments],
+                [mel_outputs, mel_outputs_postnet, gate_outputs, alignments, decoding, q_dist],
                 output_lengths)
+        # return self.parse_output(
+        #         [mel_outputs, mel_outputs_postnet, gate_outputs, alignments],
+        #         output_lengths)
 
 
     def inference(self, inputs):
