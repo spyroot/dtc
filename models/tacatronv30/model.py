@@ -19,7 +19,7 @@ class InferenceEncoder(nn.Module):
 
     """
     def __init__(self, z_dim, y_dim=0, hidden_dim=512):
-        super(InferenceEncoder).__init__()
+        super(InferenceEncoder, self).__init__()
         self.z_dim = z_dim
         self.y_dim = y_dim
         self.net = nn.Sequential(
@@ -57,7 +57,7 @@ class InferenceEncoder(nn.Module):
 
 class InferenceDecoder(nn.Module):
     def __init__(self, z_dim, y_dim=0, hidden_dim=512):
-        super(InferenceDecoder).__init__()
+        super(InferenceDecoder, self).__init__()
         self.z_dim = z_dim
         self.y_dim = y_dim
         self.net = nn.Sequential(
