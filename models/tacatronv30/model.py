@@ -298,6 +298,7 @@ class Tacotron3(nn.Module):
         # decoding = self.vae_decode(z_sample)
 
         print("gate_out dim", gate_outputs.shape)
+        exit(1)
         # rom
         # torch.distributions.kl
         # import kl_divergence
