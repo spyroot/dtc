@@ -46,7 +46,7 @@ class InferenceEncoder(nn.Module):
             v: tensor: (batch, ..., dim / 2, ...): Variance
         """
         m, h = torch.split(h, h.size(dim) // 2, dim=dim)
-        v = F.softplus(h) + 1e-8
+        v = torch.nn.functional.softplus(h) + 1e-8
         return m, v
 
     def forward(self, x, y=None):
