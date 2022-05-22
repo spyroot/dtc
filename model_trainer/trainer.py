@@ -871,11 +871,11 @@ class Trainer(GeneratorTrainer, ABC):
         output_lengths = to_gpu(output_lengths, device).long()
 
         assert text_padded.get_device() == 0
-        assert input_lengths == 0
-        assert max_len == 0
-        assert mel_padded == 0
-        assert gate_padded == 0
-        assert output_lengths == 0
+        assert input_lengths.get_device() == 0
+        assert max_len.get_device() == 0
+        assert mel_padded.get_device() == 0
+        assert gate_padded.get_device() == 0
+        assert output_lengths.get_device() == 0
 
         return (text_padded.to(), input_lengths, mel_padded, max_len, output_lengths), (mel_padded, gate_padded)
 
