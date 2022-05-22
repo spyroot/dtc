@@ -128,7 +128,6 @@ class ExperimentSpecs:
         # self.learning_rate = 1e-3
         # self.weight_decay = 1e-6
         # 
-        self.grad_clip_thresh = 1.0
         self.mask_padding = True  # set model's padded outputs to padded values
         self.dynamic_loss_scaling = True
 
@@ -1296,3 +1295,16 @@ class ExperimentSpecs:
             return bool(self._setting['grad_clipping'])
 
         return False
+
+    def grad_clip_thresh(self) -> float:
+        """
+        Returns of settings set to gradient clipped thresh
+        :return: Default 1.0
+        """
+        if self.is_initialized() is False:
+            raise Exception("Training must be initialized first.")
+
+        if 'grad_clip_thresh' in self._setting:
+            return float(self._setting['grad_clipping'])
+
+        return 1.0

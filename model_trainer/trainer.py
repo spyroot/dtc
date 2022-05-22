@@ -124,6 +124,8 @@ class Trainer(GeneratorTrainer, ABC):
         # last saved run
         self.saved_run = None
 
+        self.clip_grad = False
+        self.total_batches = 0
         if self.is_inference is False:
             # total batches
             self.total_batches = len(self.train_loader)
@@ -800,7 +802,7 @@ class Trainer(GeneratorTrainer, ABC):
 
             loss.backward()
             if self.clip_grad:
-                grad_norm = clip_grad_norm_(model.parameters(), self.trainer_spec.grad_clip_thresh)
+                grad_norm = clip_grad_norm_(model.parameters(), self.trainer_spec.grad_clip_thresh())
                 self.metric.update(batch_idx, step, normal_loss, grad_norm=grad_norm.item())
             else:
                 self.metric.update(batch_idx, step, normal_loss)
