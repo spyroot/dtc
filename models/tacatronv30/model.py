@@ -237,10 +237,10 @@ class Tacotron3(nn.Module):
                 encoder_outputs, mels, memory_lengths=text_lengths)
 
         print("gate_out dim", gate_outputs.shape)
-        q_mean, q_stddev = self.vae_encode(gate_outputs)
-        q_dist = Normal(q_mean, q_stddev)
-        z_sample = q_dist.rsample()
-        decoding = self.vae_decode(z_sample)
+        # q_mean, q_stddev = self.vae_encode(gate_outputs)
+        # q_dist = Normal(q_mean, q_stddev)
+        # z_sample = q_dist.rsample()
+        # decoding = self.vae_decode(z_sample)
 
         # q_mean, q_stddev = self.encode(embedded_inputs)
         # q_dist = Normal(q_mean, q_stddev)
