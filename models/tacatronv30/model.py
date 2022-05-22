@@ -260,7 +260,7 @@ class Tacotron3(nn.Module):
         mel_outputs_postnet = mel_outputs + mel_outputs_postnet
 
         return self.parse_output(
-                [mel_outputs, mel_outputs_postnet, gate_outputs, alignments],
+                [mel_outputs, mel_outputs_postnet, gate_outputs, alignments, decoding, q_dist],
                 output_lengths)
 
     def inference(self, inputs):

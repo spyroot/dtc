@@ -25,7 +25,7 @@ from model_trainer.trainer_logger import TensorboardTrainerLogger
 from model_trainer.trainer_specs import ExperimentSpecs
 # from distributed import apply_gradient_allreduce
 import models
-from tacotron2.loss_function import Tacotron2Loss
+from models.loss_function import Tacotron2Loss
 from tacotron2.utils import fmtl_print, fmt_print, to_gpu
 from numpy import finfo
 from torch.nn.utils import clip_grad_norm_
