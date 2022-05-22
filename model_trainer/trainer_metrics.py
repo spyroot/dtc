@@ -7,19 +7,25 @@ class Metrics:
     """
 
     """
-
     def __init__(self,
                  metric_step_file_path=None,
                  metric_batch_file_path=None,
                  metric_perf_trace_path=None,
                  num_epochs=0,
                  num_batches=0,
-                 num_iteration=0):
+                 num_iteration=0,
+                 verbose=False):
         """
 
-        :param num_batches:
+        :param metric_step_file_path: path metrix file used to serialize per step trace
+        :param metric_batch_file_path:  path to a file used to serialize batch per step
+        :param metric_perf_trace_path:  path to traces
+        :param num_epochs:  num total epoch
+        :param num_batches: num total batches
+        :param num_iteration: num total iteration
+        :param verbose:  verbose or not
         """
-
+        self.set_logger(verbose)
         self.loss = None
         self.total_loss = None
         self.num_epochs = num_epochs
@@ -152,3 +158,15 @@ class Metrics:
             return 0.0
 
         return self.loss.mean(0)[-1]
+
+    @staticmethod
+    def set_logger(is_enable: bool) -> None:
+        """
+        Enable logging.
+        :param is_enable: if caller need enable logging.
+        :return:
+        """
+        if is_enable:
+            logger.enable(__name__)
+        else:
+            logger.disable(__name__)

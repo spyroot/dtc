@@ -137,7 +137,8 @@ class Trainer(GeneratorTrainer, ABC):
             self.metric = Metrics(metric_step_file_path=trainer_spec.model_files.get_metric_file_path(),
                                   metric_batch_file_path=trainer_spec.model_files.get_time_file_path(),
                                   metric_perf_trace_path=trainer_spec.model_files.get_metric_batch_file_path(),
-                                  num_epochs=self.trainer_spec.epochs(), num_batches=self.total_batches)
+                                  num_epochs=self.trainer_spec.epochs(), num_batches=self.total_batches,
+                                  verbose=verbose)
 
         # tensorboard writer
         self.t_writer = None
@@ -804,11 +805,9 @@ class Trainer(GeneratorTrainer, ABC):
 
             loss.backward()
             if self.clip_grad:
-                print("Clipping grade")
                 grad_norm = clip_grad_norm_(model.parameters(), self.trainer_spec.grad_clip_thresh())
                 self.metric.update(batch_idx, step, normal_loss, grad_norm=grad_norm.item())
             else:
-                print("Uncliped")
                 grad_norm = loss
                 self.metric.update(batch_idx, step, normal_loss)
 
@@ -874,16 +873,21 @@ class Trainer(GeneratorTrainer, ABC):
         gate_padded = to_gpu(gate_padded, device).float()
         output_lengths = to_gpu(output_lengths, device).long()
 
-        assert text_padded.get_device() == 0
-        assert input_lengths.get_device() == 0
-        assert mel_padded.get_device() == 0
-        assert gate_padded.get_device() == 0
-        assert output_lengths.get_device() == 0
+        # assert text_padded.get_device() == 0
+        # assert input_lengths.get_device() == 0
+        # assert mel_padded.get_device() == 0
+        # assert gate_padded.get_device() == 0
+        # assert output_lengths.get_device() == 0
 
         return (text_padded.to(), input_lengths, mel_padded, max_len, output_lengths), (mel_padded, gate_padded)
 
+    @staticmethod
     def cleanup(self, rank):
-        # dist.cleanup()
+        """
+
+        :param rank:
+        :return:
+        """
         dist.destroy_process_group()
         print(f"Rank {rank} is done.")
 
@@ -894,18 +898,11 @@ class Trainer(GeneratorTrainer, ABC):
         return rt
 
     def train(self, model_name='encoder'):
-        """Training and validation logging results to tensorboard and stdout
-
-        Params
-        ------
-        output_directory (string): directory to save checkpoints
-        log_directory (string) directory to save tensorboard logs
-        checkpoint_path(string): checkpoint path
-        n_gpus (int): number of gpus
-        rank (int): rank of current gpu
-        hparams (object): comma separated list of "name=value" pairs.
         """
 
+        :param model_name:
+        :return:
+        """
         # torch.manual_seed(self.model_spec.seed())
         # torch.cuda.manual_seed(self.model_spec.seed())
         #
