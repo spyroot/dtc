@@ -808,7 +808,7 @@ class Trainer(GeneratorTrainer, ABC):
                 self.metric.update(batch_idx, step, normal_loss, grad_norm=grad_norm.item())
             else:
                 print("Uncliped")
-                grad_norm = normal_loss
+                grad_norm = loss
                 self.metric.update(batch_idx, step, normal_loss)
 
             optimizer.step()
