@@ -1,3 +1,4 @@
+import sys
 from math import sqrt
 
 import torch
@@ -51,7 +52,12 @@ class InferenceEncoder(nn.Module):
     def forward(self, x, y=None):
         xy = x if y is None else torch.cat((x, y), dim=1)
         h = self.net(xy)
+
+        print("x", h.shape)
         m, v = self.gaussian_parameters(h, dim=1)
+        print("m", x.shape)
+        print("v", x.shape)
+        sys.exit(1)
         return m, v
 
 
