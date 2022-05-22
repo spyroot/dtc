@@ -10,6 +10,67 @@ from .preandpost import Postnet
 from .decoder import Decoder
 from .encoder import Encoder
 from torch.distributions.normal import Normal
+from torch import nn
+from torch import functional as F
+
+
+class InferenceEncoder(nn.Module):
+    """
+
+    """
+    def __init__(self, z_dim, y_dim=0, hidden_dim=512):
+        super(InferenceEncoder).__init__()
+        self.z_dim = z_dim
+        self.y_dim = y_dim
+        self.net = nn.Sequential(
+                nn.Linear(3072 + y_dim, hidden_dim),
+                nn.ELU(),
+                nn.Linear(hidden_dim, hidden_dim),
+                nn.ELU(),
+                nn.Linear(hidden_dim, 2 * z_dim),
+        )
+
+    def gaussian_parameters(self, h, dim=-1):
+        """
+        Converts generic real-valued representations into mean and variance
+        parameters of a Gaussian distribution
+
+        Args:
+            h: tensor: (batch, ..., dim, ...): Arbitrary tensor
+            dim: int: (): Dimension along which to split the tensor for mean and
+                variance
+
+        Returns:
+            m: tensor: (batch, ..., dim / 2, ...): Mean
+            v: tensor: (batch, ..., dim / 2, ...): Variance
+        """
+        m, h = torch.split(h, h.size(dim) // 2, dim=dim)
+        v = F.softplus(h) + 1e-8
+        return m, v
+
+    def forward(self, x, y=None):
+        xy = x if y is None else torch.cat((x, y), dim=1)
+        h = self.net(xy)
+        m, v = self.gaussian_parameters(h, dim=1)
+        return m, v
+
+
+class InferenceDecoder(nn.Module):
+    def __init__(self, z_dim, y_dim=0, hidden_dim=512):
+        super(InferenceDecoder).__init__()
+        self.z_dim = z_dim
+        self.y_dim = y_dim
+        self.net = nn.Sequential(
+                nn.Linear(z_dim + y_dim, hidden_dim),
+                nn.ELU(),
+                nn.Linear(hidden_dim, hidden_dim),
+                nn.ELU(),
+                nn.Linear(hidden_dim, 3072)
+        )
+
+    def forward(self, z, y=None):
+        zy = z if y is None else torch.cat((z, y), dim=1)
+        return self.net(zy)
 
 
 class VaeEncoder(nn.Module):
@@ -20,36 +81,16 @@ class VaeEncoder(nn.Module):
     hidden_dim: the inner dimension, a scalar
     """
 
-    def __init__(self, im_chan=1, output_chan=1024, hidden_dim=512):
+    def __init__(self, im_chan=1, z_dim=1024, hidden_dim=512):
         super(VaeEncoder, self).__init__()
-        self.z_dim = output_chan
-        self.disc = nn.Sequential(
-                self.make_disc_block(im_chan, hidden_dim),
-                self.make_disc_block(hidden_dim, hidden_dim * 2),
-                self.make_disc_block(hidden_dim * 2, output_chan * 2, final_layer=True),
-        )
+        self.z_dim = z_dim
+        self.enc = InferenceEncoder(self.z_dim)
+        self.dec = InferenceDecoder(self.z_dim)
 
-    def make_disc_block(self, input_channels, output_channels, kernel_size=4, stride=2, final_layer=False):
-        """
-        Function to return a sequence of operations corresponding to a encoder block of the VAE,
-        corresponding to a convolution, a batchnorm (except for in the last layer), and an activation
-        Parameters:
-        input_channels: how many channels the input feature representation has
-        output_channels: how many channels the output feature representation should have
-        kernel_size: the size of each convolutional filter, equivalent to (kernel_size, kernel_size)
-        stride: the stride of the convolution
-        final_layer: whether we're on the final layer (affects activation and batchnorm)
-        """
-        if not final_layer:
-            return nn.Sequential(
-                    nn.Conv2d(input_channels, output_channels, kernel_size, stride),
-                    nn.BatchNorm2d(output_channels),
-                    nn.LeakyReLU(0.2, inplace=True),
-            )
-        else:
-            return nn.Sequential(
-                    nn.Conv2d(input_channels, output_channels, kernel_size, stride),
-            )
+        # Set prior as fixed parameter attached to Module
+        # self.z_prior_m = torch.nn.Parameter(torch.zeros(1), requires_grad=False)
+        # self.z_prior_v = torch.nn.Parameter(torch.ones(1), requires_grad=False)
+        # self.z_prior = (self.z_prior_m, self.z_prior_v)
 
     def forward(self, image):
         """
@@ -58,7 +99,8 @@ class VaeEncoder(nn.Module):
         Parameters:
         image: a flattened image tensor with dimension (im_dim)
         """
-        disc_pred = self.disc(image)
+        disc_pred = self.enc(image)
+        print(disc_pred.shape)
         encoding = disc_pred.view(len(disc_pred), -1)
         # The stddev output is treated as the log of the variance of the normal
         # distribution by convention and for numerical stability
@@ -158,8 +200,8 @@ class Tacotron3(nn.Module):
         self.decoder = Decoder(experiment_specs, device=self.device)
         self.postnet = Postnet(experiment_specs, device=self.device)
 
-        self.vae_encode = VaeEncoder(output_chan=1024)
-        self.vae_decode = VaeDecoder(z_dim=1024)
+        self.vae_encode = InferenceEncoder(output_chan=1024)
+        self.vae_decode = InferenceDecoder(z_dim=1024)
 
     def reparameterize(self, mu, logvar, mi=False):
         """
@@ -283,7 +325,6 @@ class Tacotron3(nn.Module):
         # return self.parse_output(
         #         [mel_outputs, mel_outputs_postnet, gate_outputs, alignments],
         #         output_lengths)
-
 
     def inference(self, inputs):
         """

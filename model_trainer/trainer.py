@@ -867,7 +867,7 @@ class Trainer(GeneratorTrainer, ABC):
         :param batch:
         :return:
         """
-        text_padded, input_lengths, mel_padded, gate_padded, output_lengths = batch
+        text_padded, input_lengths, mel_padded, gate_padded, output_lengths, decoding, q_dist = batch
         text_padded = to_gpu(text_padded, device).long()
         input_lengths = to_gpu(input_lengths, device).long()
         max_len = torch.max(input_lengths.data).item()
