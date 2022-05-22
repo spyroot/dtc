@@ -12,12 +12,13 @@ class ModelFiles:
 
     """
 
-    def __init__(self, config, root_dir=".", name_generator=None, dir_walker_callback=None):
+    def __init__(self, config, root_dir=".", name_generator=None, dir_walker_callback=None, verbose=False):
         """
 
         :param root_dir:
         """
-        self._verbose = None
+        self._verbose = verbose
+        self.set_logger(verbose)
         self.config = config
         self.name_generator = name_generator
         self.dir_walker_callback = dir_walker_callback
@@ -349,6 +350,7 @@ class ModelFiles:
         """
         if 'results' in self._dirs:
             return self._dirs["results"]
+
         return "results"
 
     def get_figure_dir(self) -> pathlib.PosixPath:
@@ -359,3 +361,15 @@ class ModelFiles:
         if 'figures' in self._dirs:
             return self._dirs["figures"]
         return "figures"
+
+    @staticmethod
+    def set_logger(is_enable: bool) -> None:
+        """
+
+        :param is_enable:
+        :return:
+        """
+        if is_enable:
+            logger.enable(__name__)
+        else:
+            logger.disable(__name__)
