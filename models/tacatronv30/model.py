@@ -200,7 +200,7 @@ class Tacotron3(nn.Module):
         self.decoder = Decoder(experiment_specs, device=self.device)
         self.postnet = Postnet(experiment_specs, device=self.device)
 
-        self.vae_encode = InferenceEncoder(output_chan=1024)
+        self.vae_encode = InferenceEncoder(z_dim=1024)
         self.vae_decode = InferenceDecoder(z_dim=1024)
 
     def reparameterize(self, mu, logvar, mi=False):
