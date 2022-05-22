@@ -872,7 +872,6 @@ class Trainer(GeneratorTrainer, ABC):
 
         assert text_padded.get_device() == 0
         assert input_lengths.get_device() == 0
-        assert max_len.get_device() == 0
         assert mel_padded.get_device() == 0
         assert gate_padded.get_device() == 0
         assert output_lengths.get_device() == 0
