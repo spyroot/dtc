@@ -1,4 +1,5 @@
 import os
+import pathlib
 from os.path import join
 from pathlib import Path
 
@@ -30,6 +31,7 @@ class ModelFiles:
         self._dir_result = Path(self._dir_input) / Path(self.spec_results_dir())
         self._model_save_path = self._dir_result / Path(self.model_save_dir())
 
+        self._dirs["results"] = self._dir_result
         self._dirs["logs"] = self._dir_result / Path(self.metrics_dir())
         self._dirs["metric"] = self._dir_result / Path(self.metrics_dir())
         self._dirs["metric_batch"] = self._dir_result / Path(self.metrics_dir())
@@ -339,3 +341,21 @@ class ModelFiles:
                 checkpoints[m] = check['epoch']
 
         return checkpoints
+
+    def get_results_dir(self) -> pathlib.PosixPath:
+        """
+
+        :return:
+        """
+        if 'results' in self._dirs:
+            return self._dirs["results"]
+        return "results"
+
+    def get_figure_dir(self) -> pathlib.PosixPath:
+        """
+
+        :return:
+        """
+        if 'figures' in self._dirs:
+            return self._dirs["figures"]
+        return "figures"

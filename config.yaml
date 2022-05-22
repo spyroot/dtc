@@ -104,6 +104,7 @@ settings:
     cudnn_benchmark: False
   small:
     batch_size: 64
+    grad_clipping: True
     # tensorboard update rate
     tensorboard_update: 20
     # early stopping
@@ -114,7 +115,7 @@ settings:
     start_test: 20
     # predict to start predict , validate
     predict: 10
-    # use epoch or iteration counter
+    # use epoch or iteration counter, in large batch size we might want to see progress.
     predict_per_iteration: True
     # when to save
     epochs_save: 5
@@ -127,19 +128,16 @@ settings:
     #
     iters_per_checkpoint: 1000
     # fp16 or fp32
-    fp16: False
-    # if we distribute
-    distributed: True
-    # what distributed backend uses.
-    backend: "nccl"
-    #backend: "gloo"
+    fp16: False                      # fp16 run
+    distributed: True                # what distributed backend uses.
+    backend: "nccl"                  # backend: "gloo"
     url: "tcp://localhost:54321"
-    #master_address: 192.168.254.230
-#    url: "tcp://localhost:54321"
-#    master_address: localhost
+    master_address: localhost
     master_port: 54321
     cudnn_enabled: True
     cudnn_benchmark: False
+    workers:
+      - 192.168.254.205
 
 optimizers:
   node_optimizer:

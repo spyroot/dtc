@@ -24,13 +24,6 @@ os.environ["LOCAL_RANK"] = "0"
 os.environ["RANK"] = "0"
 os.environ["WORLD_SIZE"] = "2"
 
-# docker network create -d macvlan --subnet=192.168.254.0/24 --ip-range=192.168.254.64/29 --gateway=192.168.254.100 -o parent=eth0 macvlan macvlan_mode=bridge
-# docker run --gpus=all --rm --network macvlan -v ${PWD}:/datasets --workdir=/datasets dtc_rt:v1
-# docker run --gpus=all --rm --network mynet -v ${PWD}:/datasets --workdir=/datasets dtc_rt:v1
-# docker network create -d macvlan --subnet=192.168.254.0/24 --gateway=192.168.254.100 -o ipvlan_mode=l2 -o parent=eth0 ipvlan_net
-# docker run --gpus=all --rm --network ipvlan_net --ip 192.168.254.232 -v ${PWD}:/datasets --workdir=/datasets dtc_rt:v1
-# docker run --gpus=all --rm --network bridge --ip 192.168.254.232 -v ${PWD}:/datasets --workdir=/datasets dtc_rt:v1
-
 
 def convert_mel_to_data(encoder_spec, target_dir: str, dataset,
                         dataset_name: str, data_type: str, post_check=True, verbose=True):
@@ -132,23 +125,35 @@ def convert(trainer_spec, verbose=True):
 #         win32api.SetConsoleCtrlHandler(handler, True)
 
 
-def cleanup():
+def cleanup(is_distributed) -> None:
+    """
+
+    :param is_distributed:
+    :return:
+    """
+    if is_distributed:
+        dist.destroy_process_group()
+
+
+def signal_handler(sig, frame) -> None:
+    if is_distributed:
+        dist.destroy_process_group()
+    sys.exit(0)
+
+
+def setup_handler(handler):
     """
 
     :return:
     """
-    dist.destroy_process_group()
+    if sys.platform == "win32":
+        import win32api
+        win32api.SetConsoleCtrlHandler(handler, True)
 
-
-def signal_handler(sig, frame):
-    dist.destroy_process_group()
-    sys.exit(0)
-
-
-signal.signal(signal.SIGINT, signal_handler)
-if os.name != 'nt':
-    signal.signal(signal.SIGTSTP, signal_handler)
-signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+    if os.name != 'nt':
+        signal.signal(signal.SIGTSTP, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
 
 
 def init_distributed(spec=None, rank=0, world_size=0):
@@ -160,7 +165,7 @@ def init_distributed(spec=None, rank=0, world_size=0):
         print("Empty trainer spec.")
         sys.exit()
 
-    #if rank != 0:
+    # if rank != 0:
     os.environ['MASTER_ADDR'] = spec.get_master_address()
     os.environ['MASTER_PORT'] = spec.get_master_port()
     # os.environ["PL_TORCH_DISTRIBUTED_BACKEND"] = "nccl"
@@ -204,11 +209,12 @@ def train(spec=None, cmd_args=None, device=None, verbose=True, cudnn_bench=False
         logger.info("Staring rank zero node.")
 
     if spec.is_distributed_run():
-        logger.info("Staring training in distributed settings. rank {} world size {}".format(args.rank, args.world_size))
+        logger.info(
+                "Staring training in distributed settings. rank {} world size {}".format(args.rank, args.world_size))
         init_distributed(spec, int(args.rank), int(args.world_size))
         # device = torch.device(f"cuda:{int(0)}")
         device = torch.device(f"cuda:{dist.get_rank()}")
-        #device = torch.device(device)
+        # device = torch.device(device)
         dist.barrier()
 
     dataloader = Mel_Dataloader(spec, rank=cmd_args.rank, world_size=cmd_args.world_size, verbose=True)
@@ -244,11 +250,45 @@ def set_random_seeds(random_seed=0):
     :param random_seed:
     :return:
     """
+    logger.info("Setting random seed for torch.")
     torch.manual_seed(random_seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     np.random.seed(random_seed)
     random.seed(random_seed)
+
+
+def inference(spec: ExperimentSpecs, cmd_args, device):
+    """
+
+    :param spec:
+    :param cmd_args:
+    :param device:
+    :return:
+    """
+    if cmd_args.model_file:
+        model_path = Path(cmd_args.model_file)
+        if model_path.exists() and model_path.is_file():
+            trainer = Trainer(spec, rank=int(args.rank),
+                              world_size=int(cmd_args.world_size),
+                              verbose=args.verbose, device=device, is_inference=True)
+            trainer.load_for_inference(model_name="encoder", model_file=str(model_path.resolve()))
+            logger.info("Model loaded.")
+            text = "Hello world, I missed you so much."
+            trainer.inference(input_seq=text,
+                              model_name="encoder",
+                              mel_output_path=str(spec.model_files.get_figure_dir() / "mel_out.png"),
+                              mel_post_path=str(spec.model_files.get_figure_dir() / "mel_post.png"),
+                              mel_alignment_path=str(spec.model_files.get_figure_dir() / "mel_alignment.png"),
+                              plot=True)
+
+            # tacotron2 = torch.hub.load('NVIDIA/DeepLearningExamples:torchhub', 'nvidia_tacotron2', model_math='fp32')
+            # tacotron2 = tacotron2.to(device)
+            # tacotron2.eval()
+
+        else:
+            print("Error: File does not exist {}".format(cmd_args.model_file))
+            sys.exit()
 
 
 def main(cmd_args):
@@ -257,14 +297,17 @@ def main(cmd_args):
     :param cmd_args:
     :return:
     """
-    _device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if cmd_args.device_id >= 0:
+        logger.info("Manually setting cuda device.")
+        _device = torch.device(f"cuda:{int(cmd_args.device_id)}" if torch.cuda.is_available() else "cpu")
+    else:
+        _device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
     trainer_spec = ExperimentSpecs(spec_config=cmd_args.config, verbose=False)
     if cmd_args.mode.strip().upper().lower() == 'standalone':
         trainer_spec.set_distributed(False)
-        sys.exit(1)
     elif cmd_args.mode.strip().upper().lower() == 'distributed':
         trainer_spec.set_distributed(True)
-
     if trainer_spec.is_distributed_run():
         set_random_seeds(trainer_spec.seed())
 
@@ -272,25 +315,36 @@ def main(cmd_args):
     if cmd_args.train:
         train(spec=trainer_spec, cmd_args=cmd_args, device=_device)
 
-    if trainer_spec.is_distributed_run():
+    if cmd_args.train and trainer_spec.is_distributed_run():
+        logger.info("Number cuda devices {}".format(torch.cuda.device_count()))
         dist.destroy_process_group()
+
+    if args.inference:
+        inference(spec=trainer_spec, cmd_args=cmd_args, device=_device)
 
 
 if __name__ == '__main__':
     """
     """
     parser = argparse.ArgumentParser()
+    parser.add_argument('-m', '--model_file', type=str,
+                        help='Path to a pre-trained model.')
     parser.add_argument('-o', '--output_directory', type=str,
-                        help='directory to save checkpoints')
+                        help='directory to save checkpoints.')
+    parser.add_argument('--debug', action="store_true",
+                        required=False, help='set debug output.')
     parser.add_argument('-l', '--log_directory', type=str,
                         help='directory to save tensorboard logs')
-    parser.add_argument('--warm_start', action='store_true',
+    parser.add_argument('--warm', action='store_true',
                         help='load model weights only, ignore specified layers')
-    parser.add_argument('--world_size', type=int, default=1,
+    parser.add_argument('--world_size', type=int, default=0,
                         required=False, help='number of gpus')
     parser.add_argument('--rank', type=int, default=0,
                         required=False, help='rank of current gpu')
-    parser.add_argument('--local_rank', type=str, default="",
+    parser.add_argument('--local_rank', type=int, default=0,
+                        help='run trainer in distributed or standalone',
+                        required=False)
+    parser.add_argument('--device_id', type=int, default=0,
                         help='run trainer in distributed or standalone',
                         required=False)
     parser.add_argument('--group_name', type=str, default='group_name',
@@ -301,8 +355,8 @@ if __name__ == '__main__':
                         required=False, help='set verbose output')
     parser.add_argument('--convert', type=bool, default=False,
                         required=False, help='set verbose output')
-    parser.add_argument('--inference', type=bool, default=False,
-                        required=False, help='set verbose output')
+    parser.add_argument('--inference', action="store_true",
+                        required=False, help='set model in inference model.')
     parser.add_argument('--benchmark', type=bool, default=False,
                         required=False, help='set verbose output')
     parser.add_argument('--config', type=str, help='set config file',
@@ -323,8 +377,41 @@ if __name__ == '__main__':
     args = parser.parse_args()
     cuda_device_count = torch.cuda.device_count()
 
+    # we set all CUDA and NCCL debug flags.
+    if args.debug is True:
+        logger.info("Switching nccl and cuda debug flags")
+        os.environ["NCCL_DEBUG"] = "INFO"
+        os.environ["NCCL_IB_DISABLE"] = "1"
+        os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
+    if args.local_rank >= 0:
+        os.environ["LOCAL_RANK"] = str(args.local_rank)
+    if args.rank >= 0:
+        os.environ["RANK"] = str(args.rank)
+    if args.world_size >= 0:
+        os.environ["WORLD_SIZE"] = str(args.world_size)
+    if args.device_id >= 0:
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(args.device_id)
+
+    logger.info("Training setting  "
+                "rank: {} local rank: {} world_size {} cuda device {}".format(os.environ["RANK"],
+                                                                              os.environ["LOCAL_RANK"],
+                                                                              os.environ["WORLD_SIZE"],
+                                                                              os.environ["CUDA_VISIBLE_DEVICES"]))
+    if args.inference:
+        logger.info("Model in inference mode, switching training off.")
+        args.train = False
+
+    if args.train:
+        logger.info("Model in training mode.")
+
+    is_distributed = False
+    if args.mode.strip().upper().lower() == 'standalone':
+        is_distributed = True
+
     try:
         main(args)
+        setup_handler(cleanup(is_distributed))
     except FileNotFoundError as file_error:
         print("File not found ", str(file_error))
         sys.exit(2)

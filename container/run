@@ -2,3 +2,13 @@
 docker run --gpus=all --rm -p 2222:22 -p 54321:54321 --network mynet --ip 172.168.0.230 -v ${PWD}:/datasets --workdir=/datasets dtc_rt:v1
 # example two
 docker run --gpus=all --rm --network bridge --ip 192.168.254.234 --publish-all -v ${PWD}:/datasets --workdir=/datasets dtc_rt:v1
+
+
+
+# docker network create -d macvlan --subnet=192.168.254.0/24 --ip-range=192.168.254.64/29 --gateway=192.168.254.100 -o parent=eth0 macvlan macvlan_mode=bridge
+# docker run --gpus=all --rm --network macvlan -v ${PWD}:/datasets --workdir=/datasets dtc_rt:v1
+# docker run --gpus=all --rm --network mynet -v ${PWD}:/datasets --workdir=/datasets dtc_rt:v1
+# docker network create -d macvlan --subnet=192.168.254.0/24 --gateway=192.168.254.100 -o ipvlan_mode=l2 -o parent=eth0 ipvlan_net
+# docker run --gpus=all --rm --network ipvlan_net --ip 192.168.254.232 -v ${PWD}:/datasets --workdir=/datasets dtc_rt:v1
+# docker run --gpus=all --rm --network bridge --ip 192.168.254.232 -v ${PWD}:/datasets --workdir=/datasets dtc_rt:v1
+

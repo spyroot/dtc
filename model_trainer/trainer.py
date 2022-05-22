@@ -1,8 +1,11 @@
 import os
+import random
 import socket
 import time
 from abc import ABC
+from tacotron2.plotting_utils import plot_alignment_to_numpy, plot_spectrogram_to_numpy, plot_gate_outputs_to_numpy
 
+import numpy as np
 import torch
 # import torch.distributed as dist
 import math
@@ -12,12 +15,13 @@ import torch.distributed as dist
 
 import dill
 from pathlib import Path
+from torch import nn
 
 from model_trainer.distributed_wrapper import DistributedDataWrapper
 from model_trainer.trainer_metrics import Metrics
 from model_trainer.trainer_logger import TensorboardTrainerLogger
 from model_trainer.trainer_specs import ExperimentSpecs
-#from distributed import apply_gradient_allreduce
+# from distributed import apply_gradient_allreduce
 from models.model import Tacotron2
 from tacotron2.loss_function import Tacotron2Loss
 from tacotron2.utils import fmtl_print, fmt_print, to_gpu
@@ -28,6 +32,7 @@ from generator_trainer import GeneratorTrainer
 from tqdm import tqdm, tnrange
 import torch.optim.lr_scheduler as lr_scheduler
 from torch import optim
+
 # from torch.nn.parallel import DistributedDataParallel
 # from torch.autograd import Variable
 # import numpy as np
@@ -53,37 +58,57 @@ class Trainer(GeneratorTrainer, ABC):
 
     """
 
-    def __init__(self, trainer_spec: ExperimentSpecs, data_loader,
-                 verbose=False, is_notebook=False, rank=0, world_size=2, disable_pbar=False, device=None):
+    def __init__(self, trainer_spec: ExperimentSpecs, data_loader=None,
+                 verbose=False, is_notebook=False, rank=0, world_size=2,
+                 disable_pbar=False, device=None, cuda_device_id=0, is_inference=False):
         """
 
-        :param trainer_spec:
+        :param trainer_spec:  a trainer spec , trainer uses to train model
+        :param data_loader:   a data loader
+        :param verbose:       enabled verbose output
+        :param is_notebook:   if trainer run it notebook mode. ( tqdm and pbar need to re-adjusted)
+        :param rank:          node rank
+        :param world_size:    world_size
+        :param disable_pbar:  disabled pbar
+        :param device:        device we run
+        :param is_inference:  inference mode or not
         """
+
         super(Trainer, self).__init__(verbose=verbose, is_notebook=is_notebook)
+        # cuda device id
+        self.cuda_device_id = cuda_device_id
+        #
         self.disable_pbar = disable_pbar
-        logger.info("Trainer created, active model {}", trainer_spec.get_active_mode())
-        # self.model_spec = model_spec
-        # self.n_gpus = model_spec['model_spec']
-        # self.rank = model_spec['model_spec']
-        # self.group_name = model_spec['group_name']
+        if not is_inference:
+            logger.info("Trainer created, active model {}", trainer_spec.get_active_mode())
+
         self.trainer_spec = trainer_spec
-
+        # inference or training
+        self.is_inference = is_inference
+        #
         self.n_gpus = world_size
+        #
         self.device = device
-
+        # dict that hold all schedulers that trainer need to use
         self.schedulers = {}
+        # dict hold all optimizers. ( note trainer can train 2 model like in gan settings)
         self.optimizers = {}
 
-        if not trainer_spec.is_initialized():
-            raise Exception("you need initialize trainer specs first.")
+        if not is_inference:
+            if not trainer_spec.is_initialized():
+                raise Exception("you need initialize trainer specs first.")
 
         # if self.trainer_spec.is_distributed_run():
         #     self.init_distributed()
 
-        self.dataloader = data_loader
-        self.train_loader, self.validation_loader, self.collate_fn = data_loader.get_loader()
+        if not self.is_inference:
+            if data_loader is None:
+                raise Exception("Trainer need torch data loader.")
+            self.dataloader = data_loader
+            self.train_loader, self.validation_loader, self.collate_fn = data_loader.get_loader()
+
         self.rank = rank
-        #
+        # TODO need refactor that, and move to dict and abstract,
         self.criterion = Tacotron2Loss()
         # dict store all model
         self.models = {}
@@ -91,8 +116,6 @@ class Trainer(GeneratorTrainer, ABC):
         self.last_epochs = {}
         # dict holds model name = last iterator value
         self.iters = {}
-        # init trainer
-        self.init_trainer()
         self.scaler = None
         # tqdm_iter, if we need fix post of iter
         self.tqdm_iter = None
@@ -100,65 +123,62 @@ class Trainer(GeneratorTrainer, ABC):
         self.epoch = None
         # last saved run
         self.saved_run = None
-        # total batches
-        self.total_batches = len(self.train_loader)
-        # clip or not grad
-        self.clip_grad = True
 
-        self.tf_logger = TensorboardTrainerLogger(trainer_spec.tensorboard_update_rate())
-        # logging.basicConfig(level=logging.DEBUG,
-        #                     format='%(asctime)s %(levelname)s %(message)s',
-        #                     filename='/tmp/myapp.log',
-        #                     filemode='w')
-        self.metric = Metrics(metric_step_file_path=trainer_spec.model_files.get_metric_file_path(),
-                              metric_batch_file_path=trainer_spec.model_files.get_time_file_path(),
-                              metric_perf_trace_path=trainer_spec.model_files.get_metric_batch_file_path(),
-                              num_epochs=self.trainer_spec.epochs(), num_batches=self.total_batches)
+        if self.is_inference is False:
+            # total batches
+            self.total_batches = len(self.train_loader)
+            # clip or not grad
+            self.clip_grad = trainer_spec.is_grad_clipped()
+
+            self.tf_logger = TensorboardTrainerLogger(trainer_spec.tensorboard_update_rate())
+            self.metric = Metrics(metric_step_file_path=trainer_spec.model_files.get_metric_file_path(),
+                                  metric_batch_file_path=trainer_spec.model_files.get_time_file_path(),
+                                  metric_perf_trace_path=trainer_spec.model_files.get_metric_batch_file_path(),
+                                  num_epochs=self.trainer_spec.epochs(), num_batches=self.total_batches)
 
         # tensorboard writer
         self.t_writer = None
+        logger.info("Device ID {}".format(self.cuda_device_id))
 
-        self.dev_id = self.rank % torch.cuda.device_count()
-        logger.info("Device ID {}".format(self.dev_id))
+        # init trainer
+        self.init_trainer()
 
-    def init_trainer(self):
-        """
-
-        Returns:
-
-        """
-        if self.trainer_spec.is_distributed_run():
-            logger.info("Starting distributed DDP training")
-            # self.init_distributed()
-            # dist.barrier()
-
-        self.create_models()
-        self.create_optimizers()
-        self.create_lr_schedulers()
-        if self.trainer_spec.fp16_run():
-            self.scaler = torch.cuda.amp.GradScaler()
-
-        torch.manual_seed(self.trainer_spec.seed())
-        torch.cuda.manual_seed(self.trainer_spec.seed())
-
-    # def setup(rank, world_size):
-    # os.environ['MASTER_ADDR'] = 'localhost'
-    # os.environ['MASTER_PORT'] = '12355'
-    #
-    # # initialize the process group
-    # dist.init_process_group("gloo", rank=rank, world_size=world_size)
-
-    # @staticmethod
-
-    def init_distributed(self):
+    def init_trainer(self) -> None:
         """
 
         :return:
         """
-        #  if self.rank != 0:
+        if self.is_inference:
+            return
+
+        if self.trainer_spec.is_distributed_run():
+            torch.manual_seed(self.trainer_spec.seed())
+            torch.cuda.manual_seed(self.trainer_spec.seed())
+            torch.backends.cudnn.deterministic = True
+            torch.backends.cudnn.benchmark = False
+            np.random.seed(self.trainer_spec.seed())
+            random.seed(self.trainer_spec.seed())
+
+            logger.info("Starting distributed DDP training.")
+            # self.init_distributed()
+            dist.barrier()
+
+        self.create_models()
+        self.create_optimizers()
+        self.create_lr_schedulers()
+
+        if self.trainer_spec.fp16_run():
+            self.scaler = torch.cuda.amp.GradScaler()
+
+    def init_distributed(self):
+        """
+        Initialize DDP
+        :return:
+        """
         os.environ['MASTER_ADDR'] = self.trainer_spec.get_master_address()
         os.environ['MASTER_PORT'] = self.trainer_spec.get_master_port()
         # os.environ["PL_TORCH_DISTRIBUTED_BACKEND"] = "nccl"
+
         assert torch.cuda.is_available(), "Distributed mode requires CUDA."
         logger.info("Distributed Available".format(torch.cuda.device_count()))
         logger.info("Distribute protocol nccl available {}".format(torch.distributed.is_nccl_available()))
@@ -181,34 +201,38 @@ class Trainer(GeneratorTrainer, ABC):
                 init_method=self.trainer_spec.dist_url(),
                 world_size=self.n_gpus,
                 rank=self.rank)
-        print("Done init")
-        logger.debug("Done initializing distributed")
 
-    def create_model(self, model_name):
+        logger.debug("Done initializing distributed {}".format(dist.get_rank()))
+
+    def create_model(self, model_name, is_set_cuda=False):
         """Method create model.  Later will move to a separate dispatcher creator.
         :param model_name:
         :return: nothing
+        :param is_set_cuda: If need pin directly
         """
-        print("DIST RANK {}", dist.get_rank())
         # device = torch.device(f"cuda:{int(args.rank)}")
 
         if model_name == 'encoder':
-            if self.trainer_spec.is_distributed_run():
-                device = torch.device(f"cuda:{dist.get_rank()}")
+            if self.is_inference:
+                model = Tacotron2(self.trainer_spec, self.device).to(self.device)
+            elif self.trainer_spec.is_distributed_run():
+                # device = torch.device(f"cuda:{dist.get_rank()}")
+                if torch.cuda.is_available():
+                    n = torch.cuda.device_count() // self.n_gpus
 
-                n = torch.cuda.device_count() // self.n_gpus
-                logger.info("Number gpu on the node {} device".format(n, device))
-                device_ids = list(range(self.rank * n, (self.rank + 1) * n))
-                print("############### DEVICE IDS", device_ids)
-                # print(f"[{os.getpid()}] rank = {dist.get_rank()}, "
-                #       f"world_size = {dist.get_world_size()}, "
-                #       f"n = {n}, device_ids = {device_ids} \n", end='')
-                # torch.cuda.set_device(self.rank)
-                # self.device = torch.device(f"cuda:{self.rank}")
-                logger.info("Creating DDP")
-                #torch.cuda.set_device()
+                if is_set_cuda:
+                    device = f"cuda:{dist.get_rank()}"
+                    logger.info("Number gpu on the node {} device".format(n, device))
+                    torch.cuda.set_device(self.cuda_device_id)
+                else:
+                    device = self.device
+
+                logger.info("Creating DDP on device {}".format(self.cuda_device_id, device))
                 model = Tacotron2(self.trainer_spec, device).cuda()
-                model = DistributedDataWrapper(model, device_ids=[0], output_device=0).cuda()
+                model = DistributedDataWrapper(model,
+                                               device_ids=[self.cuda_device_id],
+                                               output_device=0).cuda()
+
             else:
                 model = Tacotron2(self.trainer_spec, self.device).to(self.device)
 
@@ -216,29 +240,30 @@ class Trainer(GeneratorTrainer, ABC):
                 model.decoder.attention_layer.score_mask_value = finfo('float16').min
 
             # if self.trainer_spec.is_distributed_run():
-            #     logger.info("Creating DDP")
-            #     model = DistributedDataWrapper(model, device_ids=[self.rank], output_device=self.rank)
             #     # model = apply_gradient_allreduce(model)
-            #     self.device = torch.device(f"cuda:{dist.get_rank()}")
-            #     # model.nn_model.to(self.device)
-            #    # model.to(self.device)
 
             self.models[model_name] = model
             self.last_epochs[model_name] = 0
 
-    def load(self, model_name: str, to_device=True, ignore_layers=None):
+    def load(self, model_name: str, to_device=True, ignore_layers=None, model_file=None):
         """Method loads model from a checkpoint.
            It will update internal state, that include model, last epoch, last step.
 
+        :param model_file:
         :param model_name: - mode name that method need to load
         :param ignore_layers: - a list contain of layers we skip
         :param to_device: - if true will load to device indicate as main device
         :return: epoch, step
         """
+        # setting in config, if set don't load trainer won't load model
         if not self.trainer_spec.is_load_model():
             return 0
 
-        model_file = self.trainer_spec.model_files.get_model_file_path(model_name)
+        if model_file is None:
+            model_file = self.trainer_spec.model_files.get_model_file_path(model_name)
+        else:
+            model_file = self.trainer_spec.model_files.get_model_file_path(model_name)
+
         logger.info("Loading model '{}' model file name {}".format(model_name, model_file))
 
         # load trained optimizer state_dict
@@ -284,13 +309,65 @@ class Trainer(GeneratorTrainer, ABC):
                 raise Exception("saved checkpoint has no epoch key")
             self.last_epochs[model_name] = checkpoint['epoch']
 
+            # load last iterator.
             if 'it' not in checkpoint:
                 raise Exception("saved checkpoint has no last iteration key.")
             self.iters[model_name] = checkpoint['it']
             logger.info("Last checkpoint. epoch {} step {}".format(checkpoint['epoch'], checkpoint['it']))
+
             # load metric
             self.metric.load()
 
+            return checkpoint['epoch'], checkpoint['it']
+        except FileNotFoundError as e:
+            print("Failed load model files {}. No saved model found.".format(model_file))
+            logger.info("No model file to load model file, return default epoch 0, iteration 0")
+
+        return 0, 0
+
+    def load_for_inference(self, model_name, model_file=None, to_device=True, ignore_layers=None):
+        """Method loads model from a checkpoint.
+           It will update internal state, that include model, last epoch, last step.
+
+        :param model_file:
+        :param model_name: - mode name that method need to load
+        :param ignore_layers: - a list contain of layers we skip
+        :param to_device: - if true will load to device indicate as main device
+        :return: epoch, step
+        """
+
+        logger.info("Loading model '{}' model file name {} to device {}".format(model_name,
+                                                                                model_file,
+                                                                                self.device))
+
+        try:
+            checkpoint = torch.load(model_file, map_location=self.device)
+            if 'model_state_dict' not in checkpoint:
+                raise Exception("model has no state dict")
+
+            self.create_model(model_name)
+
+            self.models[model_name].load_state_dict(checkpoint['model_state_dict'])
+            if 'model_state_dict' not in checkpoint:
+                raise Exception("model has no state dict")
+
+            if ignore_layers is not None and len(ignore_layers) > 0:
+                model_dict = {k: v for k, v in self.models[model_name].items()
+                              if k not in ignore_layers}
+                new_state = self.models[model_name].state_dict()
+                new_state.update(model_dict)
+                self.models[model_name] = new_state
+
+            if 'epoch' not in checkpoint:
+                raise Exception("saved checkpoint has no epoch key")
+            self.last_epochs[model_name] = checkpoint['epoch']
+
+            # load last iterator.
+            if 'it' not in checkpoint:
+                raise Exception("saved checkpoint has no last iteration key.")
+            self.iters[model_name] = checkpoint['it']
+
+            logger.info("Last checkpoint. epoch {} step {}".format(checkpoint['epoch'], checkpoint['it']))
             return checkpoint['epoch'], checkpoint['it']
         except FileNotFoundError as e:
             print("Failed load model files {}. No saved model found.".format(model_file))
@@ -342,7 +419,7 @@ class Trainer(GeneratorTrainer, ABC):
 
     def create_models(self):
         """
-        for each active model, that might consist more than one model,
+        For each active model, which might consist of more than one model
         we create a target model
         :return: nothing, create_model will add each model to a dict[model_name] = model
         """
@@ -350,11 +427,10 @@ class Trainer(GeneratorTrainer, ABC):
         for m in models:
             self.create_model(m)
 
-    def load_models(self):
+    def load_models(self) -> None:
         """
-
-        Returns:
-
+        For each active model, which might consist of more than one model
+        :return:
         """
         models = self.trainer_spec.get_active_sub_models()
         for m in models:
@@ -362,12 +438,9 @@ class Trainer(GeneratorTrainer, ABC):
 
     def reduce_if_needed(self, loss):
         """
-
-        Args:
-            loss:
-
-        Returns:
-
+        TODO need proper test FP16
+        :param loss:
+        :return:
         """
         if self.trainer_spec.is_fp16_run():
             reduced_loss = self.split_tensor(loss.data).item()
@@ -566,10 +639,11 @@ class Trainer(GeneratorTrainer, ABC):
 
         """
         if self.rank == 0 and it % self.trainer_spec.epochs_log() == 0:
-            print("Train loss {} {:.6f} Grad Norm {:.6f} {:.2f}s/it".format(it,
-                                                                            reduced_loss,
-                                                                            grad_norm,
-                                                                            duration))
+            print("Train loss "
+                  "{} {:.6f} Grad Norm {:.6f} {:.2f}s/it".format(it,
+                                                                 reduced_loss,
+                                                                 grad_norm,
+                                                                 duration))
 
     def validate(self, model, model_name: str, it):
         """
@@ -631,36 +705,56 @@ class Trainer(GeneratorTrainer, ABC):
         """
         fig, axes = plt.subplots(1, len(data), figsize=figsize)
         for i in range(len(data)):
-            axes[i].imshow(data[i], aspect='auto', origin='bottom',
+            axes[i].imshow(data[i],
+                           aspect='auto',
+                           inorigin='bottom',
                            interpolation='none')
 
-    def inference(self, seq, model_name='encoder'):
+    def inference(self, input_seq=None, model_name='encoder', plot=True,
+                  mel_output_path="mel_out.png",
+                  mel_post_path="mel_post.png",
+                  mel_alignment_path="mel_alignment.png"):
         """
-
-        Args:
-            model_name:
-            sequences:
-            lengths:
-
-        Returns:
-
+        Perform inference on input
+        :param mel_alignment_path:
+        :param mel_output_path:
+        :param mel_post_path:
+        :param input_seq:
+        :param model_name:
+        :return:
         """
-
         # model returns  outputs
         # [mel_outputs, mel_outputs_postnet, gate_outputs, alignments])
-        self.load_models()
+        if model_name not in self.models:
+            raise Exception("You need load model {}".format(model_name))
+
         model = self.models[model_name]
         model.eval()
 
+        if isinstance(input_seq, str):
+            # input_seq = np.array(text_to_sequence(input_seq, ['english_cleaners']))[None, :]
+            # print(input_seq.shape)
+            sequence = np.array(text_to_sequence(input_seq, ['english_cleaners']))[None, :]
+            sequence = torch.autograd.Variable(
+                    torch.from_numpy(sequence)).to(self.device).long()
+
+        # sequence = torch.autograd.Variable(torch.from_numpy(sequence)).cuda().long()
+
         with torch.no_grad():
-            mel_outputs, mel_outputs_postnet, _, alignments = model.inference(seq)
+            mel_outputs, mel_outputs_postnet, _, alignments = model.inference(sequence)
             print(mel_outputs.shape)
             print(mel_outputs_postnet.shape)
             print(alignments.shape)
 
-            # self.plot_data((mel_outputs.float().data.cpu().numpy()[0],
-            #                 mel_outputs_postnet.float().data.cpu().numpy()[0],
-            #                 alignments.float().data.cpu().numpy()[0].T))
+            mel_outputs, mel_outputs_postnet, _, alignments = model.inference(sequence)
+            if plot:
+                plot_spectrogram_to_numpy(mel_outputs.data.cpu().numpy()[0],
+                                          file_name=mel_output_path)
+                plot_spectrogram_to_numpy(mel_outputs_postnet.data.cpu().numpy()[0],
+                                          file_name=mel_post_path)
+                plot_alignment_to_numpy(alignments.data.cpu().numpy()[0].T,
+                                        file_name=mel_alignment_path)
+
             return mel_outputs, mel_outputs_postnet, alignments
 
     # def average_gradients(model):
@@ -738,7 +832,7 @@ class Trainer(GeneratorTrainer, ABC):
             if self.rank == 0 and self.save_if_need(model_name, step, self.epoch):
                 self.saved_run = step
 
-            #dist.barrier()
+            # dist.barrier()
 
             hparams = \
                 {
@@ -882,7 +976,6 @@ class Trainer(GeneratorTrainer, ABC):
 
         self.cleanup()
 
-
         def train_scaled(self, model_name='encoder'):
             """Training and validation logging results to tensorboard and stdout
 
@@ -912,8 +1005,8 @@ class Trainer(GeneratorTrainer, ABC):
                 from apex import amp
                 model, optimizer = amp.initialize(model, optimizer, opt_level='O2')
             #
-        #    if self.trainer_spec.is_distributed_run():
-               # model = apply_gradient_allreduce(model)
+            #    if self.trainer_spec.is_distributed_run():
+            # model = apply_gradient_allreduce(model)
             #
             #
             # # logger = prepare_directories_and_logger(
@@ -968,7 +1061,6 @@ class Trainer(GeneratorTrainer, ABC):
                         tqdm_iter.set_postfix({'total_epoch_loss': total_epoch_loss, 'saved': True})
                     iteration += 1
 
-
     def is_trained(self):
         """
 
@@ -987,6 +1079,14 @@ class Trainer(GeneratorTrainer, ABC):
 
         return False
 
+    def get_model(self, model_name):
+        """
+
+        :param model_name:
+        :return:
+        """
+        if model_name in self.models:
+            return self.models[model_name]
 #
 # def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
 #     config = {

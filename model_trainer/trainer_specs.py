@@ -646,36 +646,37 @@ class ExperimentSpecs:
 
     def get_master_address(self):
         """
-        Return model backend setting such as nccl
-        :return:
+        Return model master address.
+        :return: Default local host
         """
         if 'backend' in self._setting:
             if self._verbose:
-                fmtl_print("Model backend", self._setting['master_address'])
+                logger.debug("Model master address {}".format(self._setting['master_address']))
             return str(self._setting['master_address'])
 
         return "localhost"
 
-    def get_master_port(self):
+    def get_master_port(self) -> str:
         """Return a DDP tcp port
-        :return:
+        :return: Default "54321"
         """
         if 'backend' in self._setting:
             if self._verbose:
-                fmtl_print("Model backend", self._setting['master_port'])
+                logger.debug("Model master port".format(self._setting['master_port']))
             return str(self._setting['master_port'])
 
         return "54321"
 
-    def dist_url(self):
-        """Return tcp url used for DDP.
+    def dist_url(self) -> str:
+        """Return tcp url used for ddp.
         :return:
         """
         if 'url' in self._setting:
             if self._verbose:
-                fmtl_print("Model backend", self._setting['url'])
+                logger.debug("Model backend {}".format(self._setting['url']))
             return self._setting['url']
-        return False
+
+        return ""
 
     def get_model_spec(self) -> ModelSpec:
         """
@@ -730,7 +731,8 @@ class ExperimentSpecs:
 
     def is_load_model(self) -> bool:
         """
-        Return true if model must be loaded, default will return false.
+        Return true if model must be loaded, for resuming training,
+        default will return false.
         """
         if 'load_model' in self.config:
             return bool(self.config['load_model'])
@@ -1195,16 +1197,11 @@ class ExperimentSpecs:
 
     def optimizer_learning_rate(self, alias_name: str, default=False) -> float:
         """
-        Adam learning rate (default: 1e-3)
-
-        Args:
-            default:  will return default value
-            alias_name:
-
-        Returns:
-
+        learning rate (default: 1e-3),  if no setting return default.
+        :param alias_name:  a name in config.
+        :param default:     (default: 1e-3)
+        :return:
         """
-
         if default is False:
             opt = self.get_optimizer(alias_name)
             if 'learning_rate' in opt:
@@ -1244,7 +1241,7 @@ class ExperimentSpecs:
 
         if 'tensorboard_update' in self._setting:
             if self.batch_size <= int(self._setting['tensorboard_update']):
-                logger.warning("Tensorboard update rate less than batch size")
+                logger.warning("Tensorboard update rate less than batch size.")
                 return 1
             return int(self._setting['tensorboard_update'])
 
@@ -1254,13 +1251,27 @@ class ExperimentSpecs:
         return min(self.batch_size, 1)
 
     def get_tensorboard_writer(self):
+        """
+        Return tensorboard writer object.
+        :return:
+        """
         return self.writer
 
     def initialized(self):
+        """
+
+        :return:
+        """
         self._initialized = True
 
     def is_initialized(self) -> bool:
-        return self._initialized
+        """
+        Return true if trainer spec properly initialized and parsed read all yaml file.
+        :return:
+        """
+        if self._initialized and self._setting is None:
+            return True
+        return False
 
     def set_distributed(self, value):
         """
@@ -1269,3 +1280,17 @@ class ExperimentSpecs:
         """
         if self.is_initialized and 'distributed' in self._setting:
             self._setting['distributed'] = value
+
+    def is_grad_clipped(self) -> bool:
+        """
+        Return of settings set to grap clipped.
+        :return: Default false.
+        """
+        if self.is_initialized() is False:
+            raise Exception("Training must be initialized first.")
+
+        if 'grad_clipping' in self._setting:
+            return bool(self._setting['grad_clipping'])
+
+        return False
+
