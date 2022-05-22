@@ -102,6 +102,8 @@ settings:
     cudnn_benchmark: False
   small:
     batch_size: 64
+    grad_clipping: True
+    grad_clip_thresh: 1.0
     # tensorboard update rate
     tensorboard_update: 20
     # early stopping
