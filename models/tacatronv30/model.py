@@ -236,7 +236,7 @@ class Tacotron3(nn.Module):
         mel_outputs, gate_outputs, alignments = self.decoder(
                 encoder_outputs, mels, memory_lengths=text_lengths)
 
-        # print("gate_out dim", gate_outputs.shape)
+        print("gate_out dim", gate_outputs.shape)
         # rom
         # torch.distributions.kl
         # import kl_divergence
