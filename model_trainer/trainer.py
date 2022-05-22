@@ -3,6 +3,8 @@ import random
 import socket
 import time
 from abc import ABC
+
+from models.tacotronv25.model import Tacotron25
 from tacotron2.plotting_utils import plot_alignment_to_numpy, plot_spectrogram_to_numpy, plot_gate_outputs_to_numpy
 
 import numpy as np
@@ -22,7 +24,7 @@ from model_trainer.trainer_metrics import Metrics
 from model_trainer.trainer_logger import TensorboardTrainerLogger
 from model_trainer.trainer_specs import ExperimentSpecs
 # from distributed import apply_gradient_allreduce
-from models.model import Tacotron2
+import models
 from tacotron2.loss_function import Tacotron2Loss
 from tacotron2.utils import fmtl_print, fmt_print, to_gpu
 from numpy import finfo
@@ -218,7 +220,7 @@ class Trainer(GeneratorTrainer, ABC):
 
         if model_name == 'encoder':
             if self.is_inference:
-                model = Tacotron2(self.trainer_spec, self.device).to(self.device)
+                model = Tacotron25(self.trainer_spec, self.device).to(self.device)
             elif self.trainer_spec.is_distributed_run():
                 # device = torch.device(f"cuda:{dist.get_rank()}")
                 if torch.cuda.is_available():
@@ -233,13 +235,13 @@ class Trainer(GeneratorTrainer, ABC):
 
                 logger.info("Creating DDP on cuda device "
                             "{} torch device {} device received {}".format(self.cuda_device_id, device, self.device))
-                model = Tacotron2(self.trainer_spec, device).cuda()
+                model = Tacotron25(self.trainer_spec, device).cuda()
                 model = DistributedDataWrapper(model,
                                                device_ids=[self.cuda_device_id],
                                                output_device=self.cuda_device_id).cuda()
 
             else:
-                model = Tacotron2(self.trainer_spec, self.device).to(self.device)
+                model = Tacotron25(self.trainer_spec, self.device).to(self.device)
 
             if self.trainer_spec.is_fp16_run():
                 model.decoder.attention_layer.score_mask_value = finfo('float16').min

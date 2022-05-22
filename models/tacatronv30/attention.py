@@ -4,11 +4,14 @@ from torch.autograd import Variable
 from torch import nn
 from torch.nn import functional as F
 
-from models.layers import LinearNorm
-from models.location import LocationLayer
+from .layers import LinearNorm
+from .location import LocationLayer
 
 
 class Attention(nn.Module):
+    """
+
+    """
     def __init__(self, attention_rnn_dim, embedding_dim, attention_dim,
                  attention_location_n_filters, attention_location_kernel_size):
         super(Attention, self).__init__()

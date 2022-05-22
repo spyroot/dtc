@@ -4,9 +4,9 @@ from torch.autograd import Variable
 from torch import nn
 from torch.nn import functional as F
 from model_trainer.trainer_specs import ExperimentSpecs
-from models.PreAndPost import Prenet
-from models.attention import Attention
-from models.layers import LinearNorm
+from .PreAndPost import Prenet
+from .attention import Attention
+from .layers import LinearNorm
 from tacotron2.utils import get_mask_from_lengths
 
 
