@@ -803,9 +803,12 @@ class Trainer(GeneratorTrainer, ABC):
 
             loss.backward()
             if self.clip_grad:
+                print("Clipping grade")
                 grad_norm = clip_grad_norm_(model.parameters(), self.trainer_spec.grad_clip_thresh())
                 self.metric.update(batch_idx, step, normal_loss, grad_norm=grad_norm.item())
             else:
+                print("Uncliped")
+                grad_norm = normal_loss
                 self.metric.update(batch_idx, step, normal_loss)
 
             optimizer.step()
