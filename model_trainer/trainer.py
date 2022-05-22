@@ -823,7 +823,8 @@ class Trainer(GeneratorTrainer, ABC):
 
         #
         if self.trainer_spec.is_distributed_run():
-            device = torch.device(f"cuda:{dist.get_rank()}")
+            # device = torch.device(f"cuda:{dist.get_rank()}")
+            device = self.device
         else:
             device = self.device
 
@@ -966,6 +967,7 @@ class Trainer(GeneratorTrainer, ABC):
                     if self.save_if_need(model_name, iteration, epoch):
                         tqdm_iter.set_postfix({'total_epoch_loss': total_epoch_loss, 'saved': True})
                     iteration += 1
+
 
     def is_trained(self):
         """
