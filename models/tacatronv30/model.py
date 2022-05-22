@@ -286,7 +286,9 @@ class Tacotron3(nn.Module):
         # >> > p1d = (0, 1024 - t2d.shape[1])
         # >> > y = torch.nn.functional.pad(t2d, p1d, "constant", 0)
         #
-        q_mean, q_stddev = self.vae_encode(gate_outputs)
+        p1d = (0, 1024 - gate_outputs.shape[1])
+        y = torch.nn.functional.pad(gate_outputs, p1d, "constant", 0)
+        q_mean, q_stddev = self.vae_encode(y)
         q_dist = Normal(q_mean, q_stddev)
         z_sample = q_dist.rsample()
         decoding = self.vae_decode(z_sample)
