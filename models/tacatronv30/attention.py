@@ -61,10 +61,10 @@ class Attention(nn.Module):
         mask: binary mask for padded data
         """
 
-        print("Attention hidden", attention_hidden_state.shape)
-        print("memory ", memory.shape)
-        print("processed_memory memory", processed_memory.shape)
-        print("attention_weights_cat memory", processed_memory.shape)
+        # print("Attention hidden", attention_hidden_state.shape)
+        # print("memory ", memory.shape)
+        # print("processed_memory memory", processed_memory.shape)
+        # print("attention_weights_cat memory", processed_memory.shape)
 
         alignment = self.get_alignment_energies(
                 attention_hidden_state, processed_memory, attention_weights_cat)
