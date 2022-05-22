@@ -24,7 +24,7 @@ class InferenceEncoder(nn.Module):
         self.z_dim = z_dim
         self.y_dim = y_dim
         self.net = nn.Sequential(
-                nn.Linear(3072 + y_dim, hidden_dim),
+                nn.Linear(1024, hidden_dim),
                 nn.ELU(),
                 nn.Linear(hidden_dim, hidden_dim),
                 nn.ELU(),
