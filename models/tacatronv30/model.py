@@ -159,8 +159,8 @@ class Tacotron3(nn.Module):
         self.decoder = Decoder(experiment_specs, device=self.device)
         self.postnet = Postnet(experiment_specs, device=self.device)
 
-        self.vae_encode = VaeEncoder(output_chan=512)
-        self.vae_decode = VaeDecoder(z_dim=512)
+        # self.vae_encode = VaeEncoder(output_chan=512)
+        # self.vae_decode = VaeDecoder(z_dim=512)
 
     def reparameterize(self, mu, logvar, mi=False):
         """
