@@ -230,7 +230,7 @@ class Trainer(GeneratorTrainer, ABC):
                 else:
                     device = self.device
 
-                logger.info("Creating DDP on device {}".format(self.cuda_device_id, device))
+                logger.info("Creating DDP on cuda device {} torch device {} device recieved {}".format(self.cuda_device_id, device, self.device))
                 model = Tacotron2(self.trainer_spec, device).cuda()
                 model = DistributedDataWrapper(model,
                                                device_ids=[self.cuda_device_id],
