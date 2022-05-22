@@ -36,14 +36,11 @@ class InferenceEncoder(nn.Module):
         Converts generic real-valued representations into mean and variance
         parameters of a Gaussian distribution
 
-        Args:
-            h: tensor: (batch, ..., dim, ...): Arbitrary tensor
-            dim: int: (): Dimension along which to split the tensor for mean and
-                variance
-
-        Returns:
-            m: tensor: (batch, ..., dim / 2, ...): Mean
-            v: tensor: (batch, ..., dim / 2, ...): Variance
+        :param h: tensor: (batch, ..., dim, ...): Arbitrary tensor
+        :param dim: int: (): Dimension along which to split the tensor for mean and
+                             variance
+        :return:   m: tensor: (batch, ..., dim / 2, ...): Mean
+                   v: tensor: (batch, ..., dim / 2, ...): Variance
         """
         m, h = torch.split(h, h.size(dim) // 2, dim=dim)
         v = F.softplus(h) + 1e-8
@@ -53,11 +50,11 @@ class InferenceEncoder(nn.Module):
         xy = x if y is None else torch.cat((x, y), dim=1)
         h = self.net(xy)
 
-        print("x", h.shape)
+        # print("x", h.shape)
         m, v = self.gaussian_parameters(h, dim=1)
-        print("m", x.shape)
-        print("v", x.shape)
-        sys.exit(1)
+        # print("m", x.shape)
+        # print("v", x.shape)
+        # sys.exit(1)
         return m, v
 
 
@@ -288,10 +285,17 @@ class Tacotron3(nn.Module):
         #
         p1d = (0, 1024 - gate_outputs.shape[1])
         y = torch.nn.functional.pad(gate_outputs, p1d, "constant", 0)
-        q_mean, q_stddev = self.vae_encode(y)
-        q_dist = Normal(q_mean, q_stddev)
+
+        q_mean, q_var = self.vae_encode(y)
+        print("q_mean", q_mean.shape)
+        print("q_var", q_var.shape)
+
+        q_dist = Normal(q_mean, q_var)
+        print("q_var", q_dist.shape)
+
         z_sample = q_dist.rsample()
-        decoding = self.vae_decode(z_sample)
+        print("z_samep", z_sample.shape)
+        # decoding = self.vae_decode(z_sample)
 
         print("gate_out dim", gate_outputs.shape)
         # rom
