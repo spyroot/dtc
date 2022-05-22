@@ -138,6 +138,8 @@ def cleanup(is_distributed) -> None:
 def signal_handler(sig, frame) -> None:
     if is_distributed:
         dist.destroy_process_group()
+
+    print("handling signal")
     sys.exit(0)
 
 
