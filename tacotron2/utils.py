@@ -37,12 +37,9 @@ def fmt_print(left, *argv):
 def get_mask_from_lengths(lengths, device="cuda"):
     """
 
-    Args:
-        device:
-        lengths:
-
-    Returns:
-
+    :param lengths:
+    :param device:
+    :return:
     """
     max_len = torch.max(lengths).item()
     ids = torch.arange(0, max_len, out=torch.LongTensor(max_len)).to(device)

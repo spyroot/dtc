@@ -13,7 +13,7 @@ from tacotron2.utils import get_mask_from_lengths
 class Decoder(nn.Module):
     def __init__(self, specs: ExperimentSpecs, device):
         """
-
+        Decoder based on tacotron2 spec
         :param specs:
         """
         super(Decoder, self).__init__()
@@ -74,14 +74,16 @@ class Decoder(nn.Module):
         return decoder_input
 
     def initialize_decoder_states(self, memory, mask):
-        """ Initializes attention rnn states, decoder rnn states, attention
+        """
+        Initializes attention rnn states, decoder rnn states, attention
         weights, attention cumulative weights, attention context, stores memory
         and stores processed memory
-        PARAMS
-        ------
-        memory: Encoder outputs
-        mask: Mask for padded data if training, expects None for inference
+
+        :param memory: encoder outputs
+        :param mask: Mask for padded data if training, expects None for inference
+        :return:
         """
+
         B = memory.size(0)
         MAX_TIME = memory.size(1)
 
@@ -216,7 +218,12 @@ class Decoder(nn.Module):
         decoder_inputs = torch.cat((decoder_input, decoder_inputs), dim=0)
         decoder_inputs = self.pre_net(decoder_inputs)
 
-        self.initialize_decoder_states(memory, mask=~get_mask_from_lengths(memory_lengths, self.device))
+        mask = ~get_mask_from_lengths(memory_lengths, self.device)
+
+        print("mask device", mask.device)
+        print("mask device", memory.device)
+
+        self.initialize_decoder_states(memory, mask=mask)
 
         mel_outputs, gate_outputs, alignments = [], [], []
         while len(mel_outputs) < decoder_inputs.size(0) - 1:
@@ -226,8 +233,8 @@ class Decoder(nn.Module):
             gate_outputs += [gate_output.squeeze(1)]
             alignments   += [attention_weights]
 
-        mel_outputs, gate_outputs, alignments = self.parse_decoder_outputs(
-            mel_outputs, gate_outputs, alignments)
+        mel_outputs, gate_outputs, alignments = \
+            self.parse_decoder_outputs(mel_outputs, gate_outputs, alignments)
 
         return mel_outputs, gate_outputs, alignments
 
