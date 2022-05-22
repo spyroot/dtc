@@ -965,8 +965,8 @@ class Trainer(GeneratorTrainer, ABC):
         model.train()
         self.tqdm_iter.set_postfix({'step': it})
         for epoch in self.tqdm_iter:
-            dist.barrier()
-
+            if self.trainer_spec.is_distributed_run():
+                dist.barrier()
             # update epoch
             self.epoch = epoch
             # train epoch's batch
