@@ -138,7 +138,6 @@ def cleanup(is_distributed) -> None:
 def signal_handler(sig, frame) -> None:
     if is_distributed:
         dist.destroy_process_group()
-
     print("handling signal")
     sys.exit(0)
 
@@ -413,7 +412,7 @@ if __name__ == '__main__':
 
     try:
         main(args)
-        setup_handler(cleanup(is_distributed))
+        # setup_handler(cleanup(is_distributed))
     except FileNotFoundError as file_error:
         print("File not found ", str(file_error))
         sys.exit(2)
