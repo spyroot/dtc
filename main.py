@@ -214,7 +214,7 @@ def train(spec=None, cmd_args=None, device=None, verbose=True, cudnn_bench=False
                 "Staring training in distributed settings. rank {} world size {}".format(args.rank, args.world_size))
         init_distributed(spec, int(args.rank), int(args.world_size))
         # device = torch.device(f"cuda:{int(0)}")
-        device = torch.device(f"cuda:{dist.get_rank()}")
+        # device = torch.device(f"cuda:{dist.get_rank()}")
         # device = torch.device(device)
         dist.barrier()
 
