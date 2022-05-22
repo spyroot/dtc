@@ -974,9 +974,9 @@ class Trainer(GeneratorTrainer, ABC):
             self.metric.update_epoch_timer(epoch)
 
             # model logs
-            for name, weight in model.named_parameters():
-                t_writer.add_histogram(name, weight, epoch)
-                t_writer.add_histogram(f'{name}.grad', weight.grad, epoch)
+            # for name, weight in model.named_parameters():
+            #     t_writer.add_histogram(name, weight, epoch)
+            #     t_writer.add_histogram(f'{name}.grad', weight.grad, epoch)
 
             t_writer.flush()
             #  tune.report(loss=(val_loss / val_steps), accuracy=correct / total)
