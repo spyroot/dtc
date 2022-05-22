@@ -236,7 +236,21 @@ class Tacotron3(nn.Module):
         mel_outputs, gate_outputs, alignments = self.decoder(
                 encoder_outputs, mels, memory_lengths=text_lengths)
 
-        print("gate_out dim", gate_outputs.shape)
+        # print("gate_out dim", gate_outputs.shape)
+        # rom
+        # torch.distributions.kl
+        # import kl_divergence
+        # def kl_divergence_loss(q_dist):
+        #     return kl_divergence(
+        #             q_dist, Normal(torch.zeros_like(q_dist.mean), torch.ones_like(q_dist.stddev))
+        #     ).sum(-1)
+        # for images, _ in tqdm(train_dataloader):
+        #     images = images.to(device)
+        #     vae_opt.zero_grad()  # Clear out the gradients
+        #     recon_images, encoding = vae(images)
+        #     loss = reconstruction_loss(recon_images, images) + kl_divergence_loss(encoding).sum()
+        #     loss.backward()
+        #     vae_opt.step()
         # q_mean, q_stddev = self.vae_encode(gate_outputs)
         # q_dist = Normal(q_mean, q_stddev)
         # z_sample = q_dist.rsample()
