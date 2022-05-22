@@ -290,8 +290,11 @@ class Tacotron3(nn.Module):
         print("q_mean", q_mean.shape)
         print("q_var", q_var.shape)
 
+        # epsilon = torch.randn_like(v)
+        # z = m + torch.sqrt(v) * epsilon
+        #
         q_dist = Normal(q_mean, q_var)
-        print("q_var", q_dist.shape)
+        print("q_var", q_dist)
 
         z_sample = q_dist.rsample()
         print("z_samep", z_sample.shape)
