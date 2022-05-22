@@ -99,8 +99,12 @@ class Tacotron3(nn.Module):
         embedded_inputs = self.embedding(text_inputs).transpose(1, 2)
         encoder_outputs = self.encoder(embedded_inputs, text_lengths)
 
+        print("Attention hidden", encoder_outputs.shape)
+
         mel_outputs, gate_outputs, alignments = self.decoder(
             encoder_outputs, mels, memory_lengths=text_lengths)
+
+        print("gate_outputs ", gate_outputs.shape)
 
         mel_outputs_postnet = self.postnet(mel_outputs)
         mel_outputs_postnet = mel_outputs + mel_outputs_postnet
