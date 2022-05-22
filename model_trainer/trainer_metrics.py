@@ -88,9 +88,6 @@ class Metrics:
 
         :return:
         """
-        print("self.total_iteration", self.total_iteration)
-        print("self.num_batches", self.num_batches)
-
         self.total_iteration = max(1, self.num_batches) * max(1, self.num_iteration)
         if self.num_batches > 0 and self.num_iteration > 0 and self.total_iteration > 0:
             logger.info("Creating metric data. {} ".format(self.num_batches))
