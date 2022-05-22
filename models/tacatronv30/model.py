@@ -287,18 +287,18 @@ class Tacotron3(nn.Module):
         y = torch.nn.functional.pad(gate_outputs, p1d, "constant", 0)
 
         q_mean, q_var = self.vae_encode(y)
-        print("q_mean", q_mean.shape)
-        print("q_var", q_var.shape)
+        # print("q_mean", q_mean.shape)
+        # print("q_var", q_var.shape)
 
         # epsilon = torch.randn_like(v)
         # z = m + torch.sqrt(v) * epsilon
         #
         q_dist = Normal(q_mean, q_var)
-        print("q_var", q_dist)
+        # print("q_var", q_dist)
         z_sample = q_dist.rsample()
-        print("z_samep", z_sample.shape)
+        # print("z_samep", z_sample.shape)
         decoding = self.vae_decode(z_sample)
-        print("gate_out dim", decoding.shape)
+        # print("gate_out dim", decoding.shape)
 
         # exit(1)
         # rom

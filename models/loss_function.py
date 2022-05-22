@@ -32,7 +32,7 @@ class Tacotron2Loss(nn.Module):
         mel_target.requires_grad = False
         gate_target.requires_grad = False
 
-        mel_out, mel_out_post_net, gate_out, _ = model_output
+        mel_out, mel_out_post_net, gate_out, _ , decoding, q_dist = model_output
         gate_targeT = gate_target.view(-1, 1)
         gate_outT = gate_out.view(-1, 1)
 
