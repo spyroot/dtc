@@ -1269,6 +1269,9 @@ class ExperimentSpecs:
         Return true if trainer spec properly initialized and parsed read all yaml file.
         :return:
         """
+        print("############## initilized ")
+        print("############## initilized ", self._setting)
+
         if self._initialized and self._setting is not None:
             return True
         return False
