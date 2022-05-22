@@ -17,6 +17,8 @@ from .model_files import ModelFiles
 from .specs.model_spec import ModelSpec
 from loguru import logger
 
+MODULE_NAME = "ExperimentSpecs"
+
 
 class ExperimentSpecs:
     """
@@ -29,6 +31,10 @@ class ExperimentSpecs:
         :param spec_config:
         :param verbose:
         """
+
+        self.set_logger(verbose)
+
+        # logger.add(sys.stderr, format="{time} {level} {message}", filter="my_module", level="INFO")
 
         # a file name or io.string
         self._initialized = None
@@ -1305,3 +1311,15 @@ class ExperimentSpecs:
             return float(self._setting['grad_clipping'])
 
         return 1.0
+
+    @staticmethod
+    def set_logger(is_enable: bool) -> None:
+        """
+
+        :param is_enable:
+        :return:
+        """
+        if is_enable:
+            logger.enable(__name__)
+        else:
+            logger.disable(__name__)

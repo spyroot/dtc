@@ -305,6 +305,10 @@ def main(cmd_args):
         _device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     trainer_spec = ExperimentSpecs(spec_config=cmd_args.config, verbose=False)
+    trainer_spec.set_logger(False)
+
+    logger.add(sys.stderr, format="{time} {level} {message}", filter="my_module", level="INFO")
+
     if cmd_args.mode.strip().upper().lower() == 'standalone':
         trainer_spec.set_distributed(False)
     elif cmd_args.mode.strip().upper().lower() == 'distributed':
