@@ -68,7 +68,7 @@ class InferenceDecoder(nn.Module):
                 nn.ELU(),
                 nn.Linear(hidden_dim, hidden_dim),
                 nn.ELU(),
-                nn.Linear(hidden_dim, 3072)
+                nn.Linear(hidden_dim, 1024)
         )
 
     def forward(self, z, y=None):
@@ -295,13 +295,12 @@ class Tacotron3(nn.Module):
         #
         q_dist = Normal(q_mean, q_var)
         print("q_var", q_dist)
-
         z_sample = q_dist.rsample()
         print("z_samep", z_sample.shape)
-        # decoding = self.vae_decode(z_sample)
+        decoding = self.vae_decode(z_sample)
+        print("gate_out dim", decoding.shape)
 
-        print("gate_out dim", gate_outputs.shape)
-        exit(1)
+        # exit(1)
         # rom
         # torch.distributions.kl
         # import kl_divergence
@@ -335,12 +334,12 @@ class Tacotron3(nn.Module):
         mel_outputs_postnet = self.postnet(mel_outputs)
         mel_outputs_postnet = mel_outputs + mel_outputs_postnet
 
-        # return self.parse_output(
-        #         [mel_outputs, mel_outputs_postnet, gate_outputs, alignments, decoding, q_dist],
-        #         output_lengths)
         return self.parse_output(
-                [mel_outputs, mel_outputs_postnet, gate_outputs, alignments],
+                [mel_outputs, mel_outputs_postnet, gate_outputs, alignments, decoding, q_dist],
                 output_lengths)
+        # return self.parse_output(
+        #         [mel_outputs, mel_outputs_postnet, gate_outputs, alignments],
+        #         output_lengths)
 
     def inference(self, inputs):
         """
