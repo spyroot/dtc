@@ -12,7 +12,7 @@ from .decoder import Decoder
 from .encoder import Encoder
 from torch.distributions.normal import Normal
 from torch import nn
-from torch import functional as F
+from torch.nn import functional as F
 
 
 class InferenceEncoder(nn.Module):
@@ -46,7 +46,7 @@ class InferenceEncoder(nn.Module):
             v: tensor: (batch, ..., dim / 2, ...): Variance
         """
         m, h = torch.split(h, h.size(dim) // 2, dim=dim)
-        v = torch.nn.functional.softplus(h) + 1e-8
+        v = F.softplus(h) + 1e-8
         return m, v
 
     def forward(self, x, y=None):
