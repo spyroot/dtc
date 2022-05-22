@@ -138,7 +138,7 @@ class Trainer(GeneratorTrainer, ABC):
                                   metric_batch_file_path=trainer_spec.model_files.get_time_file_path(),
                                   metric_perf_trace_path=trainer_spec.model_files.get_metric_batch_file_path(),
                                   num_epochs=self.trainer_spec.epochs(), num_batches=self.total_batches,
-                                  verbose=verbose)
+                                  verbose=False)
 
         # tensorboard writer
         self.t_writer = None
