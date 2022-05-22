@@ -17,6 +17,23 @@ class Encoder(nn.Module):
     """Encoder module:
         - Three 1-d convolution banks
         - Bidirectional LSTM
+
+    The encoder output is consumed by an attention network which
+    summarizes the full encoded sequence as a fixed-length context vector
+    for each decoder output step.
+
+    We use the location-sensitive attention
+    from [21], which extends the additive attention mechanism [22] to
+    use cumulative attention weights from previous decoder time steps
+    as an additional feature.
+    This encourages the model to move forward consistently through the input,
+    mitigating potential failure modes where some subsequences are repeated or
+    ignored by the decoder.
+
+    Attention probabilities are computed after projecting inputs and location
+    features to 128-dimensional hidden representations. Location
+    features are computed using 32 1-D convolution filters of length 31.
+
     """
     def __init__(self, experiment_specs: ExperimentSpecs, device):
         """

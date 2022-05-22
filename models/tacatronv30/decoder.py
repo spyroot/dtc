@@ -11,7 +11,17 @@ from tacotron2.utils import get_mask_from_lengths
 
 class Decoder(nn.Module):
     """
+    Decoder consumes to predict a spectrogram.
 
+    Input characters are represented using a learned 512-dimensional
+    character embedding, which are passed through a stack of 3 convolutional
+    layers each containing 512 filters with shape 5   1, i.e., where
+    each filter spans 5 characters, followed by batch normalization [18]
+    and ReLU activations. As in Tacotron, these convolutional layers
+    model longer-term context (e.g., N-grams) in the input character
+    sequence. The output of the final convolutional layer is passed into a
+    single bi-directional  LSTM layer containing 512 units (256
+    in each direction) to generate the encoded features.
     """
     def __init__(self, specs: ExperimentSpecs, device):
         """

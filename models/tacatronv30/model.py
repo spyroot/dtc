@@ -35,7 +35,8 @@ class Tacotron3(nn.Module):
         self.n_frames_per_step = self.experiment_specs.n_frames_per_step
 
         #
-        self.embedding = nn.Embedding(self.experiment_specs.n_symbols, self.experiment_specs.symbols_embedding_dim)
+        self.embedding = nn.Embedding(self.experiment_specs.n_symbols,
+                                      self.experiment_specs.symbols_embedding_dim)
         #
         std = sqrt(2.0 / (self.experiment_specs.n_symbols + self.experiment_specs.symbols_embedding_dim))
         val = sqrt(3.0) * std  # uniform bounds for std
