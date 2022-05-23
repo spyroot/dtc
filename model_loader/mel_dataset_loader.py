@@ -99,13 +99,13 @@ class TextMelLoader(torch.utils.data.Dataset):
             audio_norm = audio_norm.unsqueeze(0)
             audio_norm = torch.autograd.Variable(audio_norm, requires_grad=False)
             mel_spec = self.stft.mel_spectrogram(audio_norm)
-            print("mel original shape", mel_spec.shape)
+            #print("mel original shape", mel_spec.shape)
             mel_numpy = mel_spec.numpy()
             mel_spec = torch.squeeze(mel_spec, 0)
 
             S, phase = librosa.feature.spectral_flatness(librosa.stft(mel_numpy))
-            print(S.shape)
-            print(phase.shape)
+            #print(S.shape)
+            #print(phase.shape)
 
         else:
             mel_spec = torch.from_numpy(np.load(filename))
@@ -237,5 +237,5 @@ class TextMelCollate:
             logger.info("Collate single pass time {}".format(elapsed_time))
             logger.info("Collate single pass delta sec {}".format(timedelta(seconds=end - start)))
 
-        print("mel padded", mel_padded.shape)
+        #print("mel padded", mel_padded.shape)
         return text_padded, input_lengths, mel_padded, gate_padded, output_lengths
