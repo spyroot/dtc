@@ -37,6 +37,7 @@ class Mel_Dataloader:
         self.validation_dataset = None
         self.collate_fn = None
         self.train_dataloader = None
+        self.batch_size = None
 
     def get_loader(self):
         """
@@ -50,7 +51,6 @@ class Mel_Dataloader:
 
     def create(self):
         """
-
         :return:
         """
         # training_set, validation_set, test_set = self.model_trainer_spec.get_audio_ds_files()
@@ -60,9 +60,11 @@ class Mel_Dataloader:
 
         if pk_dataset['ds_type'] == 'tensor_mel':
             self.train_dataset = TextMelLoader(self.encoder_spec,
-                                               pk_dataset['train_set'], data_format='tensor_mel')
+                                               pk_dataset['train_set'],
+                                               data_format='tensor_mel')
             self.validation_dataset = TextMelLoader(self.encoder_spec,
-                                                    pk_dataset['validation_set'], data_format='tensor_mel')
+                                                    pk_dataset['validation_set'],
+                                                    data_format='tensor_mel')
             self.collate_fn = TextMelCollate(self.encoder_spec.frames_per_step())
 
         if pk_dataset['ds_type'] == 'audio_raw':
@@ -73,11 +75,11 @@ class Mel_Dataloader:
                                                     list(pk_dataset['validation_set'].values()),
                                                     data_format='audio_raw')
             self.collate_fn = TextMelCollate(self.encoder_spec.frames_per_step())
+
         # test_set
         if self.trainer_spec.is_distributed_run():
             logger.info("Create distribute sampler rank {} , world size {}", self.rank, self.world_size)
-            train_sampler = DistributedSampler(self.train_dataset,
-                                               num_replicas=self.world_size)
+            train_sampler = DistributedSampler(self.train_dataset, num_replicas=self.world_size)
             is_shuffle = False
         else:
             # we shuffle only if on single run otherwise it false.
@@ -85,8 +87,8 @@ class Mel_Dataloader:
             is_shuffle = True
 
         if self.verbose:
-            fmtl_print("Dataloader train set contains", len(self.train_dataset))
-            fmtl_print("Dataloader validation set contains", len(self.validation_dataset))
+            logger.info("Dataloader train set contains".format(len(self.train_dataset)))
+            logger.info("Dataloader validation set contains".format(len(self.validation_dataset)))
 
         if len(self.train_dataset) == 0:
             raise Exception("Dataloader received empty train dataset.")
@@ -95,10 +97,9 @@ class Mel_Dataloader:
         if self.trainer_spec.batch_size == 0:
             raise Exception("Dataloader need batch size > 0.")
 
+        self.batch_size = self.trainer_spec.batch_size
         if self.trainer_spec.is_distributed_run():
             self.batch_size = int(self.trainer_spec.batch_size / float(self.world_size))
-        else:
-            self.batch_size = self.trainer_spec.batch_size
 
         self.train_dataloader = DataLoader(self.train_dataset,
                                            num_workers=1,
@@ -123,9 +124,7 @@ class Mel_Dataloader:
 
     def to_gpu(x):
         """
-
         Returns:
-
         """
         x = x.contiguous()
         if torch.cuda.is_available():
@@ -134,7 +133,6 @@ class Mel_Dataloader:
 
     def get_batch(self, batch):
         """
-
         :param batch:
         :return:
         """
@@ -145,7 +143,6 @@ class Mel_Dataloader:
         mel_padded = to_gpu(mel_padded).float()
         gate_padded = to_gpu(gate_padded).float()
         output_lengths = to_gpu(output_lengths).long()
-
         return (text_padded, input_lengths, mel_padded, max_len, output_lengths), (mel_padded, gate_padded)
 
     def read_batch(self):

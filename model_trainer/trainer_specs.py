@@ -22,16 +22,14 @@ MODULE_NAME = "ExperimentSpecs"
 
 class ExperimentSpecs:
     """
-
     """
-
-    def __init__(self, spec_config='config.yaml', verbose=False):
+    def __init__(self, spec_config='config.yaml', verbose=False, no_dir=False):
         """
 
         :param spec_config:
         :param verbose:
+        :param no_dir if true will not build structure directory structures for trainer.
         """
-
         self.set_logger(verbose)
 
         # logger.add(sys.stderr, format="{time} {level} {message}", filter="my_module", level="INFO")
@@ -145,7 +143,8 @@ class ExperimentSpecs:
 
         # model files
         self.model_files = ModelFiles(self.config, verbose=verbose)
-        self.model_files.build_dir()
+        if no_dir:
+            self.model_files.build_dir()
         self.setup_tensorboard()
         self.initialized()
 

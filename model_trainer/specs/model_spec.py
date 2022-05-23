@@ -17,3 +17,7 @@ class ModelSpec(ABC, metaclass=ABCMeta):
     @abstractmethod
     def get_sub_models_names(self):
         pass
+
+    @abstractmethod
+    def get_spec(self, name: str):
+        pass

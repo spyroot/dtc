@@ -1,20 +1,11 @@
 import random
-import time
 from abc import abstractmethod
 
-import numpy as np
 import torch
 import torch.utils.data
 
-from timeit import default_timer as timer
-from datetime import timedelta
-from loguru import logger
 from model_trainer.specs.tacatron_spec import TacotronSpec
-from tacotron2.utils import load_wav_to_torch
 from text import text_to_sequence
-import librosa
-from torchtext.data.utils import get_tokenizer
-from torchtext.vocab import build_vocab_from_iterator
 
 
 class TextMelLoader(torch.utils.data.Dataset):
@@ -28,12 +19,11 @@ class TextMelLoader(torch.utils.data.Dataset):
 
         :param model_spec:
         :param data:  data is dict must hold key data
-        :param data_format:
+        :param data_format: tensor_mel, numpy_mel, audio_raw
         :param is_trace_time:
         :param fixed_seed: if we want shuffle dataset
         :param shuffle: shuffle or not,  in case DDP you must not shuffle
         """
-
         # type tensor . numpy , file etc
         self.is_trace_time = is_trace_time
         self.shuffle = shuffle
@@ -90,7 +80,7 @@ class TextMelLoader(torch.utils.data.Dataset):
         pass
 
     @abstractmethod
-    def numpy_to_mel(self, filename):
+    def numpy_to_mel(self, filename: str):
         """
         :param filename:
         :return:
@@ -108,7 +98,7 @@ class TextMelLoader(torch.utils.data.Dataset):
 
     def __getitem__(self, index):
         """
-
+        Return tensor from t the index.
         :param index:
         :return:
         """
@@ -127,4 +117,7 @@ class TextMelLoader(torch.utils.data.Dataset):
         return None, None
 
     def __len__(self):
+        """
+        :return:
+        """
         return len(self._data)

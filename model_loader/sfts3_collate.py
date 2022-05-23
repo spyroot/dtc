@@ -18,31 +18,42 @@ from torchtext.vocab import build_vocab_from_iterator
 
 
 class TextMelCollate:
-    """ Zero-pads model inputs and targets based on number of frames per step
     """
 
-    def __init__(self, n_frames_per_step=1, is_trace_time=False):
+    """
+    def __init__(self, device, nfps=1, sort_dim=0, descending=True, is_trace_time=False):
         """
 
-        Args:
-            n_frames_per_step:
+        Extract frame per step nfps
+        y, sr = librosa.load(librosa.ex('choice'))
+        tempo, beats = librosa.beat.beat_track(y=y, sr=sr)
+        beat_samples = librosa.frames_to_samples(beats)
+
+        :param device: if we want to send batch to gpu
+        :param is_trace_time: if we want trace per batch read timer.  mainly for benchmark io.
+        :param nfps: see librosa comment
+        :param device:
+        :param sort_dim:  what dim to use to sort tensors
         """
-        self.n_frames_per_step = n_frames_per_step
+        self.n_frames_per_step = nfps
         self.is_trace_time = False
-
-    def trace(self):
-        """
-
-        Returns:
-
-        """
-        self.is_trace_time = True
+        self.largest_seq = 0
+        self.sort_dim = sort_dim
+        self.descending = descending
+        self.device = None
+        self.txt_id = 1
+        self.mel = 2
 
     def __call__(self, batch):
         """
+        Collating individual fetched data samples into batch
+
+        :param batch:
+        :return:
+        """
+        """
         Automatically collating individual fetched data samples into.
         Each batch containers [text_normalized, mel_normalized]
-
         Args:
             batch:  batch size.
         Returns:

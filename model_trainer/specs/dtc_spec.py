@@ -18,7 +18,11 @@ class DTC(ModelSpec, ABC):
         super(DTC, self).__init__(verbose=verbose)
         self._model_dict = transcoder_spec
         self._generator_param_dict = generator_spec
+        self._sub_models = {}
+
+        # todo refactor this
         self._encoder_spec = TacotronSpec(transcoder_spec['encoder'])
+        self._sub_models['encoder'] = TacotronSpec(transcoder_spec['encoder'])
 
     def get_model_param(self):
         return self._model_dict, self._generator_param_dict
@@ -31,3 +35,6 @@ class DTC(ModelSpec, ABC):
 
     def get_sub_models_names(self):
         return list(self._model_dict.keys())
+
+    def get_spec(self, name):
+        return self._sub_models[name]

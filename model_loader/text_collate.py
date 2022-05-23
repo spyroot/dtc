@@ -13,10 +13,8 @@ class TextCollate:
     """
 
     def __init__(self, label_callback,
-                 text_pipeline, device, tokenizer='basic_english', n_frames_per_step=1, is_trace_time=False):
+                 text_pipeline, device, tokenizer='basic_english', is_trace_time=False):
         """
-
-        :param n_frames_per_step:
         :param is_trace_time:
         """
         self.tokenizer = get_tokenizer('basic_english')

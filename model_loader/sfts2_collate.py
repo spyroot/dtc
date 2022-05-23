@@ -1,7 +1,6 @@
 import time
 from datetime import timedelta
 from timeit import default_timer as timer
-
 import torch
 import torch.utils.data
 from loguru import logger
@@ -11,7 +10,8 @@ class TextMelCollate:
     """
 
     """
-    def __init__(self, device, nfps=1, sort_dim=0, is_trace_time=False):
+
+    def __init__(self, device, nfps=1, sort_dim=0, descending=True, is_trace_time=False):
         """
 
         Extract frame per step nfps
@@ -27,12 +27,12 @@ class TextMelCollate:
         """
         self.n_frames_per_step = nfps
         self.is_trace_time = False
+        self.largest_seq = 0
+        self.sort_dim = sort_dim
+        self.descending = descending
+        self.device = None
         self.txt_id = 1
         self.mel = 2
-        self.largest_seq = 0
-        self.sort_dim = 0
-        self.descending = True
-        self.device = None
 
     def trace(self):
         """
@@ -43,9 +43,12 @@ class TextMelCollate:
 
     def __call__(self, batch):
         """
+        Dataloader will call this method.
         :param batch:
         :return:
         """
+        assert self.mel == 2
+
         # Right zero-pad all one-hot text sequences to max input length
         if self.is_trace_time:
             t = time.process_time()
@@ -60,6 +63,7 @@ class TextMelCollate:
             torch.sort(torch.LongTensor([len(x[0]) for x in batch]),
                        dim=self.sort_dim, descending=self.descending)
 
+        # update max len
         max_input_len = input_lengths[0]
         if max_input_len > max_input_len:
             self.largest_seq = max_input_len

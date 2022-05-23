@@ -1,8 +1,7 @@
-import librosa
 import torch
 import torch.utils.data
-
 from librosa.filters import mel as librosa_mel_fn
+
 from model_loader.audio_processing import dynamic_range_compression, dynamic_range_decompression
 from model_loader.stft import STFT
 
@@ -17,14 +16,13 @@ class TacotronSTFT(torch.nn.Module):
                  mel_fmin=0.0,
                  mel_fmax=8000.0):
         """
-        librosa.stft(n_fft=self.filter_length=1024, hop_length=256, win_length=1024)
-        :param filter_length:
+        :param filter_length:  number of FFT components
         :param hop_length:
         :param win_length:
-        :param n_mel_channels:
-        :param sampling_rate:
-        :param mel_fmin:
-        :param mel_fmax:
+        :param sampling_rate:  sampling rate of the incoming signal
+        :param n_mel_channels: number of Mel bands to generate
+        :param mel_fmin: float >= 0 [scalar] lowest frequency (in Hz)
+        :param mel_fmax: float >= 0 [scalar] highest frequency (in Hz). If `None`, use ``fmax = sr / 2.0``
         """
         super(TacotronSTFT, self).__init__()
         self.n_mel_channels = n_mel_channels
@@ -43,7 +41,6 @@ class TacotronSTFT(torch.nn.Module):
 
     def spectral_normalize(self, magnitudes):
         """
-
         :param magnitudes:
         :return:
         """
@@ -52,7 +49,6 @@ class TacotronSTFT(torch.nn.Module):
 
     def spectral_de_normalize(self, magnitudes):
         """
-
         :param magnitudes:
         :return:
         """
@@ -69,24 +65,9 @@ class TacotronSTFT(torch.nn.Module):
         -------
         mel_output: torch.FloatTensor of shape (B, n_mel_channels, T)
         """
-        # assert (torch.min(y.data) >= -1)
-        # assert (torch.max(y.data) <= 1)
 
         magnitudes, phases = self.stft_fn.transform(y)
         magnitudes = magnitudes.data
         mel_output = torch.matmul(self.mel_basis, magnitudes)
         mel_output = self.spectral_normalize(mel_output)
-
-        # mel_numpy = mel_output.numpy()
-        # print("Mel mel_basis Shape", self.mel_basis.shape)
-        #print("Mel Tensor Shape", mel_numpy.shape)
-        #  print("Mel magnitudes shape", magnitudes.shape)
-
-        mel_numpy = self.mel_basis.numpy()
-        # print("mel_numpy", mel_numpy.shape)
-        flatness = librosa.feature.spectral_flatness(y=mel_numpy,
-                                                     n_fft=self.filter_length,
-                                                     hop_length=self.hop_length,
-                                                     win_length=self.win_length)
-        flatness = torch.from_numpy(flatness)
-        return mel_output, flatness
+        return mel_output

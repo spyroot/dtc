@@ -14,7 +14,7 @@ import math
 
 from loguru import logger
 import torch.distributed as dist
-
+from torch import Tensor
 import dill
 from pathlib import Path
 from torch import nn
@@ -508,21 +508,23 @@ class Trainer(GeneratorTrainer, ABC):
         return opt
 
     # @logger.catch()
-    def create_optimizers(self):
-        """Create all required optimizers based on model specs.
+    def create_optimizers(self) -> None:
+        """
+        Creates all required optimizers based on model specs.
         Each optimize in self.optimizers dict
         Returns: Nothing
         """
-        models = self.trainer_spec.get_active_sub_models()
-        if len(models) == 0:
+        _models = self.trainer_spec.get_active_sub_models()
+        if len(_models) == 0:
             logger.warning("trainer spec has no model")
-        for model_name in models:
+
+        for model_name in _models:
             logger.info("Loading {} optimizer settings".format(model_name))
             opt_spec_alias = self.trainer_spec.get_sub_model_optimizer(model_name)
             optimizer = self.create_optimizer(model_name, opt_spec_alias)
             self.optimizers[model_name] = optimizer
 
-    def create_lr_scheduler(self, model_name: str, optimizer):
+    def create_lr_scheduler(self, model_name: str, optimizer) ->None:
         """
         Creates lr scheduler based on specs and attach to optimizer
         Args:
@@ -568,14 +570,13 @@ class Trainer(GeneratorTrainer, ABC):
         self.schedulers[model_name] = scheduler
         return scheduler
 
-    def create_lr_schedulers(self):
+    def create_lr_schedulers(self) -> None:
         """
-
-        Returns:
-
+        Create all scheduler and bind to optimizer
+        :return:
         """
-        models = self.trainer_spec.get_active_sub_models()
-        for model_name in models:
+        _models = self.trainer_spec.get_active_sub_models()
+        for model_name in _models:
             if model_name not in self.optimizers:
                 raise Exception("make sure optimizer spec created.")
             opt = self.optimizers[model_name]
@@ -886,17 +887,23 @@ class Trainer(GeneratorTrainer, ABC):
         return (text_padded, input_lengths, mel_padded, max_len, output_lengths, spectral), \
                (mel_padded, gate_padded, spectral)
 
-    @staticmethod
-    def cleanup(self, rank):
+    def cleanup(self):
         """
-
+        Cleanup call
         :param rank:
         :return:
         """
         dist.destroy_process_group()
-        print(f"Rank {rank} is done.")
+        logger.info(f"Rank {self.rank} is done.")
 
-    def reduce_tensor(self, tensor, n_gpus):
+    @staticmethod
+    def reduce_tensor(self, tensor: Tensor, n_gpus) -> Tensor:
+        """
+        Reduce tensor based on number of gpu
+        :param tensor:
+        :param n_gpus:
+        :return:
+        """
         rt = tensor.clone()
         dist.all_reduce(rt, op=dist.reduce_op.SUM)
         rt /= n_gpus

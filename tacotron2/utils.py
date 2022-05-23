@@ -1,16 +1,16 @@
+from typing import Tuple
 import numpy as np
-from scipy.io.wavfile import read
 import torch
+from torch import Tensor
+from scipy.io.wavfile import read as wav_reader
+
 
 def fmtl_print(left, *argv):
     """
 
-    Args:
-        left:
-        *argv:
-
-    Returns:
-
+    :param left:
+    :param argv:
+    :return:
     """
     if len(argv) == 1:
         print(f"{str(left) + ':' :<32} {argv[0]}")
@@ -21,12 +21,9 @@ def fmtl_print(left, *argv):
 def fmt_print(left, *argv):
     """
 
-    Args:
-        left:
-        *argv:
-
-    Returns:
-
+    :param left:
+    :param argv:
+    :return:
     """
     if len(argv) == 1:
         print(f"{str(left) + ':' :<25} {argv[0]}")
@@ -36,7 +33,6 @@ def fmt_print(left, *argv):
 
 def get_mask_from_lengths(lengths, device="cuda"):
     """
-
     :param lengths:
     :param device:
     :return:
@@ -47,28 +43,33 @@ def get_mask_from_lengths(lengths, device="cuda"):
     return mask
 
 
-def load_wav_to_torch(full_path):
+def load_wav_to_numpy(full_path, mmap=False):
     """
-
-    Args:
-        full_path:
-
-    Returns:
-
+    Just proxy to backend if we need swap latter.
+    :param full_path:
+    :param mmap:
+    :return:
     """
-    sampling_rate, data = read(full_path)
+    return wav_reader(full_path, mmap)
+
+
+def load_wav_to_torch(full_path: str, mmap=False) -> tuple[torch.FloatTensor, int]:
+    """
+    Read wav file to a tensor
+    :param full_path:
+    :param mmap: memory mapped or not
+    :return: Tuple tensor, sample rate
+    """
+    sampling_rate, data = wav_reader(full_path, mmap)
     return torch.FloatTensor(data.astype(np.float32)), sampling_rate
 
 
 def load_filepaths_and_text(filename, split="|"):
     """
-
-    Args:
-        filename:
-        split:
-
-    Returns:
-
+    Read txt file and split
+    :param filename:
+    :param split:
+    :return:
     """
     with open(filename, encoding='utf-8') as f:
         filepaths_and_text = [line.strip().split(split) for line in f]
@@ -77,7 +78,6 @@ def load_filepaths_and_text(filename, split="|"):
 
 def to_gpu(x, device):
     """
-
     :param x:
     :param device:
     :return:
