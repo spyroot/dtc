@@ -19,12 +19,13 @@ class InferenceEncoder(nn.Module):
     """
 
     """
-    def __init__(self, z_dim, y_dim=0, hidden_dim=512):
+    def __init__(self, z_dim, y_dim=0, hidden_dim=120):
         super(InferenceEncoder, self).__init__()
         self.z_dim = z_dim
-        self.y_dim = y_dim
+        #self.y_dim = y_dim
         self.net = nn.Sequential(
-                nn.Linear(1024, hidden_dim),
+                nn.Flatten(),
+                nn.Linear(240, hidden_dim),
                 nn.ELU(),
                 nn.Linear(hidden_dim, hidden_dim),
                 nn.ELU(),
@@ -47,19 +48,20 @@ class InferenceEncoder(nn.Module):
         return m, v
 
     def forward(self, x, y=None):
+        """
+
+        :param x:
+        :param y:
+        :return:
+        """
         xy = x if y is None else torch.cat((x, y), dim=1)
         h = self.net(xy)
-
-        # print("x", h.shape)
         m, v = self.gaussian_parameters(h, dim=1)
-        # print("m", x.shape)
-        # print("v", x.shape)
-        # sys.exit(1)
         return m, v
 
 
 class InferenceDecoder(nn.Module):
-    def __init__(self, z_dim, y_dim=0, hidden_dim=512):
+    def __init__(self, z_dim, y_dim=0, hidden_dim=120):
         super(InferenceDecoder, self).__init__()
         self.z_dim = z_dim
         self.y_dim = y_dim
@@ -68,7 +70,7 @@ class InferenceDecoder(nn.Module):
                 nn.ELU(),
                 nn.Linear(hidden_dim, hidden_dim),
                 nn.ELU(),
-                nn.Linear(hidden_dim, 1024)
+                nn.Linear(hidden_dim, 240)
         )
 
     def forward(self, z, y=None):
@@ -103,11 +105,12 @@ class VaeEncoder(nn.Module):
         image: a flattened image tensor with dimension (im_dim)
         """
         disc_pred = self.enc(image)
-        print(disc_pred.shape)
+        # print(disc_pred.shape)
         encoding = disc_pred.view(len(disc_pred), -1)
         # The stddev output is treated as the log of the variance of the normal
         # distribution by convention and for numerical stability
-        return encoding[:, :self.z_dim], encoding[:, self.z_dim:].exp()
+        return encoding[:, :self.z_dim], \
+               encoding[:, self.z_dim:].exp()
 
 
 class VaeDecoder(nn.Module):
@@ -203,8 +206,8 @@ class Tacotron3(nn.Module):
         self.decoder = Decoder(experiment_specs, device=self.device)
         self.postnet = Postnet(experiment_specs, device=self.device)
 
-        self.vae_encode = InferenceEncoder(z_dim=1024)
-        self.vae_decode = InferenceDecoder(z_dim=1024)
+        self.vae_encode = InferenceEncoder(z_dim=240)
+        self.vae_decode = InferenceDecoder(z_dim=240)
 
     def reparameterize(self, mu, logvar, mi=False):
         """
@@ -231,15 +234,17 @@ class Tacotron3(nn.Module):
         :param batch:
         :return:
         """
-        text_padded, input_lengths, mel_padded, gate_padded, output_lengths = batch
+        text_padded, input_lengths, mel_padded, gate_padded, output_lengths, spectral = batch
         text_padded = to_gpu(text_padded).long()
+        spectral = to_gpu(spectral).float()
         input_lengths = to_gpu(input_lengths).long()
         max_len = torch.max(input_lengths.data).item()
         mel_padded = to_gpu(mel_padded).float()
         gate_padded = to_gpu(gate_padded).float()
         output_lengths = to_gpu(output_lengths).long()
 
-        return (text_padded, input_lengths, mel_padded, max_len, output_lengths), (mel_padded, gate_padded)
+        return (text_padded, input_lengths, mel_padded, max_len, output_lengths, spectral), \
+               (mel_padded, gate_padded, spectral)
 
     def parse_output(self, outputs, output_lengths=None):
         """
@@ -271,7 +276,7 @@ class Tacotron3(nn.Module):
         Returns:
 
         """
-        text_inputs, text_lengths, mels, max_len, output_lengths = inputs
+        text_inputs, text_lengths, mels, max_len, output_lengths, spectral = inputs
         text_lengths, output_lengths = text_lengths.data, output_lengths.data
 
         embedded_inputs = self.embedding(text_inputs).transpose(1, 2)
@@ -280,17 +285,10 @@ class Tacotron3(nn.Module):
         mel_outputs, gate_outputs, alignments = self.decoder(
                 encoder_outputs, mels, memory_lengths=text_lengths)
 
-        # >> > p1d = (0, 1024 - t2d.shape[1])
-        # >> > y = torch.nn.functional.pad(t2d, p1d, "constant", 0)
-        #
+        q_mean, q_var = self.vae_encode(spectral)
 
-        print("mel shape", mel_outputs.shape)
-        print("alignments len", alignments.shape)
 
-        p1d = (0, 1024 - gate_outputs.shape[1])
-        y = torch.nn.functional.pad(gate_outputs, p1d, "constant", 0)
 
-        q_mean, q_var = self.vae_encode(y)
         # print("q_mean", q_mean.shape)
         # print("q_var", q_var.shape)
 
@@ -305,26 +303,7 @@ class Tacotron3(nn.Module):
         decoding = self.vae_decode(z_sample)
         # print("gate_out dim", decoding.shape)
 
-        # exit(1)
-        # rom
-        # torch.distributions.kl
-        # import kl_divergence
-        # def kl_divergence_loss(q_dist):
-        #     return kl_divergence(
-        #             q_dist, Normal(torch.zeros_like(q_dist.mean), torch.ones_like(q_dist.stddev))
-        #     ).sum(-1)
-        # for images, _ in tqdm(train_dataloader):
-        #     images = images.to(device)
-        #     vae_opt.zero_grad()  # Clear out the gradients
-        #     recon_images, encoding = vae(images)
-        #     loss = reconstruction_loss(recon_images, images) + kl_divergence_loss(encoding).sum()
-        #     loss.backward()
-        #     vae_opt.step()
 
-        # q_mean, q_stddev = self.encode(embedded_inputs)
-        # q_dist = Normal(q_mean, q_stddev)
-        # z_sample = q_dist.rsample() # Sample once from each distribution, using the `rsample` notation
-        #
         # mu_ = self.linear_mu(embedded_inputs)
         # alignments
         # logvar_ = self.linear_var(output)

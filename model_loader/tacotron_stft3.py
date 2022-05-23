@@ -7,12 +7,13 @@ from model_loader.audio_processing import dynamic_range_compression, dynamic_ran
 from model_loader.stft import STFT
 
 
-class TacotronSTFT(torch.nn.Module):
+class TacotronSTFT3(torch.nn.Module):
     def __init__(self, filter_length=1024, hop_length=256, win_length=1024,
                  n_mel_channels=80, sampling_rate=22050, mel_fmin=0.0,
                  mel_fmax=8000.0):
         """
 
+        librosa.stft(n_fft=self.filter_length=1024, hop_length=256, win_length=1024)
         :param filter_length:
         :param hop_length:
         :param win_length:
@@ -21,7 +22,7 @@ class TacotronSTFT(torch.nn.Module):
         :param mel_fmin:
         :param mel_fmax:
         """
-        super(TacotronSTFT, self).__init__()
+        super(TacotronSTFT3, self).__init__()
         self.n_mel_channels = n_mel_channels
         self.sampling_rate = sampling_rate
         self.filter_length = filter_length
@@ -29,18 +30,6 @@ class TacotronSTFT(torch.nn.Module):
         self.win_length = win_length
 
         self.stft_fn = STFT(filter_length, hop_length, win_length)
-
-        # def mel(
-        #         *,
-        #         sr,
-        #         n_fft,
-        #         n_mels=128,
-        #         fmin=0.0,
-        #         fmax=None,
-        #         htk=False,
-        #         norm="slaney",
-        #         dtype=np.float32,
-        # ):
 
         mel_basis = librosa_mel_fn(sr=sampling_rate,
                                    n_fft=filter_length,
@@ -85,10 +74,4 @@ class TacotronSTFT(torch.nn.Module):
         magnitudes = magnitudes.data
         mel_output = torch.matmul(self.mel_basis, magnitudes)
         mel_output = self.spectral_normalize(mel_output)
-
-        flatness = librosa.feature.spectral_flatness(y=mel_output,
-                                                     n_fft=self.filter_length,
-                                                     hop_length=self.hop_length,
-                                                     win_length=self.win_length)
-
         return mel_output

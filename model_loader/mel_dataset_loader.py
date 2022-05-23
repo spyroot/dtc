@@ -99,35 +99,16 @@ class TextMelLoader(torch.utils.data.Dataset):
             audio_norm = audio / self.max_wav_value
             audio_norm = audio_norm.unsqueeze(0)
             audio_norm = torch.autograd.Variable(audio_norm, requires_grad=False)
-            mel_spec = self.stft.mel_spectrogram(audio_norm)
-            # print("mel original shape", mel_spec.shape)
-            mel_numpy = mel_spec.numpy()
+            mel_spec, spectral_flatness = self.stft.mel_spectrogram(audio_norm)
             mel_spec = torch.squeeze(mel_spec, 0)
-            #
-            # flatness = librosa.feature.spectral_flatness(y=mel_numpy, n_fft=1024, hop_length, win_length, window)
-            #
-            # y = None,
-            # S = None,
-            # n_fft = 2048,
-            # hop_length = 512,
-            # win_length = None,
-            # window = "hann",
-            # center = True,
-            # pad_mode = "constant",
-            # amin = 1e-10,
-            # power = 2.0,
-
-
-            # print(flatness.shape)
-            # print(phase.shape)
 
         else:
-            mel_spec = torch.from_numpy(np.load(filename))
+            mel_spec, spectral_flatness = torch.from_numpy(np.load(filename))
             assert mel_spec.size(0) == self.stft.n_mel_channels, (
                 'Mel dimension mismatch: given {}, expected {}'.format(
                         mel_spec.size(0), self.stft.n_mel_channels))
 
-        return mel_spec
+        return mel_spec, spectral_flatness
 
     def numpy_to_mel(self, filename):
         """
@@ -162,7 +143,7 @@ class TextMelLoader(torch.utils.data.Dataset):
         :return:
         """
         if self.is_a_tensor:
-            text, mel = self._data[index]
+            text, mel, = self._data[index]
             return text, mel
         if self.is_a_raw:
             if 'meta' not in self._data[index]:
@@ -170,86 +151,11 @@ class TextMelLoader(torch.utils.data.Dataset):
             if 'path' not in self._data[index]:
                 raise Exception("data must contain path key")
             text = self.text_to_tensor(self._data[index]['meta'])
-            mel = self.file_to_mel(self._data[index]['path'])
-            return text, mel
+            mel, spectral_flatness = self.file_to_mel(self._data[index]['path'])
+            return text, mel, spectral_flatness
 
         return None, None
 
     def __len__(self):
         return len(self._data)
 
-
-class TextMelCollate:
-    """ Zero-pads model inputs and targets based on number of frames per step
-    """
-
-    def __init__(self, n_frames_per_step=1, is_trace_time=False):
-        """
-
-        Args:
-            n_frames_per_step:
-        """
-        self.n_frames_per_step = n_frames_per_step
-        self.is_trace_time = False
-
-    def trace(self):
-        """
-
-        Returns:
-
-        """
-        self.is_trace_time = True
-
-    def __call__(self, batch):
-        """
-        Automatically collating individual fetched data samples into.
-        Each batch containers [text_normalized, mel_normalized]
-
-        Args:
-            batch:  batch size.
-        Returns:
-
-        """
-        # Right zero-pad all one-hot text sequences to max input length
-        if self.is_trace_time:
-            t = time.process_time()
-            start = timer()
-
-        input_lengths, ids_sorted_decreasing = torch.sort(torch.LongTensor(
-                [len(x[0]) for x in batch]), dim=0, descending=True)
-
-        max_input_len = input_lengths[0]
-        text_padded = torch.LongTensor(len(batch), max_input_len)
-        text_padded.zero_()
-        for i in range(len(ids_sorted_decreasing)):
-            text = batch[ids_sorted_decreasing[i]][0]
-            text_padded[i, :text.size(0)] = text
-
-        # Right zero-pad mel-spec
-        num_mels = batch[0][1].size(0)
-        max_target_len = max([x[1].size(1) for x in batch])
-
-        if max_target_len % self.n_frames_per_step != 0:
-            max_target_len += self.n_frames_per_step - max_target_len % self.n_frames_per_step
-            assert max_target_len % self.n_frames_per_step == 0
-
-        # include mel padded and gate padded
-        mel_padded = torch.FloatTensor(len(batch), num_mels, max_target_len)
-        mel_padded.zero_()
-        gate_padded = torch.FloatTensor(len(batch), max_target_len)
-        gate_padded.zero_()
-        output_lengths = torch.LongTensor(len(batch))
-        for i in range(len(ids_sorted_decreasing)):
-            mel = batch[ids_sorted_decreasing[i]][1]
-            mel_padded[i, :, :mel.size(1)] = mel
-            gate_padded[i, mel.size(1) - 1:] = 1
-            output_lengths[i] = mel.size(1)
-
-        if self.is_trace_time:
-            elapsed_time = time.process_time() - t
-            end = timer()
-            logger.info("Collate single pass time {}".format(elapsed_time))
-            logger.info("Collate single pass delta sec {}".format(timedelta(seconds=end - start)))
-
-        # print("mel padded", mel_padded.shape)
-        return text_padded, input_lengths, mel_padded, gate_padded, output_lengths

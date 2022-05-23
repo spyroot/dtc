@@ -24,6 +24,8 @@ os.environ["LOCAL_RANK"] = "0"
 os.environ["RANK"] = "0"
 os.environ["WORLD_SIZE"] = "2"
 
+import warnings
+warnings.filterwarnings("ignore")
 
 def convert_mel_to_data(encoder_spec, target_dir: str, dataset,
                         dataset_name: str, data_type: str, post_check=True, verbose=True):

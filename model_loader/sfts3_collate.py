@@ -1,0 +1,105 @@
+import random
+import time
+from abc import abstractmethod
+
+import numpy as np
+import torch
+import torch.utils.data
+
+from timeit import default_timer as timer
+from datetime import timedelta
+from loguru import logger
+from model_trainer.specs.tacatron_spec import TacotronSpec
+from tacotron2.utils import load_wav_to_torch
+from text import text_to_sequence
+import librosa
+from torchtext.data.utils import get_tokenizer
+from torchtext.vocab import build_vocab_from_iterator
+
+
+class TextMelCollate:
+    """ Zero-pads model inputs and targets based on number of frames per step
+    """
+
+    def __init__(self, n_frames_per_step=1, is_trace_time=False):
+        """
+
+        Args:
+            n_frames_per_step:
+        """
+        self.n_frames_per_step = n_frames_per_step
+        self.is_trace_time = False
+
+    def trace(self):
+        """
+
+        Returns:
+
+        """
+        self.is_trace_time = True
+
+    def __call__(self, batch):
+        """
+        Automatically collating individual fetched data samples into.
+        Each batch containers [text_normalized, mel_normalized]
+
+        Args:
+            batch:  batch size.
+        Returns:
+
+        """
+        # Right zero-pad all one-hot text sequences to max input length
+        if self.is_trace_time:
+            t = time.process_time()
+            start = timer()
+
+        txt_id = 1
+        lstm_input_len = len(batch)
+        # sort text
+        #####
+        ###
+        ##
+        input_lengths, ids_sorted_decreasing = \
+            torch.sort(torch.LongTensor([len(x[0]) for x in batch]), dim=0, descending=True)
+
+        max_input_len = input_lengths[0]
+        text_padded = torch.LongTensor(lstm_input_len, max_input_len).zero_()
+        for i in range(len(ids_sorted_decreasing)):
+            text = batch[ids_sorted_decreasing[i]][0]
+            text_padded[i, :text.size(0)] = text
+
+        # Right zero-pad mel-spec
+        num_mels = batch[0][1].size(0)
+        max_target_len = max([x[txt_id].size(1) for x in batch])
+
+        if max_target_len % self.n_frames_per_step != 0:
+            max_target_len += self.n_frames_per_step - max_target_len % self.n_frames_per_step
+            assert max_target_len % self.n_frames_per_step == 0
+
+        mel_padded = torch.FloatTensor(lstm_input_len, num_mels, max_target_len).zero_()
+        gate_padded = torch.FloatTensor(lstm_input_len, max_target_len).zero_()
+        output_lengths = torch.LongTensor(lstm_input_len)
+        spectrals = torch.FloatTensor(lstm_input_len, num_mels,
+                                      max([x[2].size(1) for x in batch]),
+                                      max([x[2].size(2) for x in batch]))
+        # torch.index_select(batch)
+        # sort batches
+        outputs = []
+        for i in range(len(ids_sorted_decreasing)):
+            # idx text , idx 1 mel
+            mel = batch[ids_sorted_decreasing[i]][1]
+            spectral = batch[ids_sorted_decreasing[i]][2]
+            outputs.append(spectral)
+            mel_padded[i, :, :mel.size(1)] = mel
+            gate_padded[i, mel.size(1) - 1:] = 1
+            output_lengths[i] = mel.size(1)
+            spectrals[i] = spectral
+
+        if self.is_trace_time:
+            elapsed_time = time.process_time() - t
+            end = timer()
+            logger.info("Collate single pass time {}".format(elapsed_time))
+            logger.info("Collate single pass delta sec {}".format(timedelta(seconds=end - start)))
+
+        # print("mel padded", mel_padded.shape)
+        return text_padded, input_lengths, mel_padded, gate_padded, output_lengths, spectrals

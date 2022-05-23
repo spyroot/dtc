@@ -673,6 +673,7 @@ class Trainer(GeneratorTrainer, ABC):
                 y_pred = model(x)
                 # our loss mel_loss + gate_loss
                 loss = self.criterion(y_pred, y)
+                print("validation loss", loss.item())
                 if self.trainer_spec.is_distributed_run():
                     reduced_val_loss = self.split_tensor(loss.data, self.n_gpus).item()
                 else:
@@ -867,8 +868,9 @@ class Trainer(GeneratorTrainer, ABC):
         :param batch:
         :return:
         """
-        text_padded, input_lengths, mel_padded, gate_padded, output_lengths = batch
+        text_padded, input_lengths, mel_padded, gate_padded, output_lengths, spectral = batch
         text_padded = to_gpu(text_padded, device).long()
+        spectral = to_gpu(spectral, device).float()
         input_lengths = to_gpu(input_lengths, device).long()
         max_len = torch.max(input_lengths.data).item()
         mel_padded = to_gpu(mel_padded, device).float()
@@ -881,7 +883,8 @@ class Trainer(GeneratorTrainer, ABC):
         # assert gate_padded.get_device() == 0
         # assert output_lengths.get_device() == 0
 
-        return (text_padded, input_lengths, mel_padded, max_len, output_lengths), (mel_padded, gate_padded)
+        return (text_padded, input_lengths, mel_padded, max_len, output_lengths, spectral), \
+               (mel_padded, gate_padded, spectral)
 
     @staticmethod
     def cleanup(self, rank):

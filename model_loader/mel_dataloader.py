@@ -96,7 +96,7 @@ class Mel_Dataloader:
             raise Exception("Dataloader need batch size > 0.")
 
         if self.trainer_spec.is_distributed_run():
-            self.batch_size = int(self.trainer_spec.batch_size/ float(self.world_size))
+            self.batch_size = int(self.trainer_spec.batch_size / float(self.world_size))
         else:
             self.batch_size = self.trainer_spec.batch_size
 
@@ -111,8 +111,7 @@ class Mel_Dataloader:
         self.val_sampler = None
         if self.trainer_spec.is_distributed_run():
             self.val_sampler = DistributedSampler(self.validation_dataset,
-                                                  num_replicas=self.world_size,
-                                                )
+                                                  num_replicas=self.world_size)
 
         self.val_loader = DataLoader(self.validation_dataset,
                                      sampler=self.val_sampler,
