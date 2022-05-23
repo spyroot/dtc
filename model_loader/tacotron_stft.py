@@ -1,3 +1,4 @@
+import librosa
 import torch
 import torch.utils.data
 
@@ -23,6 +24,10 @@ class TacotronSTFT(torch.nn.Module):
         super(TacotronSTFT, self).__init__()
         self.n_mel_channels = n_mel_channels
         self.sampling_rate = sampling_rate
+        self.filter_length = filter_length
+        self.hop_length = hop_length
+        self.win_length = win_length
+
         self.stft_fn = STFT(filter_length, hop_length, win_length)
 
         # def mel(
@@ -80,5 +85,10 @@ class TacotronSTFT(torch.nn.Module):
         magnitudes = magnitudes.data
         mel_output = torch.matmul(self.mel_basis, magnitudes)
         mel_output = self.spectral_normalize(mel_output)
+
+        flatness = librosa.feature.spectral_flatness(y=mel_output,
+                                                     n_fft=self.filter_length,
+                                                     hop_length=self.hop_length,
+                                                     win_length=self.win_length)
 
         return mel_output
