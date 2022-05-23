@@ -297,6 +297,7 @@ class Tacotron3(nn.Module):
         # epsilon = torch.randn_like(v)
         # z = m + torch.sqrt(v) * epsilon
         #
+        # S, phase = librosa.magphase(librosa.stft(y))
         q_dist = Normal(q_mean, q_var)
         # print("q_var", q_dist)
         z_sample = q_dist.rsample()
