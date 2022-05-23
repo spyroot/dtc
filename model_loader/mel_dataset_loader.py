@@ -11,7 +11,7 @@ from model_loader.tacotron_stft import TacotronSTFT
 from model_trainer.specs.tacatron_spec import TacotronSpec
 from tacotron2.utils import load_wav_to_torch
 from text import text_to_sequence
-
+import librosa
 
 class TextMelLoader(torch.utils.data.Dataset):
     """
@@ -100,6 +100,11 @@ class TextMelLoader(torch.utils.data.Dataset):
             audio_norm = torch.autograd.Variable(audio_norm, requires_grad=False)
             mel_spec = self.stft.mel_spectrogram(audio_norm)
             mel_spec = torch.squeeze(mel_spec, 0)
+
+            S, phase = librosa.magphase(librosa.stft(mel_spec))
+            print(S.shape)
+            print(phase)
+
         else:
             mel_spec = torch.from_numpy(np.load(filename))
             assert mel_spec.size(0) == self.stft.n_mel_channels, (
@@ -230,4 +235,5 @@ class TextMelCollate:
             logger.info("Collate single pass time {}".format(elapsed_time))
             logger.info("Collate single pass delta sec {}".format(timedelta(seconds=end - start)))
 
+        print("mel padded {}", mel_padded.shape)
         return text_padded, input_lengths, mel_padded, gate_padded, output_lengths
