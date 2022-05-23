@@ -114,7 +114,7 @@ class TextMelLoader(torch.utils.data.Dataset):
                 'Mel dimension mismatch: given {}, expected {}'.format(
                         mel_spec.size(0), self.stft.n_mel_channels))
 
-        return mel_spec
+        return mel_spec, flatness
 
     def numpy_to_mel(self, filename):
         """
