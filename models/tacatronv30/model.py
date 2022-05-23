@@ -285,7 +285,7 @@ class Tacotron3(nn.Module):
         #
 
         print("gate shape", mel_outputs.shape)
-        print("alignments len", alignments)
+        print("alignments len", alignments.shape)
 
         p1d = (0, 1024 - gate_outputs.shape[1])
         y = torch.nn.functional.pad(gate_outputs, p1d, "constant", 0)
