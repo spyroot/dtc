@@ -103,7 +103,7 @@ class TextMelLoader(torch.utils.data.Dataset):
             mel_numpy = mel_spec.numpy()
             mel_spec = torch.squeeze(mel_spec, 0)
 
-            S, phase = librosa.magphase(librosa.stft(mel_numpy))
+            S, phase = librosa.feature.spectral_flatness(librosa.stft(mel_numpy))
             print(S.shape)
             print(phase.shape)
 
@@ -237,5 +237,5 @@ class TextMelCollate:
             logger.info("Collate single pass time {}".format(elapsed_time))
             logger.info("Collate single pass delta sec {}".format(timedelta(seconds=end - start)))
 
-        print("mel padded {}", mel_padded.shape)
+        print("mel padded", mel_padded.shape)
         return text_padded, input_lengths, mel_padded, gate_padded, output_lengths
