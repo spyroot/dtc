@@ -2,9 +2,11 @@ import torch
 import numpy as np
 from scipy.signal import get_window
 import librosa.util as librosa_util
-#from numba import jit
 
-#@jit
+
+# from numba import jit
+
+# @jit
 def window_sumsquare(window, n_frames, hop_length=200, win_length=800,
                      n_fft=800, dtype=np.float32, norm=None):
     """
