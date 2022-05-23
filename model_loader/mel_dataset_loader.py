@@ -105,7 +105,7 @@ class TextMelLoader(torch.utils.data.Dataset):
 
             S, phase = librosa.magphase(librosa.stft(mel_numpy))
             print(S.shape)
-            print(phase)
+            print(phase.shape)
 
         else:
             mel_spec = torch.from_numpy(np.load(filename))
