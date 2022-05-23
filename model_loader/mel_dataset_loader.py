@@ -104,7 +104,7 @@ class TextMelLoader(torch.utils.data.Dataset):
             mel_spec = torch.squeeze(mel_spec, 0)
 
             flatness = librosa.feature.spectral_flatness(mel_numpy)
-            #print(type(flatness))
+            print(type(flatness))
             #print(phase.shape)
 
         else:
