@@ -283,6 +283,10 @@ class Tacotron3(nn.Module):
         # >> > p1d = (0, 1024 - t2d.shape[1])
         # >> > y = torch.nn.functional.pad(t2d, p1d, "constant", 0)
         #
+
+        print("gate shape", gate_outputs.shape)
+        print("max len", max_len)
+
         p1d = (0, 1024 - gate_outputs.shape[1])
         y = torch.nn.functional.pad(gate_outputs, p1d, "constant", 0)
 

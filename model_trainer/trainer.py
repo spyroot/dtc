@@ -881,7 +881,7 @@ class Trainer(GeneratorTrainer, ABC):
         # assert gate_padded.get_device() == 0
         # assert output_lengths.get_device() == 0
 
-        return (text_padded.to(), input_lengths, mel_padded, max_len, output_lengths), (mel_padded, gate_padded)
+        return (text_padded, input_lengths, mel_padded, max_len, output_lengths), (mel_padded, gate_padded)
 
     @staticmethod
     def cleanup(self, rank):
