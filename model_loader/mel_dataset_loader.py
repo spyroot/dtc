@@ -99,11 +99,11 @@ class TextMelLoader(torch.utils.data.Dataset):
             audio_norm = audio_norm.unsqueeze(0)
             audio_norm = torch.autograd.Variable(audio_norm, requires_grad=False)
             mel_spec = self.stft.mel_spectrogram(audio_norm)
-            #print("mel original shape", mel_spec.shape)
-            # mel_numpy = mel_spec.numpy()
+            print("mel original shape", mel_spec.shape)
+            mel_numpy = mel_spec.numpy()
             mel_spec = torch.squeeze(mel_spec, 0)
 
-            #S, phase = librosa.feature.spectral_flatness(librosa.stft(mel_numpy))
+            S, phase = librosa.feature.spectral_flatness(mel_numpy)
             #print(S.shape)
             #print(phase.shape)
 
