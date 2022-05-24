@@ -25,16 +25,16 @@ class TacotronSpec:
     def n_mel_channels(self):
         return self._model_dict['n_mel_channels']
 
-    def sampling_rate(self):
+    def sampling_rate(self) :
         return self._model_dict['sampling_rate']
 
-    def mel_fmin(self):
+    def mel_fmin(self) -> float:
         return self._model_dict['mel_fmin']
 
-    def mel_fmax(self):
+    def mel_fmax(self) -> float:
         return self._model_dict['mel_fmax']
 
-    def max_wav_value(self):
+    def max_wav_value(self) -> float:
         return self._model_dict['max_wav_value']
 
     def load_mel_from_disk(self):

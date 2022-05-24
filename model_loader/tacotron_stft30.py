@@ -7,7 +7,7 @@ import torch.utils.data
 
 from librosa.filters import mel as librosa_mel_fn
 from model_loader.audio_processing import dynamic_range_compression, dynamic_range_decompression
-from model_loader.stft import STFT
+from model_loader.stft_module import STFT
 from torch import Tensor
 from pathlib import Path
 
@@ -156,12 +156,6 @@ if __name__ == '__main__':
     trainer_spec = ExperimentSpecs(spec_config='../config.yaml')
     model_spec = trainer_spec.get_model_spec().get_spec('encoder')
 
-    # stft = TacotronSTFT3(
-    #         model_spec.filter_length(), model_spec.hop_length(), model_spec.win_length(),
-    #         model_spec.n_mel_channels(), model_spec.sampling_rate(),
-    #         model_spec.mel_fmin(),
-    #         model_spec.mel_fmax())
-
     stft = TacotronSTFT3(
             model_spec.filter_length(), model_spec.hop_length(), model_spec.win_length(),
             model_spec.n_mel_channels(), model_spec.sampling_rate(),
@@ -169,19 +163,4 @@ if __name__ == '__main__':
             model_spec.mel_fmax())
 
     mel_spec, spectral_flatness = stft.mel_spectrogram(normalized)
-    # print(mel_spec.shape)
-    # print(spectral_flatness.shape)
     print(spectral_flatness.squeeze().shape)
-
-    # #
-    #
-    # mel_spec, spectral_flatness = self.stft.mel_spectrogram(audio_norm)
-    # mel_spec = torch.squeeze(mel_spec, 0)
-    #
-    # else:
-    #     mel_spec, spectral_flatness = torch.from_numpy(np.load(filename))
-    #     assert mel_spec.size(0) == self.stft.n_mel_channels, (
-    #         'Mel dimension mismatch: given {}, expected {}'.format(
-    #                 mel_spec.size(0), self.stft.n_mel_channels))
-    #
-    # return mel_spec, spectral_flatness

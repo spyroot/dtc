@@ -1,23 +1,13 @@
-import random
 import time
-from abc import abstractmethod
+from datetime import timedelta
+from timeit import default_timer as timer
 
-import numpy as np
 import torch
 import torch.utils.data
-
-from timeit import default_timer as timer
-from datetime import timedelta
 from loguru import logger
-from model_trainer.specs.tacatron_spec import TacotronSpec
-from tacotron2.utils import load_wav_to_torch
-from text import text_to_sequence
-import librosa
-from torchtext.data.utils import get_tokenizer
-from torchtext.vocab import build_vocab_from_iterator
 
 
-class TextMelCollate:
+class TextMelCollate3:
     """
 
     """

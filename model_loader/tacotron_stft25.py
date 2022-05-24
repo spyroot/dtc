@@ -3,10 +3,10 @@ import torch.utils.data
 from librosa.filters import mel as librosa_mel_fn
 
 from model_loader.audio_processing import dynamic_range_compression, dynamic_range_decompression
-from model_loader.stft import STFT
+from model_loader.stft_module import STFT
 
 
-class TacotronSTFT(torch.nn.Module):
+class TacotronSTFT25(torch.nn.Module):
     def __init__(self,
                  filter_length=1024,
                  hop_length=256,
@@ -24,7 +24,7 @@ class TacotronSTFT(torch.nn.Module):
         :param mel_fmin: float >= 0 [scalar] lowest frequency (in Hz)
         :param mel_fmax: float >= 0 [scalar] highest frequency (in Hz). If `None`, use ``fmax = sr / 2.0``
         """
-        super(TacotronSTFT, self).__init__()
+        super(TacotronSTFT25, self).__init__()
         self.n_mel_channels = n_mel_channels
         self.sampling_rate = sampling_rate
         self.filter_length = filter_length

@@ -5,18 +5,23 @@ import torch
 import torch.utils.data
 
 from model_trainer.specs.tacatron_spec import TacotronSpec
+from tacotron2.utils import load_wav_to_torch
 from text import text_to_sequence
 
 
-class TextMelLoader(torch.utils.data.Dataset):
+class DatasetError(Exception):
+    """Base class for other exceptions"""
+    pass
+
+
+class BaseSFTFDataset(torch.utils.data.Dataset):
     """
 
     """
 
     def __init__(self, model_spec: TacotronSpec, data, data_format,
-                 fixed_seed=True, shuffle=False, is_trace_time=False):
+                 fixed_seed=True, shuffle=False, is_trace_time=False) -> None:
         """
-
         :param model_spec:
         :param data:  data is dict must hold key data
         :param data_format: tensor_mel, numpy_mel, audio_raw
@@ -24,6 +29,7 @@ class TextMelLoader(torch.utils.data.Dataset):
         :param fixed_seed: if we want shuffle dataset
         :param shuffle: shuffle or not,  in case DDP you must not shuffle
         """
+        super(torch.utils.data.Dataset, self).__init__()
         # type tensor . numpy , file etc
         self.is_trace_time = is_trace_time
         self.shuffle = shuffle
@@ -32,7 +38,7 @@ class TextMelLoader(torch.utils.data.Dataset):
         self.is_a_raw = False
 
         if data_format is None or len(data_format) == 0:
-            raise Exception("Dataset file type format is none or empty")
+            raise DatasetError("Dataset file type format is none or empty")
 
         if 'tensor_mel' in data_format:
             self.is_a_tensor = True
@@ -41,21 +47,24 @@ class TextMelLoader(torch.utils.data.Dataset):
         elif 'audio_raw' in data_format:
             self.is_a_raw = True
         else:
-            raise Exception("Dataset file type format is unsupported.")
+            raise DatasetError("Dataset file type format is unsupported.")
 
         self._model_spec = model_spec
         # check dataset contain key
         if self.is_a_raw is False and 'data' not in data:
-            raise Exception("Dataset dict doesn't contain key 'data'")
+            raise DatasetError("Dataset dict doesn't contain key 'data'")
 
         if self.is_a_tensor:
             self._data = data['data']
         elif self.is_a_raw:
             self._data = data
         else:
-            raise Exception("Unknown format.")
+            raise DatasetError("Unknown format.")
 
         self.text_cleaners = model_spec.get_text_cleaner()
+        if self.text_cleaners:
+            raise DatasetError("Text pre processing can't be none")
+
         self.max_wav_value = model_spec.max_wav_value()
         self.sampling_rate = model_spec.sampling_rate()
         self.load_mel_from_disk = model_spec.load_mel_from_disk()
@@ -86,6 +95,18 @@ class TextMelLoader(torch.utils.data.Dataset):
         :return:
         """
         pass
+
+    def normalize_audio(self, filename) -> [torch.Tensor, int]:
+        """
+
+        :param filename:
+        :return:
+        """
+        audio, sample_rate = load_wav_to_torch(filename)
+        audio_norm = audio / self.max_wav_value
+        audio_norm = audio_norm.unsqueeze(0)
+        audio_norm = torch.autograd.Variable(audio_norm, requires_grad=False)
+        return audio_norm, sample_rate
 
     def text_to_tensor(self, input_seq):
         """

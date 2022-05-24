@@ -1,13 +1,16 @@
 import time
-import torch
 
+import torch
+from loguru import logger
 from torch.utils.data import DataLoader, DistributedSampler
-from model_loader.mel_dataset_loader import TextMelLoader, TextMelCollate
-from model_trainer.specs import model_spec
+
+from model_loader.dataset_stft25 import SFTF2Dataset
+from model_loader.dataset_stft30 import SFTF3Dataset
+from model_loader.sfts2_collate import TextMelCollate2
+from model_loader.sfts3_collate import TextMelCollate3
 from model_trainer.specs.dtc_spec import DTC
 from model_trainer.trainer_specs import ExperimentSpecs
 from tacotron2.utils import fmtl_print, to_gpu
-from loguru import logger
 
 
 class Mel_Dataloader:
@@ -19,10 +22,16 @@ class Mel_Dataloader:
     torch.Size([64])
     """
 
-    def __init__(self, experiment_specs: ExperimentSpecs, rank=0, world_size=1, verbose=False):
+    def __init__(self, experiment_specs: ExperimentSpecs, ping_memory=True,
+                 rank=0, world_size=0, num_worker=1, verbose=False):
         """
 
         :param experiment_specs:
+        :param ping_memory:
+        :param rank:
+        :param world_size:
+        :param num_worker:
+        :param verbose:
         """
         self.rank = rank
         self.world_size = world_size
@@ -32,12 +41,14 @@ class Mel_Dataloader:
         self.model_spec: DTC = experiment_specs.get_model_spec()
         self.encoder_spec = self.model_spec.get_encoder()
         self.verbose = verbose
+        self.ping_memory = ping_memory
+        self.num_worker = num_worker
 
         self.train_dataset = None
-        self.validation_dataset = None
         self.collate_fn = None
         self.train_dataloader = None
         self.batch_size = None
+        self.validation_dataset = None
 
     def get_loader(self):
         """
@@ -49,6 +60,65 @@ class Mel_Dataloader:
 
         return self.train_dataloader, self.val_loader, self.collate_fn
 
+    def create_v2raw(self):
+        """
+
+        :return:
+        """
+        pk_dataset = self.trainer_spec.get_audio_dataset()
+        self.train_dataset = SFTF2Dataset(self.encoder_spec,
+                                          list(pk_dataset['train_set'].values()),
+                                          data_format='audio_raw')
+        self.validation_dataset = SFTF2Dataset(self.encoder_spec,
+                                               list(pk_dataset['validation_set'].values()),
+                                               data_format='audio_raw')
+        self.collate_fn = TextMelCollate2(nfps=self.encoder_spec.frames_per_step(), device=None)
+
+    def create_v2dataset(self, device):
+        """
+
+        :return:
+        """
+        pk_dataset = self.trainer_spec.get_audio_dataset()
+        if pk_dataset['ds_type'] == 'tensor_mel':
+            self.train_dataset = SFTF2Dataset(self.encoder_spec,
+                                              pk_dataset['train_set'],
+                                              data_format='tensor_mel')
+            self.validation_dataset = SFTF2Dataset(self.encoder_spec,
+                                                   pk_dataset['validation_set'],
+                                                   data_format='tensor_mel')
+            self.collate_fn = TextMelCollate2(nfps=self.encoder_spec.frames_per_step(), device=None)
+
+
+    def create_v3raw(self):
+        """
+
+        :return:
+        """
+        pk_dataset = self.train_dataset.get_audio_dataset()
+        self.train_dataset = SFTF3Dataset(self.encoder_spec,
+                                          list(pk_dataset['train_set'].values()),
+                                          data_format='audio_raw')
+        self.validation_dataset = SFTF3Dataset(self.encoder_spec,
+                                               list(pk_dataset['validation_set'].values()),
+                                               data_format='audio_raw')
+        self.collate_fn = TextMelCollate3(nfps=self.encoder_spec.frames_per_step(), device=None)
+
+    def create_v3dataset(self, device):
+        """
+
+        :return:
+        """
+        pk_dataset = self.train_dataset.get_audio_dataset()
+        if pk_dataset['ds_type'] == 'tensor_mel':
+            self.train_dataset = SFTF3Dataset(self.encoder_spec,
+                                              pk_dataset['train_set'],
+                                              data_format='tensor_mel')
+            self.validation_dataset = SFTF3Dataset(self.encoder_spec,
+                                                   pk_dataset['validation_set'],
+                                                   data_format='tensor_mel')
+            self.collate_fn = TextMelCollate3(nfps=self.encoder_spec.frames_per_step(), device=None)
+
     def create(self):
         """
         :return:
@@ -59,31 +129,20 @@ class Mel_Dataloader:
         pk_dataset = experiment_specs.get_audio_dataset()
 
         if pk_dataset['ds_type'] == 'tensor_mel':
-            self.train_dataset = TextMelLoader(self.encoder_spec,
-                                               pk_dataset['train_set'],
-                                               data_format='tensor_mel')
-            self.validation_dataset = TextMelLoader(self.encoder_spec,
-                                                    pk_dataset['validation_set'],
-                                                    data_format='tensor_mel')
-            self.collate_fn = TextMelCollate(self.encoder_spec.frames_per_step())
-
+            self.create_v2dataset()
         if pk_dataset['ds_type'] == 'audio_raw':
-            self.train_dataset = TextMelLoader(self.encoder_spec,
-                                               list(pk_dataset['train_set'].values()),
-                                               data_format='audio_raw')
-            self.validation_dataset = TextMelLoader(self.encoder_spec,
-                                                    list(pk_dataset['validation_set'].values()),
-                                                    data_format='audio_raw')
-            self.collate_fn = TextMelCollate(self.encoder_spec.frames_per_step())
+            self.create_v2raw()
 
         # test_set
         if self.trainer_spec.is_distributed_run():
-            logger.info("Create distribute sampler rank {} , world size {}", self.rank, self.world_size)
+            logger.info("Creating distribute sampler rank {} , world size {}", self.rank, self.world_size)
             train_sampler = DistributedSampler(self.train_dataset, num_replicas=self.world_size)
+            val_sampler = DistributedSampler(self.validation_dataset, num_replicas=self.world_size)
             is_shuffle = False
         else:
             # we shuffle only if on single run otherwise it false.
             train_sampler = None
+            val_sampler = None
             is_shuffle = True
 
         if self.verbose:
@@ -91,36 +150,33 @@ class Mel_Dataloader:
             logger.info("Dataloader validation set contains".format(len(self.validation_dataset)))
 
         if len(self.train_dataset) == 0:
-            raise Exception("Dataloader received empty train dataset.")
+            raise ValueError("Dataloader received empty train dataset.")
         if len(self.validation_dataset) == 0:
-            raise Exception("Dataloader received empty validation dataset.")
+            raise ValueError("Dataloader received empty validation dataset.")
         if self.trainer_spec.batch_size == 0:
-            raise Exception("Dataloader need batch size > 0.")
+            raise ValueError("Dataloader need batch size > 0.")
 
         self.batch_size = self.trainer_spec.batch_size
         if self.trainer_spec.is_distributed_run():
             self.batch_size = int(self.trainer_spec.batch_size / float(self.world_size))
 
         self.train_dataloader = DataLoader(self.train_dataset,
-                                           num_workers=1,
+                                           num_workers=self.num_worker,
                                            shuffle=is_shuffle,
                                            sampler=train_sampler,
                                            batch_size=self.trainer_spec.batch_size,
                                            pin_memory=True,
-                                           drop_last=True, collate_fn=self.collate_fn)
-
-        self.val_sampler = None
-        if self.trainer_spec.is_distributed_run():
-            self.val_sampler = DistributedSampler(self.validation_dataset,
-                                                  num_replicas=self.world_size)
+                                           drop_last=True,
+                                           collate_fn=self.collate_fn)
 
         self.val_loader = DataLoader(self.validation_dataset,
-                                     sampler=self.val_sampler,
-                                     num_workers=1,
+                                     sampler=val_sampler,
+                                     num_workers=self.num_worker,
                                      pin_memory=True,
                                      shuffle=is_shuffle,
                                      batch_size=self.batch_size,
                                      collate_fn=self.collate_fn)
+
 
     def to_gpu(x):
         """

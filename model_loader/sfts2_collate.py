@@ -6,7 +6,7 @@ import torch.utils.data
 from loguru import logger
 
 
-class TextMelCollate:
+class TextMelCollate2:
     """
 
     """

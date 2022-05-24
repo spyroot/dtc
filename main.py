@@ -12,7 +12,7 @@ import torch
 from loguru import logger
 
 from model_loader.mel_dataloader import Mel_Dataloader
-from model_loader.mel_dataset_loader import TextMelLoader
+from model_loader.dataset_stft30 import SFTF3Dataset
 from model_trainer.trainer_specs import ExperimentSpecs
 from model_trainer.trainer import Trainer
 import torch.distributed as dist
@@ -26,6 +26,7 @@ os.environ["WORLD_SIZE"] = "2"
 
 import warnings
 warnings.filterwarnings("ignore")
+
 
 def convert_mel_to_data(encoder_spec, target_dir: str, dataset,
                         dataset_name: str, data_type: str, post_check=True, verbose=True):
