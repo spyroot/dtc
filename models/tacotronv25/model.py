@@ -15,11 +15,11 @@ class Tacotron25(nn.Module):
     """
 
     """
-
     def __init__(self, experiment_specs: ExperimentSpecs, device):
         """
 
-        :param hparams:
+        :param experiment_specs:
+        :param device:
         """
         super(Tacotron25, self).__init__()
         self.experiment_specs = experiment_specs
@@ -110,7 +110,7 @@ class Tacotron25(nn.Module):
     def inference(self, inputs):
         """
         During inference pass input to embedding layer
-        transpose shape (batch_size, x ,y ) (batc_size, y, z)
+        transpose shape (batch_size, x ,y ) (batch_size, y, z)
         Pass to decoder and get output mel , gate and alignments.
 
         :param inputs:
