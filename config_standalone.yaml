@@ -86,7 +86,7 @@ settings:
     tensorboard_update: 20      # update rate each step mod tensorboard_update
     early_stopping: True        # early stopping
     console_log_rate: 10        # when to log to console
-    start_test: 20              # when to start run a validation test, i.e we can post pone
+    start_test: 20              # when to start run a validation test, i.e we can post
     epochs_test: 20             # epoch mod epochs_test_rate to start testing
     epochs_save: 5              # when to save
     save_per_iteration: True    # if we want save per iteration for large model make sense not to wait
