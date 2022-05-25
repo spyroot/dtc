@@ -11,7 +11,7 @@ import numpy as np
 import torch
 from loguru import logger
 
-from model_loader.mel_dataloader import Mel_Dataloader
+from model_loader.mel_dataloader import SFTFDataloader
 from model_loader.dataset_stft30 import SFTF3Dataset
 from model_trainer.trainer_specs import ExperimentSpecs
 from model_trainer.trainer import Trainer
@@ -87,9 +87,9 @@ def convert(trainer_spec, verbose=True):
     encoder_spec = model_spec.get_encoder()
 
     #
-    train_dataset = TextMelLoader(encoder_spec, list(training_set.values()), "audio_raw")
-    validation_dataset = TextMelLoader(encoder_spec, list(validation_set.values()), "audio_raw")
-    test_dataset = TextMelLoader(encoder_spec, list(test_set.values()), "audio_raw")
+    train_dataset = SFTFDataloader(encoder_spec, list(training_set.values()), "audio_raw")
+    validation_dataset = SFTFDataloader(encoder_spec, list(validation_set.values()), "audio_raw")
+    test_dataset = SFTFDataloader(encoder_spec, list(test_set.values()), "audio_raw")
 
     if verbose:
         logging.info("filter_length", encoder_spec.filter_length())
@@ -220,7 +220,7 @@ def train(spec=None, cmd_args=None, device=None, verbose=True, cudnn_bench=False
         # device = torch.device(device)
         dist.barrier()
 
-    dataloader = Mel_Dataloader(spec, rank=cmd_args.rank, world_size=cmd_args.world_size, verbose=True)
+    dataloader = SFTFDataloader(spec, rank=cmd_args.rank, world_size=cmd_args.world_size, verbose=True)
     torch.backends.cudnn.enabled = True
     if cudnn_bench:
         torch.backends.cudnn.benchmark = True
@@ -241,7 +241,7 @@ def dataloader_dry(cmd_args, trainer_specs, verbose=False):
 
     :return:
     """
-    data_loader = Mel_Dataloader(trainer_specs, verbose=verbose)
+    data_loader = SFTFDataloader(trainer_specs, verbose=verbose)
     if cmd_args.benchmark:
         data_loader.create()
         data_loader.benchmark_read()

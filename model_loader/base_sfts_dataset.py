@@ -1,7 +1,8 @@
 # STFT25, Mel dataset
 #
-# It base case that does all low level, each class on top can overwrite
-# Mustafa
+# It base class that does all low level, each class on top can overwrite
+# Mustafa. B
+#
 import os
 import random
 import warnings
@@ -230,7 +231,7 @@ class BaseSFTFDataset(torch.utils.data.Dataset):
                 else:
                     logger.debug("Creating dataset from numpy file. as iterator, no random access")
                     self._dataset_file = self.data
-                    self._data_len, self._num_tensors = self.read_numpy_header(self._dataset_file)
+                    self._data_len, self._num_tensors = self._read_numpy_header(self._dataset_file)
                     self._data_iterator = self.example_from_numpy(self._dataset_file)
                 logger.debug("Dataset contains {} entries.".format(self._data_len))
         else:
@@ -347,9 +348,10 @@ class BaseSFTFDataset(torch.utils.data.Dataset):
                 for idx in range(0, len(ds_record)):
                     np.save(f, ds_record[idx].numpy())
 
-    def read_numpy_header(self, filename):
+    def _read_numpy_header(self, filename):
         """
-
+        Reads header from numpy file, the header contains data how mel was generated,
+        num filters, records ec.
         :param filename:
         :return:
         """

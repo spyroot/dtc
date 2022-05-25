@@ -1,3 +1,9 @@
+# SFTS, Mel dataset
+#
+# It for dataset that outputs only one hot vector and mel spectrogram.
+#
+# Mustafa
+#
 import time
 
 import torch
@@ -13,7 +19,7 @@ from model_trainer.trainer_specs import ExperimentSpecs
 from tacotron2.utils import fmtl_print, to_gpu
 
 
-class Mel_Dataloader:
+class SFTFDataloader:
     """
     torch.Size([64, 164])
     torch.Size([64])
@@ -52,17 +58,16 @@ class Mel_Dataloader:
 
     def get_loader(self):
         """
-        Method return data loader
+        Method return data loader.
+
         :return:
         """
         if self.train_dataloader is None:
             self.create()
-
         return self.train_dataloader, self.val_loader, self.collate_fn
 
     def create_v2raw(self):
         """
-
         :return:
         """
         pk_dataset = self.trainer_spec.get_audio_dataset()
@@ -76,7 +81,6 @@ class Mel_Dataloader:
 
     def create_v2dataset(self, device):
         """
-
         :return:
         """
         pk_dataset = self.trainer_spec.get_audio_dataset()
@@ -185,7 +189,8 @@ class Mel_Dataloader:
             x = x.cuda(non_blocking=True)
         return torch.autograd.Variable(x)
 
-    def get_batch(self, batch):
+    @staticmethod
+    def get_batch(batch):
         """
         :param batch:
         :return:

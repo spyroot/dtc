@@ -5,18 +5,13 @@
 # Mustafa
 
 from abc import ABC
-import os
-import random
-import warnings
-from abc import abstractmethod
-from pathlib import Path
 from typing import Callable, Optional
-from urllib.error import URLError
 
 import torch
 import torch.utils.data
 from loguru import logger
 from torch import Tensor
+
 from model_loader.base_sfts_dataset import BaseSFTFDataset, DatasetError
 from model_loader.tacotron_stft25 import TacotronSTFT25
 from model_trainer.specs.tacatron_spec import TacotronSpec
@@ -172,7 +167,7 @@ def test_create_from_numpy_and_iterator():
     trainer_spec = ExperimentSpecs(spec_config='../config.yaml')
     model_spec = trainer_spec.get_model_spec().get_spec('encoder')
     train_dataset = SFTF2Dataset(model_spec,
-                                 'test.npy',
+                                 'dts/subset.npy',
                                  data_format='numpy_mel',
                                  in_memory=False)
     assert len(train_dataset) > 0
@@ -188,4 +183,4 @@ if __name__ == '__main__':
     """
     # test_download()
     test_create_from_numpy_in_memory()
-    # test_create_from_numpy_and_iterator()
+    test_create_from_numpy_and_iterator()
