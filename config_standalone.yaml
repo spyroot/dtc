@@ -2,7 +2,7 @@ train: True                 # train or not,  default is True for generation we o
 #active: 'grid_small'       # dataset set generated.
 #use_dataset: 'LJSpeechSmallPkl'     # dataset set generated.
 use_dataset: 'LJSpeechSmallRaw'     # dataset set generated.
-use_model: 'dts'            # model to use , it must be defined in models section.
+use_model: 'tacotron25'            # model to use , it must be defined in models section.
 draw_prediction: True       # at the of training draw.
 load_model: True            # load model or not, and what
 load_epoch: 500             # load model,  last epoch
@@ -86,7 +86,7 @@ settings:
     tensorboard_update: 20      # update rate each step mod tensorboard_update
     early_stopping: True        # early stopping
     console_log_rate: 10        # when to log to console
-    start_test: 20              # when to start run a validation test.
+    start_test: 20              # when to start run a validation test, i.e we can post pone
     epochs_test: 20             # epoch mod epochs_test_rate to start testing
     epochs_save: 5              # when to save
     save_per_iteration: True    # if we want save per iteration for large model make sense not to wait
@@ -96,44 +96,28 @@ settings:
     fp16: False                 # fp16 or fp32
     distributed: False          # if we distribute
     backend: "nccl"              # what distributed backend uses.
-    #
     url: "tcp://localhost:54321"
-    #
     cudnn_enabled: True
-    #
     cudnn_benchmark: False
   small:
+    epochs: 500
     batch_size: 64
     grad_clipping: True
-    grad_clip_thresh: 1.0
-    # tensorboard update rate
-    tensorboard_update: 20
-    # early stopping
-    early_stopping: True
-    # when to log to console
-    console_log_rate: 5
-    # when to start run a test
-    start_test: 20
-    # predict to start predict , validate
-    predict: 10
-    # use epoch or iteration counter, in large batch size we might want to see progress.
-    predict_per_iteration: True
-    # when to save
-    epochs_save: 5
-    # if we want save per iteration
-    save_per_iteration: True
-    # fix seed
-    seed: 1234
-    #
-    epochs: 500
-    #
-    iters_per_checkpoint: 1000
-    # fp16 or fp32
-    fp16: False                      # fp16 run
-    distributed: True                # what distributed backend uses.
-    backend: "nccl"                  # backend: "gloo"
-    url: "tcp://localhost:54321"
-    master_address: localhost
+    grad_clip_thresh: 1.0              # grad_clip_thresh rate
+    tensorboard_update: 20             # tensorboard_update update rate iter
+    early_stopping: True               # tensorboard update rate
+    console_log_rate: 5                # when to log to console
+    start_test: 20                     # when to start run a test
+    predict: 10                        # predict to start predict , validate
+    predict_per_iteration: True        # use epoch or iteration counter, in large batch size we might want to see progress.
+    epochs_save: 5                     # when to save
+    save_per_iteration: True           # if we want save per iteration
+    seed: 1234                         # fix seed
+    fp16: False                        # fp16 run
+    distributed: True                  # what distributed backend uses.
+    backend: "nccl"                    # backend: "gloo"
+    url: "tcp://localhost:54321"       # ddp
+    master_address: localhost          # master
     master_port: 54321
     cudnn_enabled: True
     cudnn_benchmark: False
@@ -173,14 +157,27 @@ lr_schedulers:
       patience: 10
       name: dtc_scheduler
 
+# Training strategy
+strategy:
+  tacotron25:
+    type: sequential
+    order:
+     - spectrogram_layer
+     - wav2vec
+  dts:
+    type: sequential
+    order:
+     - spectrogram_layer
+     - wav2vec
+
 # Model definition
 models:
   # this pure model specific, single model can describe both edges and nodes
   # in case we need use single model for edge and node prediction task ,
   # use keyword single_model: model_name
-  dts:
-    encoder:
-      model: tacotron2
+  tacotron25:
+    spectrogram_layer:
+      model: tacotron25
       optimizer: tacotron2_optimizer
 #      lr_scheduler: main_lr_scheduler
       has_input: True
@@ -188,18 +185,42 @@ models:
       max_wav_value: 32768.0
       frames_per_step: 1
       sampling_rate: 22050
-      filter_length: 1024
+      filter_length: 1024   # length of the FFT window
+      win_length: 1024      # each frame of audio is windowed by
       hop_length: 256
-      win_length: 1024
       n_mel_channels: 80
       mel_fmin: 0.0
       mel_fmax: 8000.0
-#    edge_model:
-#      name: Test
-#      model: GraphLSTM
-#      optimizer: edge_optimizer
-#      lr_scheduler: main_lr_scheduler
-#      input_size: 1
+    vocoder:
+      state: disabled
+      name: Test
+      model: GraphLSTM
+      optimizer: edge_optimizer
+      lr_scheduler: main_lr_scheduler
+      input_size: 1
+  dts:
+    spectrogram_layer:
+      model: tacotron3
+      optimizer: tacotron2_optimizer
+      #      lr_scheduler: main_lr_scheduler
+      has_input: True
+      has_output: True
+      max_wav_value: 32768.0
+      frames_per_step: 1
+      sampling_rate: 22050
+      filter_length: 1024   # length of the FFT window
+      win_length: 1024      # each frame of audio is windowed by
+      hop_length: 256
+      n_mel_channels: 80
+      mel_fmin: 0.0
+      mel_fmax: 8000.0
+    vocoder:
+      name: Test
+      state: disabled
+      model: GraphLSTM
+      optimizer: edge_optimizer
+      lr_scheduler: main_lr_scheduler
+      input_size: 1
   GraphLstmRnn:
     node_model:
       model: GraphLSTM

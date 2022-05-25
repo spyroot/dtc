@@ -20,6 +20,11 @@ from loguru import logger
 MODULE_NAME = "ExperimentSpecs"
 
 
+class TrainerSpecError(Exception):
+    """Base class for other exceptions"""
+    pass
+
+
 class ExperimentSpecs:
     """
     """
@@ -51,15 +56,12 @@ class ExperimentSpecs:
             p = p.resolve()
             self.config_file_name = p
 
-        self._verbose = verbose
-        #
+        self._verbose: bool = verbose
         self._setting = None
-
-        #
         self._model_spec = None
 
         #
-        self.inited = None
+        self._inited: bool = None
 
         #
         self.writer = None
@@ -193,7 +195,7 @@ class ExperimentSpecs:
         :return:
         """
         if 'use_dataset' not in self.config:
-            raise Exception("config.yaml must contains valid active settings.")
+            raise TrainerSpecError("config.yaml must contains valid active settings.")
 
         self.use_dataset = self.config['use_dataset']
 
@@ -203,12 +205,12 @@ class ExperimentSpecs:
         :return:
         """
         if 'datasets' not in self.config:
-            raise Exception("config.yaml must contains corresponding "
-                            "datasets settings for {}".format(self.use_dataset))
+            raise TrainerSpecError("config.yaml must contains corresponding "
+                                   "datasets settings for {}".format(self.use_dataset))
 
         dataset_list = self.config['datasets']
         if self.use_dataset not in dataset_list:
-            raise Exception("config.yaml doesn't contain {} template, check config.".format(self.use_dataset))
+            raise TrainerSpecError("config.yaml doesn't contain {} template, check config.".format(self.use_dataset))
 
         self.dataset_specs = self.config['datasets'][self.use_dataset]
 
@@ -245,10 +247,10 @@ class ExperimentSpecs:
         """
         self.spec_dispatcher = self.create_spec_dispatch()
         if 'models' not in self.config:
-            raise Exception("config.yaml must contain at least one models list and one model.")
+            raise TrainerSpecError("config.yaml must contain at least one models list and one model.")
 
         if 'use_model' not in self.config:
-            raise Exception("config.yaml must contain use_model and it must defined.")
+            raise TrainerSpecError("config.yaml must contain use_model and it must defined.")
 
         self.active_model = self.config['use_model']
         self.models_specs = self.config['models']
@@ -261,7 +263,7 @@ class ExperimentSpecs:
         self._model_spec = spec_dispatcher(self.models_specs[self.active_model], self.dataset_specs)
 
         if self.active_model not in self.models_specs:
-            raise Exception("config.yaml doesn't contain model {}.".format(self.active_model))
+            raise TrainerSpecError("config.yaml doesn't contain model {}.".format(self.active_model))
 
         # set model spec
         # self.model_spec = self.models_specs[self.active_model]
@@ -278,7 +280,7 @@ class ExperimentSpecs:
             logger.debug("Settings list {}".format(_settings))
 
         if self._active_setting not in _settings:
-            raise Exception("config.yaml use undefined variable {} ".format(self._active_setting))
+            raise TrainerSpecError("config.yaml use undefined variable {} ".format(self._active_setting))
 
         self._setting = _settings[self._active_setting].copy()
         if debug:
@@ -295,7 +297,7 @@ class ExperimentSpecs:
         if 'optimizers' in self.config:
             self._optimizers = self.config['optimizers']
         else:
-            raise Exception("config.yaml doesn't contain optimizers section. Example {}".format(""))
+            raise TrainerSpecError("config.yaml doesn't contain optimizers section. Example {}".format(""))
 
     def read_lr_scheduler(self):
         """
@@ -316,7 +318,7 @@ class ExperimentSpecs:
         if dataset_type == "audio":
             for k in mandatory_kv:
                 if k not in self.dataset_specs:
-                    raise Exception("Audio dataset must contain config entry {}".format(k))
+                    raise TrainerSpecError("Audio dataset must contain config entry {}".format(k))
 
     def read_config(self, debug=False):
         """
@@ -339,7 +341,7 @@ class ExperimentSpecs:
             fmt_print("active setting", self.config['active_setting'])
 
         self.set_active_settings()
-        self.inited = True
+        self._inited = True
 
     def read_from_file(self, debug=False):
         """
@@ -433,7 +435,7 @@ class ExperimentSpecs:
         Returns:
         """
         if 'dir' not in self.dataset_specs:
-            raise Exception("config.yaml must contain dir entry")
+            raise TrainerSpecError("config.yaml must contain dir entry.")
 
         # resolve home
         path_to_dir = self.resolve_home(self.dataset_specs['dir'])
@@ -466,7 +468,7 @@ class ExperimentSpecs:
         Returns:  Path to file contain meta information , such as file - text
         """
         if 'training_meta' not in self.dataset_specs:
-            raise Exception("config.yaml must contain training_meta entry.")
+            raise TrainerSpecError("config.yaml must contain training_meta entry.")
         return self.dataset_specs['training_meta']
 
     def get_validation_meta_file(self):
@@ -474,7 +476,7 @@ class ExperimentSpecs:
         Returns:  Path to file contain meta information , such as file - text
         """
         if 'validation_meta' not in self.dataset_specs:
-            raise Exception("config.yaml must contain validation_meta entry.")
+            raise TrainerSpecError("config.yaml must contain validation_meta entry.")
         return self.dataset_specs['validation_meta']
 
     def get_test_meta_file(self):
@@ -482,7 +484,7 @@ class ExperimentSpecs:
         Returns:  Path to file contain meta information , such as file - text
         """
         if 'test_meta' not in self.dataset_specs:
-            raise Exception("config.yaml doesn't contain test_meta entry.")
+            raise TrainerSpecError("config.yaml doesn't contain test_meta entry.")
         return self.dataset_specs['test_meta']
 
     def build_training_set(self):
@@ -591,7 +593,7 @@ class ExperimentSpecs:
                     logger.info("Dataset contains records {}".format(len(dataset_from_pt['data'])))
                 pt_dict[k] = dataset_from_pt
             else:
-                raise Exception("Failed locate {} file.".format(str(ds_dict[k])))
+                raise TrainerSpecError("Failed locate {} file.".format(str(ds_dict[k])))
 
         if len(pt_dict) > 0:
             pt_dict['ds_type'] = 'tensor_mel'
@@ -603,7 +605,7 @@ class ExperimentSpecs:
         :return:
         """
         if 'format' not in self.dataset_specs:
-            raise Exception("config.yaml doesn't dataset format entry.")
+            raise TrainerSpecError("config.yaml doesn't dataset format entry.")
 
         self._verbose = True
 
@@ -624,7 +626,7 @@ class ExperimentSpecs:
         :return:  default value False
         """
         if self._setting is None:
-            raise Exception("Initialize settings first")
+            raise TrainerSpecError("Initialize settings first")
 
         if 'early_stopping' in self._setting:
             return True
@@ -636,7 +638,7 @@ class ExperimentSpecs:
 
         """
         if self._setting is None:
-            raise Exception("Initialize settings first")
+            raise TrainerSpecError("Initialize settings first")
 
         if 'seed' in self._setting:
             logger.debug("Model uses fixed seed", self._setting['seed'])
@@ -646,12 +648,11 @@ class ExperimentSpecs:
 
     def is_fp16_run(self):
         """
-
-        Returns:
-
+        Return true if active setting set to run in fp16
+        :return:
         """
         if self._setting is None:
-            raise Exception("Initialize settings first")
+            raise TrainerSpecError("Initialize settings first")
 
         if 'fp16' in self._setting:
             if self._verbose:
@@ -666,7 +667,7 @@ class ExperimentSpecs:
         :return:
         """
         if self._setting is None:
-            raise Exception("Initialize settings first")
+            raise TrainerSpecError("Initialize settings first")
 
         if 'distributed' in self._setting:
             if self._verbose:
@@ -742,7 +743,7 @@ class ExperimentSpecs:
         :return: number of epochs to run for given dataset, default 100
         """
         if self._setting is None:
-            raise Exception("Initialize settings first")
+            raise TrainerSpecError("Initialize settings first")
 
         if 'epochs' in self._setting:
             return int(self._setting['epochs'])
@@ -765,7 +766,7 @@ class ExperimentSpecs:
         :return:
         """
         if self._setting is None:
-            raise Exception("Initialize settings first")
+            raise TrainerSpecError("Initialize settings first")
 
         if 'batch_size' in self._setting:
             return int(self._setting['batch_size'])
@@ -782,13 +783,13 @@ class ExperimentSpecs:
 
         return False
 
-    def is_save(self) -> bool:
+    def is_save_required(self) -> bool:
         """
         Return true if model saved during training.
         """
         return bool(self.config['save_model'])
 
-    def is_save_per_iteration(self) -> bool:
+    def is_save_iteration(self) -> bool:
         """
         Return true if model saved during training.
         """
@@ -875,10 +876,14 @@ class ExperimentSpecs:
     def lr_scheduler_type(self, alias_name):
         """
         Returns lr scheduler type.
+
         :param alias_name: alias_name: alias name defined in config.
                            The purpose of alias bind different scheduler config to model
         :return:
         """
+        if alias_name is None or len(alias_name) == 0:
+            raise TrainerSpecError("Supplied alias_name name is empty.")
+
         scheduler_spec = self.lr_scheduler(alias_name)
         if scheduler_spec is not None:
             if 'type' in scheduler_spec:
@@ -886,72 +891,93 @@ class ExperimentSpecs:
 
         return None
 
-    def get_sub_model_lr_scheduler(self, sub_model_name) -> str:
+    def get_sub_model_lr_scheduler(self, model_layer) -> str:
         """
+        Method return scheduler for a given models sub layer.
 
-        :param sub_model_name:
+        :param model_layer:
         :return:
         """
+        if model_layer is None or len(model_layer) == 0:
+            raise TrainerSpecError("Supplied model layer name is empty.")
+
         _active_model = self.config['use_model']
         _models = self.config['models']
-        if _active_model not in _models:
-            raise Exception("config.yaml doesn't contain model {}.".format(_active_model))
 
-        if sub_model_name is not None:
-            _model = _models[_active_model]
-            if _model['state'] == 'disabled':
-                return ""
-            sub_model = _model[sub_model_name]
-            if 'lr_scheduler' in sub_model:
-                return sub_model['lr_scheduler']
+        if _active_model not in _models:
+            raise TrainerSpecError(f"Config doesn't contain model {_active_model}.")
+
+        _model = _models[_active_model]
+        if 'state' in _models and _model['state'] == 'disabled':
+            return ""
+
+        model_layer = _model[model_layer]
+        if 'lr_scheduler' in model_layer:
+            return model_layer['lr_scheduler']
 
         return ""
 
     def get_optimizer(self, alias_name: str):
         """
-        Method return optimizer setting.
-        Args:
-            alias_name: alias name in config.  It binds optimizer to model
+        Method return what optimizer to attach. alias name is alias as it defined in config.
+        Example:
 
-        Returns: dict that hold optimizer settings
+        optimizers:
+          node_optimizer:
+            eps: 1e-8
+            weight_decay: 0
+            amsgrad: False
+            momentum=0:
+            betas: [0.9, 0.999]
+            type: Adam
 
+        :param alias_name: alias_name: alias as it defined in config.yaml
+        :return:
         """
+        if alias_name is None or len(alias_name) == 0:
+            raise TrainerSpecError("Supplied optimizer alias_name layer name is empty.")
+
         return self._optimizers[alias_name]
 
     def optimizer_type(self, alias_name: str, default=False) -> str:
         """
+        Method return what optimizer to attach. alias name is alias as it defined in config.
+        Example:
         Returns optimizer type for a given alias , if default is passed , will return default.
-        Args:
-            alias_name:
-            default:
 
-        Returns:
-
+        :param alias_name: alias as it defined in config.yaml
+        :param default:
+        :return:
         """
-        if default is False:
-            opt = self.get_optimizer(alias_name)
-            if 'type' in opt:
-                return str(opt['type'])
+        if alias_name is None or len(alias_name) == 0:
+            raise TrainerSpecError("Supplied optimizer alias_name layer name is empty.")
+
+        if default is True:
+            return "Adam"
+
+        opt = self.get_optimizer(alias_name)
+        if 'type' in opt:
+            return str(opt['type'])
 
         return "Adam"
 
-    def get_active_mode(self):
+    def get_active_mode(self) -> str:
         """
-
+        Return active model
         :return:
         """
         if 'use_model' not in self.config:
-            raise Exception("Make sure spec contains use_model key value.")
-
+            raise TrainerSpecError("Make sure spec contains use_model key value pair.")
         return self.config['use_model']
 
     def get_models(self):
         """
+        Return entire model specification.
 
         :return:
         """
         if 'models' not in self.config:
-            raise Exception("Make sure spec contains use_model key value.")
+            raise TrainerSpecError("Make sure spec contains use_model key value.")
 
         return self.config['models']
 
@@ -969,7 +995,7 @@ class ExperimentSpecs:
         _active_model = self.get_active_mode()
         _models = self.get_models()
         if _active_model not in _models:
-            raise Exception("config.yaml doesn't contain model {}.".format(_active_model))
+            raise TrainerSpecError("config.yaml doesn't contain model {}.".format(_active_model))
 
         logger.info("received {}", sub_model_name)
 
@@ -991,7 +1017,7 @@ class ExperimentSpecs:
         _active_model = self.config['use_model']
         _models = self.config['models']
         if _active_model not in _models:
-            raise Exception("config.yaml doesn't contain model {}.".format(_active_model))
+            raise TrainerSpecError("config.yaml doesn't contain model {}.".format(_active_model))
 
         if model_name is None:
             _model = _models[_active_model]
@@ -1263,10 +1289,10 @@ class ExperimentSpecs:
         Returns: Default 100
         """
         if self.is_initialized() is False:
-            raise Exception("Training must be initialized first.")
+            raise TrainerSpecError("Training must be initialized first.")
 
         if self._setting is None:
-            raise Exception("Initialize settings first")
+            raise TrainerSpecError("Initialize settings first")
 
         if 'console_log_rate' in self._setting:
             return int(self._setting['console_log_rate'])
@@ -1280,10 +1306,10 @@ class ExperimentSpecs:
                  otherwise update rate is batch_size
         """
         if self.is_initialized() is False:
-            raise Exception("Training must be initialized first.")
+            raise TrainerSpecError("Training must be initialized first.")
 
         if self._setting is None:
-            raise Exception("Initialize settings first")
+            raise TrainerSpecError("Initialize settings first")
 
         if 'tensorboard_update' in self._setting:
             if self.batch_size <= int(self._setting['tensorboard_update']):
@@ -1333,7 +1359,7 @@ class ExperimentSpecs:
         :return: Default false.
         """
         if self.is_initialized() is False:
-            raise Exception("Training must be initialized first.")
+            raise TrainerSpecError("Training must be initialized first.")
 
         if 'grad_clipping' in self._setting:
             return bool(self._setting['grad_clipping'])
@@ -1346,7 +1372,7 @@ class ExperimentSpecs:
         :return: Default 1.0
         """
         if self.is_initialized() is False:
-            raise Exception("Training must be initialized first.")
+            raise TrainerSpecError("Training must be initialized first.")
 
         if 'grad_clip_thresh' in self._setting:
             return float(self._setting['grad_clipping'])
@@ -1365,13 +1391,43 @@ class ExperimentSpecs:
         else:
             logger.disable(__name__)
 
-    def get_training_strategy(self):
+    def get_training_strategy(self, model_name: str) -> str:
         """
-        @TODO
-        :return:
+        Return strategy.
+
+        Example..
+        strategy:
+              tacotron25:
+                type: sequential
+                order:
+                 - spectrogram_layer
+                 - wav2vec
+              dts:
+                type: sequential
+                order:
+                 - spectrogram_layer
+                 - wav2vec
+
+        :return: Strategy type sequential, round-robin etc.
         """
+        if self.is_initialized() is False:
+            raise TrainerSpecError("Training must be initialized first.")
+
         _active_model = self.config['use_model']
         _models = self.config['models']
+
+        if 'strategy' not in self.config:
+            raise TrainerSpecError("For complex model with many sub-models you need define a strategy.")
+
         _strategy = self.config['strategy']
-        _type = _strategy[_active_model]['type']
-        return _type
+        if model_name not in _strategy:
+            raise TrainerSpecError(f"Can't find any train strategy for active model '{model_name}'. Check config.")
+
+        model_strategy_spec = _strategy[model_name]
+        if 'type' not in model_strategy_spec:
+            raise TrainerSpecError("Strategy must contain type.")
+
+        return model_strategy_spec['type']
+
+    def is_backup_before_save(self):
+        pass

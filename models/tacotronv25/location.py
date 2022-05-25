@@ -29,7 +29,6 @@ class LocationLayer(nn.Module):
         :return:
         """
         # shape torch.Size([64, 2, 161])
-        print(attention_weights_cat.shape)
         processed_attention = self.location_conv(attention_weights_cat)
         processed_attention = processed_attention.transpose(1, 2)
         processed_attention = self.location_dense(processed_attention)

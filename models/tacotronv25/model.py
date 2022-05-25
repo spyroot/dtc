@@ -85,11 +85,8 @@ class Tacotron25(nn.Module):
     def forward(self, inputs):
         """
 
-        Args:
-            inputs:
-
-        Returns:
-
+        :param inputs:
+        :return:
         """
         text_inputs, text_lengths, mels, max_len, output_lengths = inputs
         text_lengths, output_lengths = text_lengths.data, output_lengths.data

@@ -13,7 +13,7 @@ from loguru import logger
 
 from model_loader.mel_dataloader import SFTFDataloader
 from model_loader.dataset_stft30 import SFTF3Dataset
-from model_trainer.trainer_specs import ExperimentSpecs
+from model_trainer.trainer_specs import ExperimentSpecs, TrainerSpecError
 from model_trainer.trainer import Trainer, TrainerError
 import torch.distributed as dist
 
@@ -426,4 +426,8 @@ if __name__ == '__main__':
         # setup_handler(cleanup(is_distributed))
     except FileNotFoundError as file_error:
         print("File not found ", str(file_error))
+        logger.error(f"File not found: {str(file_error)}")
+    except TrainerSpecError as spec_error:
+        print("Invalid spec", str(spec_error))
+        logger.error(f"Invalid spec: {str(spec_error)}")
         sys.exit(2)
