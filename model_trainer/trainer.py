@@ -3,8 +3,10 @@ import random
 import socket
 import time
 from abc import ABC
+from typing import Callable, Optional
 
 from models.tacatronv30.model import Tacotron3
+from models.tacotronv25.model import Tacotron25
 from tacotron2.plotting_utils import plot_alignment_to_numpy, plot_spectrogram_to_numpy, plot_gate_outputs_to_numpy
 
 import numpy as np
@@ -59,10 +61,18 @@ class Trainer(GeneratorTrainer, ABC):
     """
 
     """
-
-    def __init__(self, trainer_spec: ExperimentSpecs, data_loader=None,
-                 verbose=False, is_notebook=False, rank=0, world_size=2,
-                 disable_pbar=False, device=None, cuda_device_id=0, is_inference=False):
+    # root: Optional[str] = "dtc",
+    def __init__(self,
+                 trainer_spec: ExperimentSpecs,
+                 data_loader=None,
+                 verbose: Optional[bool] = False,
+                 is_notebook: Optional[bool] = False,
+                 rank: Optional[int] = 0,
+                 world_size: Optional[int] = 2,
+                 disable_pbar: Optional[int] = False,
+                 device: Optional[int] = torch.device,
+                 cuda_device_id: Optional[int] = 0,
+                 is_inference: Optional[bool] = False) -> None:
         """
 
         :param trainer_spec:  a trainer spec , trainer uses to train model
@@ -113,9 +123,9 @@ class Trainer(GeneratorTrainer, ABC):
         # TODO need refactor that, and move to dict and abstract,
         self.criterion = Tacotron2Loss()
         # dict store all model
-        self.models = {}
+        self._models = {}
         # store last epoch
-        self.last_epochs = {}
+        self._last_epochs = {}
         # dict holds model name = last iterator value
         self.iters = {}
         #
@@ -146,12 +156,36 @@ class Trainer(GeneratorTrainer, ABC):
         self.t_writer = None
         logger.info("Device ID {}".format(self.cuda_device_id))
 
+        # late we will move this to factory
+        # type class that will do creation
+        self.model_creator = self.create_model_dispatch()
         # init trainer
         self.init_trainer()
 
+    def create_model_dispatch(self) -> tuple[dict[str, Callable], dict[str, Callable]]:
+        """
+        Create two dispatcher,
+        Model dispatcher and trainer dispatcher.
+        The first dispatch model creator, where each key model name
+        as it defined in config.yaml and value is callable creator function,
+
+        method, class etc.
+        Similarly, second dispatch is trainer callable objects.
+
+        :return: model creator Callable , and trainer creator Callable.
+        """
+        model_dispatch = {
+            'tacotron25': self.create_tacotron25,
+            'dts': self.create_tacotron30,
+        }
+        trainer_dispatch = {
+            # 'GraphGRU': RnnGenerator,
+            # 'GraphLSTM': RnnGenerator,
+        }
+        return model_dispatch, trainer_dispatch
+
     def init_trainer(self) -> None:
         """
-
         :return:
         """
         if self.is_inference:
@@ -210,47 +244,96 @@ class Trainer(GeneratorTrainer, ABC):
 
         logger.debug("Done initializing distributed {}".format(dist.get_rank()))
 
+    def create_tacotron25(self, is_set_cuda=False):
+        """
+        :return:
+        """
+        if self.is_inference:
+            model = Tacotron25(self.trainer_spec, self.device).to(self.device)
+        elif self.trainer_spec.is_distributed_run():
+            # device = torch.device(f"cuda:{dist.get_rank()}")
+            if torch.cuda.is_available():
+                n = torch.cuda.device_count() // self.n_gpus
+
+            if is_set_cuda:
+                device = f"cuda:{dist.get_rank()}"
+                logger.info("Number gpu on the node {} device".format(n, device))
+                torch.cuda.set_device(self.cuda_device_id)
+            else:
+                device = self.device
+
+            logger.info("Creating DDP on cuda device "
+                        "{} torch device {} device received {}".format(self.cuda_device_id, device, self.device))
+            model = Tacotron3(self.trainer_spec, device).cuda()
+            model = DistributedDataWrapper(model,
+                                           device_ids=[self.cuda_device_id],
+                                           output_device=self.cuda_device_id).cuda()
+
+        else:
+            model = Tacotron3(self.trainer_spec, self.device).to(self.device)
+
+        if self.trainer_spec.is_fp16_run():
+            model.decoder.attention_layer.score_mask_value = finfo('float16').min
+
+    def create_tacotron30(self, is_set_cuda=False):
+        """
+
+        :return:
+        """
+        if self.is_inference:
+            model = Tacotron3(self.trainer_spec, self.device).to(self.device)
+        elif self.trainer_spec.is_distributed_run():
+            # device = torch.device(f"cuda:{dist.get_rank()}")
+            if torch.cuda.is_available():
+                n = torch.cuda.device_count() // self.n_gpus
+
+            if is_set_cuda:
+                device = f"cuda:{dist.get_rank()}"
+                logger.info("Number gpu on the node {} device".format(n, device))
+                torch.cuda.set_device(self.cuda_device_id)
+            else:
+                device = self.device
+
+            logger.info("Creating DDP on cuda device "
+                        "{} torch device {} device received {}".format(self.cuda_device_id, device, self.device))
+            model = Tacotron3(self.trainer_spec, device).cuda()
+            model = DistributedDataWrapper(model,
+                                           device_ids=[self.cuda_device_id],
+                                           output_device=self.cuda_device_id).cuda()
+
+        else:
+            model = Tacotron3(self.trainer_spec, self.device).to(self.device)
+
+        if self.trainer_spec.is_fp16_run():
+            model.decoder.attention_layer.score_mask_value = finfo('float16').min
+
     def create_model(self, model_name, is_set_cuda=False):
-        """Method create model.  Later will move to a separate dispatcher creator.
+        """
+          Method lookup model from dispatch and call respected creator.
+          Later will move to a separate dispatcher creator or maybe
+          register creator.
+
         :param model_name:
         :return: nothing
         :param is_set_cuda: If need pin directly
         """
-        # device = torch.device(f"cuda:{int(args.rank)}")
+        if model_name in self.model_creator:
+            raise ValueError("Unknown model, supported models", self.model_creator.keys())
 
-        if model_name == 'encoder':
-            if self.is_inference:
-                model = Tacotron3(self.trainer_spec, self.device).to(self.device)
-            elif self.trainer_spec.is_distributed_run():
-                # device = torch.device(f"cuda:{dist.get_rank()}")
-                if torch.cuda.is_available():
-                    n = torch.cuda.device_count() // self.n_gpus
+        creator = self.model_creator[model_name]
+        self._models[model_name] = creator(is_set_cuda)
+        self._last_epochs[model_name] = 0
 
-                if is_set_cuda:
-                    device = f"cuda:{dist.get_rank()}"
-                    logger.info("Number gpu on the node {} device".format(n, device))
-                    torch.cuda.set_device(self.cuda_device_id)
-                else:
-                    device = self.device
-
-                logger.info("Creating DDP on cuda device "
-                            "{} torch device {} device received {}".format(self.cuda_device_id, device, self.device))
-                model = Tacotron3(self.trainer_spec, device).cuda()
-                model = DistributedDataWrapper(model,
-                                               device_ids=[self.cuda_device_id],
-                                               output_device=self.cuda_device_id).cuda()
-
-            else:
-                model = Tacotron3(self.trainer_spec, self.device).to(self.device)
-
-            if self.trainer_spec.is_fp16_run():
-                model.decoder.attention_layer.score_mask_value = finfo('float16').min
-
-            # if self.trainer_spec.is_distributed_run():
-            #     # model = apply_gradient_allreduce(model)
-
-            self.models[model_name] = model
-            self.last_epochs[model_name] = 0
+    def create_models(self):
+        """
+        For each active model, which might consist two or more models.
+        we create a target model
+        :return: nothing, create_model will add each model to a dict[model_name] = model
+        """
+        _models = self.trainer_spec.get_active_sub_models()
+        for m in _models:
+            print(m)
+            self.create_model(m)
 
     def load(self, model_name: str, to_device=True, ignore_layers=None, model_file=None):
         """Method loads model from a checkpoint.
@@ -272,14 +355,13 @@ class Trainer(GeneratorTrainer, ABC):
             model_file = self.trainer_spec.model_files.get_model_file_path(model_name)
 
         logger.info("Loading model '{}' model file name {}".format(model_name, model_file))
-
         # load trained optimizer state_dict
         try:
             if to_device:
                 if self.trainer_spec.is_distributed_run():
-                    self.models[model_name].to(self.rank)
+                    self._models[model_name].to(self.rank)
                 else:
-                    self.models[model_name].to(self.device)
+                    self._models[model_name].to(self.device)
 
             if to_device:
                 checkpoint = torch.load(model_file, map_location=self.device)
@@ -289,7 +371,7 @@ class Trainer(GeneratorTrainer, ABC):
             if 'model_state_dict' not in checkpoint:
                 raise Exception("model has no state dict")
 
-            self.models[model_name].load_state_dict(checkpoint['model_state_dict'])
+            self._models[model_name].load_state_dict(checkpoint['model_state_dict'])
             if 'model_state_dict' not in checkpoint:
                 raise Exception("model has no state dict")
 
@@ -305,16 +387,16 @@ class Trainer(GeneratorTrainer, ABC):
 
             #  ignore layers.
             if ignore_layers is not None and len(ignore_layers) > 0:
-                model_dict = {k: v for k, v in self.models[model_name].items()
+                model_dict = {k: v for k, v in self._models[model_name].items()
                               if k not in ignore_layers}
-                new_state = self.models[model_name].state_dict()
+                new_state = self._models[model_name].state_dict()
                 new_state.update(model_dict)
-                self.models[model_name] = new_state
+                self._models[model_name] = new_state
 
             # self.trainer_spec.set_lr(0.00001)
             if 'epoch' not in checkpoint:
                 raise Exception("saved checkpoint has no epoch key")
-            self.last_epochs[model_name] = checkpoint['epoch']
+            self._last_epochs[model_name] = checkpoint['epoch']
 
             # load last iterator.
             if 'it' not in checkpoint:
@@ -354,20 +436,20 @@ class Trainer(GeneratorTrainer, ABC):
 
             self.create_model(model_name)
 
-            self.models[model_name].load_state_dict(checkpoint['model_state_dict'])
+            self._models[model_name].load_state_dict(checkpoint['model_state_dict'])
             if 'model_state_dict' not in checkpoint:
                 raise Exception("model has no state dict")
 
             if ignore_layers is not None and len(ignore_layers) > 0:
-                model_dict = {k: v for k, v in self.models[model_name].items()
+                model_dict = {k: v for k, v in self._models[model_name].items()
                               if k not in ignore_layers}
-                new_state = self.models[model_name].state_dict()
+                new_state = self._models[model_name].state_dict()
                 new_state.update(model_dict)
-                self.models[model_name] = new_state
+                self._models[model_name] = new_state
 
             if 'epoch' not in checkpoint:
                 raise Exception("saved checkpoint has no epoch key")
-            self.last_epochs[model_name] = checkpoint['epoch']
+            self._last_epochs[model_name] = checkpoint['epoch']
 
             # load last iterator.
             if 'it' not in checkpoint:
@@ -399,7 +481,7 @@ class Trainer(GeneratorTrainer, ABC):
             return tqdm_iter
 
         # load last epoch in case we do re-summing.
-        last_epoch = self.last_epochs[model_name]
+        last_epoch = self._last_epochs[model_name]
         # early stopping
         early_stopping = None
 
@@ -423,16 +505,6 @@ class Trainer(GeneratorTrainer, ABC):
 
         # tqdm_iter.set_postfix({'total_epoch_loss': 0})
         return tqdm_iter
-
-    def create_models(self):
-        """
-        For each active model, which might consist of more than one model
-        we create a target model
-        :return: nothing, create_model will add each model to a dict[model_name] = model
-        """
-        models = self.trainer_spec.get_active_sub_models()
-        for m in models:
-            self.create_model(m)
 
     def load_models(self) -> None:
         """
@@ -465,12 +537,12 @@ class Trainer(GeneratorTrainer, ABC):
 
         """
 
-        if model_name not in self.models:
+        if model_name not in self._models:
             raise Exception("config.yaml must contains valid active settings. "
                             "Failed create {} model".format(model_name))
 
-        logger.info("Creating optimizer for {}", model_name, type(self.models[model_name]))
-        model = self.models[model_name]
+        logger.info("Creating optimizer for {}", model_name, type(self._models[model_name]))
+        model = self._models[model_name]
 
         optimizer_type = self.trainer_spec.optimizer_type(alias_name)
         spec = self.trainer_spec
@@ -493,7 +565,7 @@ class Trainer(GeneratorTrainer, ABC):
         elif optimizer_type == 'SGD':
             if self.verbose:
                 fmtl_print("Creating {} optimizer.".format(alias_name), "SGD")
-            opt = optim.opt = optim.SGD(list(self.models[model_name].parameters(alias_name)),
+            opt = optim.opt = optim.SGD(list(self._models[model_name].parameters(alias_name)),
                                         lr=spec.optimizer_learning_rate(alias_name),
                                         momentum=spec.momentum(alias_name),
                                         dampening=spec.dampening(alias_name),
@@ -616,7 +688,7 @@ class Trainer(GeneratorTrainer, ABC):
                 torch.save({
                     'epoch': epoch,
                     'it': it,
-                    'model_state_dict': self.models[model_name].state_dict(),
+                    'model_state_dict': self._models[model_name].state_dict(),
                     'optimizer_state_dict': self.optimizers[model_name].state_dict(),
                     'scheduler_state_dict': self.schedulers[model_name].state_dict()
                 }, model_file)
@@ -625,7 +697,7 @@ class Trainer(GeneratorTrainer, ABC):
                 torch.save({
                     'epoch': epoch,
                     'it': it,
-                    'model_state_dict': self.models[model_name].state_dict(),
+                    'model_state_dict': self._models[model_name].state_dict(),
                     'optimizer_state_dict': self.optimizers[model_name].state_dict(),
                     #    'scheduler_state_dict': self.schedulers[model_name].state_dict()
                 }, model_file)
@@ -734,10 +806,10 @@ class Trainer(GeneratorTrainer, ABC):
         """
         # model returns  outputs
         # [mel_outputs, mel_outputs_postnet, gate_outputs, alignments])
-        if model_name not in self.models:
+        if model_name not in self._models:
             raise Exception("You need load model {}".format(model_name))
 
-        model = self.models[model_name]
+        model = self._models[model_name]
         model.eval()
 
         if isinstance(input_seq, str):
@@ -933,7 +1005,7 @@ class Trainer(GeneratorTrainer, ABC):
         t_writer = self.trainer_spec.get_tensorboard_writer()
 
         if model_name in self.iters:
-            logger.info("Epoch saved out of", self.last_epochs[model_name], self.trainer_spec.epochs())
+            logger.info("Epoch saved out of", self._last_epochs[model_name], self.trainer_spec.epochs())
             logger.info("Last iteration saved", self.iters[model_name])
 
         #
@@ -944,7 +1016,7 @@ class Trainer(GeneratorTrainer, ABC):
             device = self.device
 
         self.criterion.to(device)
-        model = self.models[model_name]
+        model = self._models[model_name]
 
         self.tqdm_iter = self.trainer_iterator(model_name)
         optimizer = self.optimizers[model_name]
@@ -959,14 +1031,14 @@ class Trainer(GeneratorTrainer, ABC):
         #     model = apply_gradient_allreduce(model)
 
         it = self.get_last_iterator(model_name)
-        if self.last_epochs[model_name] == self.trainer_spec.epochs():
+        if self._last_epochs[model_name] == self.trainer_spec.epochs():
             prediction_accuracy = self.validate(model, model_name, it)
 
         # TODO add option if epoch changed after save
         self.metric.set_num_iteration(self.trainer_spec.epochs() * self.total_batches)
         self.metric.init()
         logger.info("Staring training num epochs {}, epoch trained {} num batches {} expected total iteration {}",
-                    self.trainer_spec.epochs(), self.last_epochs, len(self.train_loader),
+                    self.trainer_spec.epochs(), self._last_epochs, len(self.train_loader),
                     self.trainer_spec.epochs() * len(self.train_loader))
 
         # if self.trainer_spec.is_distributed_run():
@@ -1016,7 +1088,7 @@ class Trainer(GeneratorTrainer, ABC):
             self.load_models()
 
             #
-            model = self.models[model_name].to(self.device)
+            model = self._models[model_name].to(self.device)
             tqdm_iter = self.trainer_iterator(model_name)
             learning_rate = self.trainer_spec.learning_rate
 
@@ -1091,8 +1163,8 @@ class Trainer(GeneratorTrainer, ABC):
         models = self.trainer_spec.get_active_sub_models()
         num_finished = 0
         for m in models:
-            if m in self.last_epochs:
-                if int(self.last_epochs[m]) >= int(self.trainer_spec.epochs()):
+            if m in self._last_epochs:
+                if int(self._last_epochs[m]) >= int(self.trainer_spec.epochs()):
                     num_finished += 1
 
         if num_finished == len(models):
@@ -1106,8 +1178,8 @@ class Trainer(GeneratorTrainer, ABC):
         :param model_name:
         :return:
         """
-        if model_name in self.models:
-            return self.models[model_name]
+        if model_name in self._models:
+            return self._models[model_name]
 #
 # def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
 #     config = {

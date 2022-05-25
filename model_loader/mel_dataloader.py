@@ -14,7 +14,7 @@ from model_loader.dataset_stft25 import SFTF2Dataset
 from model_loader.dataset_stft30 import SFTF3Dataset
 from model_loader.sfts2_collate import TextMelCollate2
 from model_loader.sfts3_collate import TextMelCollate3
-from model_trainer.specs.dtc_spec import DTC
+from model_trainer.specs.dtc_spec import ModelSpecDTC
 from model_trainer.trainer_specs import ExperimentSpecs
 from tacotron2.utils import fmtl_print, to_gpu
 
@@ -44,8 +44,9 @@ class SFTFDataloader:
         self.val_loader = None
         self.val_sampler = None
         self.trainer_spec: ExperimentSpecs = experiment_specs
-        self.model_spec: DTC = experiment_specs.get_model_spec()
-        self.encoder_spec = self.model_spec.get_encoder()
+        self.model_spec: ModelSpecDTC = experiment_specs.get_model_spec()
+        self.mel_model_spec = self.model_spec.get_encoder()
+
         self.verbose = verbose
         self.ping_memory = ping_memory
         self.num_worker = num_worker
@@ -71,13 +72,18 @@ class SFTFDataloader:
         :return:
         """
         pk_dataset = self.trainer_spec.get_audio_dataset()
-        self.train_dataset = SFTF2Dataset(self.encoder_spec,
+        file_list = list(pk_dataset['train_set'].values())
+        print(file_list)
+        if len(pk_dataset) == 0:
+            raise ValueError("Empty dataset.")
+
+        self.train_dataset = SFTF2Dataset(self.mel_model_spec,
                                           list(pk_dataset['train_set'].values()),
                                           data_format='audio_raw')
-        self.validation_dataset = SFTF2Dataset(self.encoder_spec,
+        self.validation_dataset = SFTF2Dataset(self.mel_model_spec,
                                                list(pk_dataset['validation_set'].values()),
                                                data_format='audio_raw')
-        self.collate_fn = TextMelCollate2(nfps=self.encoder_spec.frames_per_step(), device=None)
+        self.collate_fn = TextMelCollate2(nfps=self.mel_model_spec.frames_per_step(), device=None)
 
     def create_v2dataset(self, device):
         """
@@ -85,13 +91,13 @@ class SFTFDataloader:
         """
         pk_dataset = self.trainer_spec.get_audio_dataset()
         if pk_dataset['ds_type'] == 'tensor_mel':
-            self.train_dataset = SFTF2Dataset(self.encoder_spec,
+            self.train_dataset = SFTF2Dataset(self.mel_model_spec,
                                               pk_dataset['train_set'],
                                               data_format='tensor_mel')
-            self.validation_dataset = SFTF2Dataset(self.encoder_spec,
+            self.validation_dataset = SFTF2Dataset(self.mel_model_spec,
                                                    pk_dataset['validation_set'],
                                                    data_format='tensor_mel')
-            self.collate_fn = TextMelCollate2(nfps=self.encoder_spec.frames_per_step(), device=None)
+            self.collate_fn = TextMelCollate2(nfps=self.mel_model_spec.frames_per_step(), device=None)
 
     def create_v3raw(self):
         """
@@ -99,13 +105,13 @@ class SFTFDataloader:
         :return:
         """
         pk_dataset = self.train_dataset.get_audio_dataset()
-        self.train_dataset = SFTF3Dataset(self.encoder_spec,
+        self.train_dataset = SFTF3Dataset(self.mel_model_spec,
                                           list(pk_dataset['train_set'].values()),
                                           data_format='audio_raw')
-        self.validation_dataset = SFTF3Dataset(self.encoder_spec,
+        self.validation_dataset = SFTF3Dataset(self.mel_model_spec,
                                                list(pk_dataset['validation_set'].values()),
                                                data_format='audio_raw')
-        self.collate_fn = TextMelCollate3(nfps=self.encoder_spec.frames_per_step(), device=None)
+        self.collate_fn = TextMelCollate3(nfps=self.mel_model_spec.frames_per_step(), device=None)
 
     def create_v3dataset(self, device):
         """
@@ -114,13 +120,13 @@ class SFTFDataloader:
         """
         pk_dataset = self.train_dataset.get_audio_dataset()
         if pk_dataset['ds_type'] == 'tensor_mel':
-            self.train_dataset = SFTF3Dataset(self.encoder_spec,
+            self.train_dataset = SFTF3Dataset(self.mel_model_spec,
                                               pk_dataset['train_set'],
                                               data_format='tensor_mel')
-            self.validation_dataset = SFTF3Dataset(self.encoder_spec,
+            self.validation_dataset = SFTF3Dataset(self.mel_model_spec,
                                                    pk_dataset['validation_set'],
                                                    data_format='tensor_mel')
-            self.collate_fn = TextMelCollate3(nfps=self.encoder_spec.frames_per_step(), device=None)
+            self.collate_fn = TextMelCollate3(nfps=self.mel_model_spec.frames_per_step(), device=None)
 
     def create(self):
         """

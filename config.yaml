@@ -2,7 +2,7 @@ train: True                 # train or not,  default is True for generation we o
 #active: 'grid_small'       # dataset set generated.
 #use_dataset: 'LJSpeechSmallPkl'     # dataset set generated.
 use_dataset: 'LJSpeechSmallRaw'     # dataset set generated.
-use_model: 'dts'            # model to use , it must be defined in models section.
+use_model: 'tacotron25'      # model to use , it must be defined in models section.
 draw_prediction: True       # at the of training draw.
 load_model: True            # load model or not, and what
 load_epoch: 500             # load model,  last epoch
@@ -178,9 +178,9 @@ models:
   # this pure model specific, single model can describe both edges and nodes
   # in case we need use single model for edge and node prediction task ,
   # use keyword single_model: model_name
-  dts:
-    encoder:
-      model: tacotron2
+  tacotron25:
+    spectrogram_layer:
+      model: tacotron25
       optimizer: tacotron2_optimizer
 #      lr_scheduler: main_lr_scheduler
       has_input: True
@@ -200,6 +200,28 @@ models:
 #      optimizer: edge_optimizer
 #      lr_scheduler: main_lr_scheduler
 #      input_size: 1
+  dts:
+    encoder:
+      model: tacotron3
+      optimizer: tacotron2_optimizer
+      #      lr_scheduler: main_lr_scheduler
+      has_input: True
+      has_output: True
+      max_wav_value: 32768.0
+      frames_per_step: 1
+      sampling_rate: 22050
+      filter_length: 1024   # length of the FFT window
+      win_length: 1024      # each frame of audio is windowed by
+      hop_length: 256
+      n_mel_channels: 80
+      mel_fmin: 0.0
+      mel_fmax: 8000.0
+  #    edge_model:
+  #      name: Test
+  #      model: GraphLSTM
+  #      optimizer: edge_optimizer
+  #      lr_scheduler: main_lr_scheduler
+  #      input_size: 1
   GraphLstmRnn:
     node_model:
       model: GraphLSTM

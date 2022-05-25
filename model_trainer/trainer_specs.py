@@ -4,7 +4,7 @@ import shutil
 import sys
 from pathlib import Path
 from time import gmtime, strftime
-from typing import List
+from typing import List, Callable
 
 import torch
 import yaml
@@ -12,7 +12,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from tacotron2.utils import fmtl_print, fmt_print
 from text.symbols import symbols
-from .specs.dtc_spec import DTC
+from .specs.dtc_spec import ModelSpecDTC
 from .model_files import ModelFiles
 from .specs.model_spec import ModelSpec
 from loguru import logger
@@ -30,6 +30,7 @@ class ExperimentSpecs:
         :param verbose:
         :param no_dir if true will not build structure directory structures for trainer.
         """
+        self.spec_dispatcher = None
         self.set_logger(verbose)
 
         # logger.add(sys.stderr, format="{time} {level} {message}", filter="my_module", level="INFO")
@@ -174,9 +175,9 @@ class ExperimentSpecs:
 
     def models_list(self):
         """
-        List of network types and sub-network models used for a given model.
+        List of network types and sub models used for a model.
         For example GraphRNN has graph edge and graph node model.
-        @return: list of models.
+        :return: list of models
         """
         models_types = []
         for k in self._model_spec:
@@ -184,7 +185,8 @@ class ExperimentSpecs:
                 models_types.append(k)
 
     def set_active_dataset(self):
-        """Sets active dataset
+        """
+        Sets active dataset, me can swap during run-time.
         :return:
         """
         if 'use_dataset' not in self.config:
@@ -193,7 +195,8 @@ class ExperimentSpecs:
         self.use_dataset = self.config['use_dataset']
 
     def set_dataset_specs(self):
-        """Sets dataset spec, for example if we need swap dataset.
+        """
+        Sets dataset spec, for example if we need swap dataset.
         :return:
         """
         if 'datasets' not in self.config:
@@ -206,10 +209,37 @@ class ExperimentSpecs:
 
         self.dataset_specs = self.config['datasets'][self.use_dataset]
 
-    def set_active_model(self):
-        """Sets active Model
+    def create_spec_dispatch(self) -> dict[str, Callable]:
+        """
+        Create spec dispatch.
+        each model might contain many hparam and settings.
+        Method creates  a separate dispatcher, key is string and value to factory callable.
+        we just dispatch entire spec.
+
+        During spec parsing,  we dispatch to respected class.
+
+        :return: model creator Callable , and trainer creator Callable.
+        """
+        model_dispatch = {
+            'tacotron25': self.dts_creator,
+            'dts': self.dts_creator,
+        }
+
+        return model_dispatch
+
+    def dts_creator(self, model_spec, dataset_spec):
+        """
+        Create spec, for dts.
         :return:
         """
+        return ModelSpecDTC(model_spec, dataset_spec)
+
+    def set_active_model(self) -> None:
+        """
+        Sets active Model
+        :return:
+        """
+        self.spec_dispatcher = self.create_spec_dispatch()
         if 'models' not in self.config:
             raise Exception("config.yaml must contain at least one models list and one model.")
 
@@ -218,8 +248,13 @@ class ExperimentSpecs:
 
         self.active_model = self.config['use_model']
         self.models_specs = self.config['models']
-        if self.active_model == 'dts':
-            self._model_spec = DTC(self.models_specs[self.active_model], self.dataset_specs)
+        if self.active_model not in self.spec_dispatcher:
+            raise ValueError("No dispatcher for model {}", self.active_model)
+
+        # get dispatch and pass to creator and update current
+        # active model spec
+        spec_dispatcher = self.spec_dispatcher[self.active_model]
+        self._model_spec = spec_dispatcher(self.models_specs[self.active_model], self.dataset_specs)
 
         if self.active_model not in self.models_specs:
             raise Exception("config.yaml doesn't contain model {}.".format(self.active_model))
@@ -767,9 +802,8 @@ class ExperimentSpecs:
 
     def get_active_sub_models(self):
         """
-
-        Returns:
-
+         Return model, all sub_models specification.
+        :return:
         """
         _active_model = self.config['use_model']
         _models = self.config['models']

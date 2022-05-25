@@ -1,4 +1,4 @@
-from .model_specs import ExperimentSpecs
+from .trainer_specs import ExperimentSpecs
 from .model_trainer import GeneratorTrainer
 from tacotron2.utils import fmtl_print
 
@@ -43,7 +43,6 @@ class ModelCreator:
         GraphRNN: Generating Realistic Graphs with Deep Auto-regressive Models
         """
         models = {}
-
         # node_rnn = GraphLSTM(self, input_size=trainer_spec.depth(),
         #                      embedding_size=trainer_spec.embedding_size_rnn,
         #                      hidden_size=trainer_spec.hidden_size_rnn,
@@ -66,52 +65,52 @@ class ModelCreator:
 
         return models
 
-    # def create_gan(self, trainer_spec: ModelSpecs):
-    #     models = {}
-    #
-    #     generator = Generator(H_inputs=trainer_spec.H_inp(),
-    #                           H=trainer_spec.H_gen(),
-    #                           N=trainer_spec.N(),
-    #                           rw_len=trainer_spec.rw_len(), z_dim=trainer_spec.z_dim(),
-    #                           temp=trainer_spec.temp_start()).to(self.device)
-    #
-    #     discriminator = Discriminator(H_inputs=trainer_spec.H_inp(),
-    #                                   H=trainer_spec.H_disc(),
-    #                                   N=trainer_spec.N(),
-    #                                   rw_len=trainer_spec.rw_len()).to(self.device)
-    #
-    #     models['generator'] = generator
-    #     models['discriminator'] = discriminator
+    def create_gan(self, trainer_spec: ExperimentSpecs):
+        models = {}
 
-    # def create_gru_rnn(self, trainer_spec: ModelSpecs):
-    #     """
-    #     Create model based https://arxiv.org/abs/1802.08773
-    #     GraphRNN: Generating Realistic Graphs with Deep Auto-regressive Models
-    #     """
-    #     models = {}
-    #     node_rnn = GraphGRU(input_size=trainer_spec.max_depth(),
-    #                         batch_size=trainer_spec.batch_size(),
-    #                         embedding_size=trainer_spec.embedding_size_rnn,
-    #                         hidden_size=trainer_spec.hidden_size_rnn,
-    #                         num_layers=trainer_spec.num_layers(),
-    #                         has_input=True,
-    #                         has_output=True,
-    #                         output_size=trainer_spec.hidden_size_rnn_output,
-    #                         device=self.device).to(self.device)
-    #
-    #     edge_rnn = GraphGRU(input_size=1, batch_size=trainer_spec.batch_size(),
-    #                         embedding_size=trainer_spec.embedding_size_rnn_output,
-    #                         hidden_size=trainer_spec.hidden_size_rnn_output,
-    #                         num_layers=trainer_spec.num_layers(),
-    #                         has_input=True,
-    #                         has_output=True,
-    #                         output_size=1,
-    #                         device=self.device).to(self.device)
-    #
-    #     models['node_model'] = node_rnn
-    #     models['edge_model'] = edge_rnn
-    #
-    #     return models
+        generator = Generator(H_inputs=trainer_spec.H_inp(),
+                              H=trainer_spec.H_gen(),
+                              N=trainer_spec.N(),
+                              rw_len=trainer_spec.rw_len(), z_dim=trainer_spec.z_dim(),
+                              temp=trainer_spec.temp_start()).to(self.device)
+
+        discriminator = Discriminator(H_inputs=trainer_spec.H_inp(),
+                                      H=trainer_spec.H_disc(),
+                                      N=trainer_spec.N(),
+                                      rw_len=trainer_spec.rw_len()).to(self.device)
+
+        models['generator'] = generator
+        models['discriminator'] = discriminator
+
+    def create_gru_rnn(self, trainer_spec: ExperimentSpecs):
+        """
+        Create model based https://arxiv.org/abs/1802.08773
+        GraphRNN: Generating Realistic Graphs with Deep Auto-regressive Models
+        """
+        models = {}
+        node_rnn = GraphGRU(input_size=trainer_spec.max_depth(),
+                            batch_size=trainer_spec.batch_size(),
+                            embedding_size=trainer_spec.embedding_size_rnn,
+                            hidden_size=trainer_spec.hidden_size_rnn,
+                            num_layers=trainer_spec.num_layers(),
+                            has_input=True,
+                            has_output=True,
+                            output_size=trainer_spec.hidden_size_rnn_output,
+                            device=self.device).to(self.device)
+
+        edge_rnn = GraphGRU(input_size=1, batch_size=trainer_spec.batch_size(),
+                            embedding_size=trainer_spec.embedding_size_rnn_output,
+                            hidden_size=trainer_spec.hidden_size_rnn_output,
+                            num_layers=trainer_spec.num_layers(),
+                            has_input=True,
+                            has_output=True,
+                            output_size=1,
+                            device=self.device).to(self.device)
+
+        models['node_model'] = node_rnn
+        models['edge_model'] = edge_rnn
+
+        return models
 
     def create_model(self, verbose=False):
         """
@@ -157,16 +156,18 @@ class ModelCreator:
 
     def create_model_dispatch(self):
         """
-        Create two dispatcher,  model dispatcher and trainer dispatcher.
-        The first dispatch model creator , where each key model name as it defined in config.yaml
-        and value is callable creator function ,  method, class etc.
+        Create two dispatcher,
+        Model dispatcher and trainer dispatcher.
+        The first dispatch model creator, where each key model name
+        as it defined in config.yaml and value is callable creator function,
+
+        method, class etc.
         Similarly, second dispatch is trainer callable objects.
         :return:
         """
         model_dispatch = {
-            'GraphGRU': self.create_gru_rnn,
-            'GraphLSTM': self.create_lstm_rnn,
-
+            'tacotron25': self.create_tacotron25,
+            'dts': self.create_tacotron30,
         }
 
         trainer_dispatch = {
