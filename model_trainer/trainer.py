@@ -1,3 +1,7 @@
+#
+#  TODO check shuffle
+#  TODO Metric plot
+#  TODO Loss plot.
 import os
 import queue
 import random
