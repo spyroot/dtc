@@ -168,12 +168,13 @@ class Trainer(GeneratorTrainer, ABC):
         self.q = queue.Queue()
         # late we will move this to factory
         # type class that will do creation
-        self.model_creator, self.trainer_dispatcher = self.create_model_dispatch()
+        self.model_creator, self.trainer_dispatcher, self._batch_loader = self.create_model_dispatch()
         # init trainer
         self.init_trainer()
 
     def create_model_dispatch(self) -> tuple[dict[str, dict[str: Callable]],
-                                             dict[str, Callable]]:
+                                             dict[str, Callable],
+                                             dict[str, dict[str: Callable]]]:
         """
         Create two dispatcher,
         Model dispatcher and trainer dispatcher.
@@ -201,7 +202,16 @@ class Trainer(GeneratorTrainer, ABC):
             # 'GraphLSTM': RnnGenerator,
         }
 
-        return model_dispatch, trainer_dispatch
+        batch_loader = {
+            'tacotron25': {
+                'spectrogram_layer': self.tacotron25_batch,
+            },
+            'dts': {
+                'spectrogram_layer': self.tacotron30_batch,
+            }
+        }
+
+        return model_dispatch, trainer_dispatch, batch_loader
 
     def init_trainer(self) -> None:
         """
@@ -793,20 +803,20 @@ class Trainer(GeneratorTrainer, ABC):
         if self.rank == 0 and it % self.trainer_spec.epochs_log() == 0:
             print("Train loss {} {:.6f} Grad Norm {:.6f} {:.2f}s/it".format(it, reduced_loss, grad_norm, duration))
 
-    def validate(self, model, model_name: str, it):
+    def validate(self, model, model_name: str, layer_name: str, step: int):
         """
-
-        :param model:
+        :param layer_name:
         :param model_name:
-        :param it:
+        :param model:
+        :param step:
         :return:
         """
-
+        take_batch = self._batch_loader[model_name][layer_name]
         model.eval()
         with torch.no_grad():
             total_prediction_loss = 0.0
             for i, batch in enumerate(self.validation_loader):
-                x, y = self.parse_batch(batch)
+                x, y = take_batch(batch)
                 y_pred = model(x)
                 # our loss mel_loss + gate_loss
                 loss = self.criterion(y_pred, y)
@@ -823,7 +833,7 @@ class Trainer(GeneratorTrainer, ABC):
         if self.rank == 0:
             # t_writer.add_scalar('val_loss_' + model_name, loss.item(), it)
             # print("Validation loss {}: {:9f}  ".format(it, total_prediction_loss))
-            self.tf_logger.log_validation(total_prediction_loss, model, y, y_pred, it)
+            self.tf_logger.log_validation(total_prediction_loss, model, y, y_pred, step)
 
         return total_prediction_loss
 
@@ -922,6 +932,7 @@ class Trainer(GeneratorTrainer, ABC):
         """
 
         device = self.device
+        take_batch = self._batch_loader[model_name][layer_name]
 
         # if self.trainer_spec.is_distributed_run():
         #     device = torch.device(f"cuda:{dist.get_rank()}")
@@ -936,7 +947,7 @@ class Trainer(GeneratorTrainer, ABC):
             # for param_group in self.optimizer[model_name].param_groups:
             #     param_group['lr'] = learning_rate
             model.zero_grad(set_to_none=True)
-            x, y = self.parse_batch(batch, device)
+            x, y = take_batch(batch, device)
             y_pred = model(x)
 
             # if self.trainer_spec.is_distributed_run():
@@ -1000,7 +1011,35 @@ class Trainer(GeneratorTrainer, ABC):
         self._steps[model_name] = step
         return step
 
-    def parse_batch(self, batch, device):
+    def tacotron25_batch(self, batch, device):
+        """
+
+        :param device:
+        :param batch:
+        :return:
+        """
+        text_padded, input_lengths, mel_padded, gate_padded, output_lengths = batch
+        text_padded = to_gpu(text_padded, device).long()
+        input_lengths = to_gpu(input_lengths, device).long()
+        max_len = torch.max(input_lengths.data).item()
+        mel_padded = to_gpu(mel_padded, device).float()
+        gate_padded = to_gpu(gate_padded, device).float()
+        output_lengths = to_gpu(output_lengths, device).long()
+
+        # assert text_padded.get_device() == 0
+        # assert input_lengths.get_device() == 0
+        # assert mel_padded.get_device() == 0
+        # assert gate_padded.get_device() == 0
+        # assert output_lengths.get_device() == 0
+
+        return (text_padded, input_lengths, mel_padded, max_len, output_lengths), \
+               (mel_padded, gate_padded)
+
+        # return (text_padded, input_lengths, mel_padded, max_len, output_lengths, spectral), \
+        #        (mel_padded, gate_padded, spectral)
+
+
+    def tacotron30_batch(self, batch, device):
         """
 
         :param device:
@@ -1022,11 +1061,8 @@ class Trainer(GeneratorTrainer, ABC):
         # assert gate_padded.get_device() == 0
         # assert output_lengths.get_device() == 0
 
-        return (text_padded, input_lengths, mel_padded, max_len, output_lengths), \
+        return (text_padded, input_lengths, mel_padded, max_len, output_lengths, spectral), \
                (mel_padded, gate_padded, spectral)
-
-        # return (text_padded, input_lengths, mel_padded, max_len, output_lengths, spectral), \
-        #        (mel_padded, gate_padded, spectral)
 
     def cleanup(self):
         """
@@ -1114,7 +1150,7 @@ class Trainer(GeneratorTrainer, ABC):
             self.metric.start_epoch_timer(epoch)
             self.train_epoch(model, model_name, layer_name, optimizer)
             self.metric.update_epoch_timer(epoch)
-
+            self.validate(model, epoch)
             # model logs
             # for name, weight in model.named_parameters():
             #     t_writer.add_histogram(name, weight, epoch)
@@ -1124,6 +1160,8 @@ class Trainer(GeneratorTrainer, ABC):
         if self.rank == 0 and self.save_if_need(model_name, it, self.trainer_spec.epochs(), last_epoch=True):
             if self.verbose:
                 fmtl_print("Saved last epoch", self.trainer_spec.epochs())
+
+        return it
 
     def train(self, model_name=None):
         """
@@ -1154,9 +1192,9 @@ class Trainer(GeneratorTrainer, ABC):
                 self.q.put(layer)
             while not self.q.empty():
                 layer_name = self.q.get()
-                self.sequential(model_name, layer_name)
+                last_step = self.sequential(model_name, layer_name)
 
-        if self.rank == 0 and self.save_if_need(model_name, it, self.trainer_spec.epochs(), last_epoch=True):
+        if self.rank == 0 and self.save_if_need(model_name, last_step, self.trainer_spec.epochs(), last_epoch=True):
             if self.verbose:
                 fmtl_print("Saved last epoch", self.trainer_spec.epochs())
 
@@ -1223,7 +1261,7 @@ class Trainer(GeneratorTrainer, ABC):
                     #     param_group['lr'] = learning_rate
 
                     model.zero_grad()
-                    x, y = self.parse_batch(batch)
+                    x, y = self.prepare_batch(batch)
                     with torch.cuda.amp.autocast():
                         y_pred = model(x)
 

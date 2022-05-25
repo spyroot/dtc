@@ -207,7 +207,7 @@ class Trainer:
                     param_group['lr'] = learning_rate
 
                 model.zero_grad()
-                x, y = model.parse_batch(batch)
+                x, y = model.prepare_batch(batch)
                 y_pred = model(x)
 
                 loss = criterion(y_pred, y)
