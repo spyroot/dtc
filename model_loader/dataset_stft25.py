@@ -96,7 +96,9 @@ class SFTF2Dataset(BaseSFTFDataset, ABC):
 
     def tensor_from_audio(self, idx: int):
         """
-        :param idx:
+        Returns text and mel
+        :param idx: index into internal representation.
+               if dataset was created form text file. It a dict.
         :return:
         """
         if 'meta' not in self._data[idx]:

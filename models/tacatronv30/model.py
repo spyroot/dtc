@@ -172,7 +172,7 @@ class Tacotron3(nn.Module):
 
     """
 
-    def __init__(self, experiment_specs: ExperimentSpecs, device):
+    def __init__(self, experiment_specs: ExperimentSpecs, device) -> None:
         """
 
         :param experiment_specs:

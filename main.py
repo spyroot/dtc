@@ -14,7 +14,7 @@ from loguru import logger
 from model_loader.mel_dataloader import SFTFDataloader
 from model_loader.dataset_stft30 import SFTF3Dataset
 from model_trainer.trainer_specs import ExperimentSpecs
-from model_trainer.trainer import Trainer
+from model_trainer.trainer import Trainer, TrainerError
 import torch.distributed as dist
 
 os.environ["NCCL_DEBUG"] = "INFO"
@@ -127,7 +127,7 @@ def convert(trainer_spec, verbose=True):
 #         win32api.SetConsoleCtrlHandler(handler, True)
 
 
-def cleanup(is_distributed) -> None:
+def cleanup(is_distributed : bool) -> None:
     """
 
     :param is_distributed:
@@ -212,8 +212,8 @@ def train(spec=None, cmd_args=None, device=None, verbose=True, cudnn_bench=False
         logger.info("Staring rank zero node.")
 
     if spec.is_distributed_run():
-        logger.info(
-                "Staring training in distributed settings. rank {} world size {}".format(args.rank, args.world_size))
+        logger.info("Staring training in distributed settings. "
+                    "rank {} world size {}".format(args.rank, args.world_size))
         init_distributed(spec, int(args.rank), int(args.world_size))
         # device = torch.device(f"cuda:{int(0)}")
         # device = torch.device(f"cuda:{dist.get_rank()}")
@@ -228,12 +228,18 @@ def train(spec=None, cmd_args=None, device=None, verbose=True, cudnn_bench=False
     logger.debug("Torch allow matmul fp16 {}", torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction)
     logger.debug("Torch cudnn version, {}", torch.backends.cudnn.version())
     logger.debug("Torch backend openmp", torch.backends.openmp)
-
-    Trainer(spec,
-            dataloader,
-            rank=int(args.rank),
-            world_size=int(cmd_args.world_size),
-            verbose=args.verbose, device=device).train()
+    try:
+        Trainer(spec,
+                dataloader,
+                rank=int(args.rank),
+                world_size=int(cmd_args.world_size),
+                verbose=args.verbose, device=device).train()
+    except TrainerError as e:
+        print("Error: trainer error: ", e)
+        cleanup(spec.is_distributed_run())
+        sys.exit(10)
+    except Exception as other:
+        raise other
 
 
 def dataloader_dry(cmd_args, trainer_specs, verbose=False):
@@ -284,7 +290,6 @@ def inference(spec: ExperimentSpecs, cmd_args, device):
                               mel_post_path=str(spec.model_files.get_figure_dir() / "mel_post.png"),
                               mel_alignment_path=str(spec.model_files.get_figure_dir() / "mel_alignment.png"),
                               plot=True)
-
             # tacotron2 = torch.hub.load('NVIDIA/DeepLearningExamples:torchhub', 'nvidia_tacotron2', model_math='fp32')
             # tacotron2 = tacotron2.to(device)
             # tacotron2.eval()

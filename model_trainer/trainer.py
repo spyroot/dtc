@@ -1,6 +1,8 @@
 import os
+import queue
 import random
 import socket
+import sys
 import time
 from abc import ABC
 from typing import Callable, Optional
@@ -8,6 +10,7 @@ from typing import Callable, Optional
 from models.tacatronv30.model import Tacotron3
 from models.tacotronv25.model import Tacotron25
 from tacotron2.plotting_utils import plot_alignment_to_numpy, plot_spectrogram_to_numpy, plot_gate_outputs_to_numpy
+from torch import nn
 
 import numpy as np
 import torch
@@ -57,10 +60,16 @@ from pathlib import Path
 from timeit import default_timer as timer
 
 
+class TrainerError(Exception):
+    """Base class for other exceptions"""
+    pass
+
+
 class Trainer(GeneratorTrainer, ABC):
     """
 
     """
+
     # root: Optional[str] = "dtc",
     def __init__(self,
                  trainer_spec: ExperimentSpecs,
@@ -104,18 +113,18 @@ class Trainer(GeneratorTrainer, ABC):
         # dict that hold all schedulers that trainer need to use
         self.schedulers = {}
         # dict hold all optimizers. ( note trainer can train 2 model like in gan settings)
-        self.optimizers = {}
+        self._optimizers = {}
 
         if not is_inference:
             if not trainer_spec.is_initialized():
-                raise Exception("you need initialize trainer specs first.")
+                raise TrainerError("you need initialize trainer specs first.")
 
         # if self.trainer_spec.is_distributed_run():
         #     self.init_distributed()
 
         if not self.is_inference:
             if data_loader is None:
-                raise Exception("Trainer need torch data loader.")
+                raise TrainerError("Trainer need torch data loader.")
             self.dataloader = data_loader
             self.train_loader, self.validation_loader, self.collate_fn = data_loader.get_loader()
 
@@ -125,9 +134,9 @@ class Trainer(GeneratorTrainer, ABC):
         # dict store all model
         self._models = {}
         # store last epoch
-        self._last_epochs = {}
+        self._last_ckt_epochs: dict[str, dict[str, int]] = {}
         # dict holds model name = last iterator value
-        self.iters = {}
+        self._steps: dict[str, int] = {}
         #
         self.scaler = None
         # tqdm_iter, if we need fix post of iter
@@ -155,14 +164,16 @@ class Trainer(GeneratorTrainer, ABC):
         # tensorboard writer
         self.t_writer = None
         logger.info("Device ID {}".format(self.cuda_device_id))
-
+        # main queue note that train loop can re-add model back for training.
+        self.q = queue.Queue()
         # late we will move this to factory
         # type class that will do creation
-        self.model_creator = self.create_model_dispatch()
+        self.model_creator, self.trainer_dispatcher = self.create_model_dispatch()
         # init trainer
         self.init_trainer()
 
-    def create_model_dispatch(self) -> tuple[dict[str, Callable], dict[str, Callable]]:
+    def create_model_dispatch(self) -> tuple[dict[str, dict[str: Callable]],
+                                             dict[str, Callable]]:
         """
         Create two dispatcher,
         Model dispatcher and trainer dispatcher.
@@ -175,13 +186,21 @@ class Trainer(GeneratorTrainer, ABC):
         :return: model creator Callable , and trainer creator Callable.
         """
         model_dispatch = {
-            'tacotron25': self.create_tacotron25,
-            'dts': self.create_tacotron30,
+            'tacotron25': {
+                'spectrogram_layer': self.create_tacotron25,
+                'vocoder': self.create_tacotron25
+            },
+            'dts': {
+                'spectrogram_layer': self.create_tacotron30,
+                'vocoder': self.create_tacotron25
+            }
         }
+
         trainer_dispatch = {
             # 'GraphGRU': RnnGenerator,
             # 'GraphLSTM': RnnGenerator,
         }
+
         return model_dispatch, trainer_dispatch
 
     def init_trainer(self) -> None:
@@ -210,7 +229,7 @@ class Trainer(GeneratorTrainer, ABC):
         if self.trainer_spec.fp16_run():
             self.scaler = torch.cuda.amp.GradScaler()
 
-    def init_distributed(self):
+    def init_distributed(self) -> None:
         """
         Initialize DDP
         :return:
@@ -244,24 +263,35 @@ class Trainer(GeneratorTrainer, ABC):
 
         logger.debug("Done initializing distributed {}".format(dist.get_rank()))
 
-    def create_tacotron25(self, is_set_cuda=False):
+    def _loop_up_device(self, is_set_cuda: bool):
         """
+        This mainly fix for some unknown torch issue related how it checks device.
+        :param is_set_cuda:
         :return:
         """
+        if torch.cuda.is_available():
+            n = torch.cuda.device_count() // self.n_gpus
+
+        if is_set_cuda:
+            device = f"cuda:{dist.get_rank()}"
+            logger.info("Number gpu on the node {} device".format(n, device))
+            torch.cuda.set_device(self.cuda_device_id)
+        else:
+            device = self.device
+
+        return device
+
+    def create_tacotron25(self, is_set_cuda=False) -> nn.Module:
+        """
+        Factor method, creator for tacotron 2.5
+        :return:
+        """
+        logger.debug("Creating tacotron25 model.")
         if self.is_inference:
             model = Tacotron25(self.trainer_spec, self.device).to(self.device)
         elif self.trainer_spec.is_distributed_run():
             # device = torch.device(f"cuda:{dist.get_rank()}")
-            if torch.cuda.is_available():
-                n = torch.cuda.device_count() // self.n_gpus
-
-            if is_set_cuda:
-                device = f"cuda:{dist.get_rank()}"
-                logger.info("Number gpu on the node {} device".format(n, device))
-                torch.cuda.set_device(self.cuda_device_id)
-            else:
-                device = self.device
-
+            device = self._loop_up_device(is_set_cuda)
             logger.info("Creating DDP on cuda device "
                         "{} torch device {} device received {}".format(self.cuda_device_id, device, self.device))
             model = Tacotron3(self.trainer_spec, device).cuda()
@@ -270,32 +300,25 @@ class Trainer(GeneratorTrainer, ABC):
                                            output_device=self.cuda_device_id).cuda()
 
         else:
-            model = Tacotron3(self.trainer_spec, self.device).to(self.device)
+            model = Tacotron25(self.trainer_spec, self.device).to(self.device)
 
         if self.trainer_spec.is_fp16_run():
             model.decoder.attention_layer.score_mask_value = finfo('float16').min
 
-    def create_tacotron30(self, is_set_cuda=False):
-        """
+        return model
 
+    def create_tacotron30(self, is_set_cuda=False) -> nn.Module:
+        """
+        Factor method, creator for tacotron 3
         :return:
         """
         if self.is_inference:
             model = Tacotron3(self.trainer_spec, self.device).to(self.device)
         elif self.trainer_spec.is_distributed_run():
-            # device = torch.device(f"cuda:{dist.get_rank()}")
-            if torch.cuda.is_available():
-                n = torch.cuda.device_count() // self.n_gpus
-
-            if is_set_cuda:
-                device = f"cuda:{dist.get_rank()}"
-                logger.info("Number gpu on the node {} device".format(n, device))
-                torch.cuda.set_device(self.cuda_device_id)
-            else:
-                device = self.device
-
+            device = self._loop_up_device(is_set_cuda)
             logger.info("Creating DDP on cuda device "
-                        "{} torch device {} device received {}".format(self.cuda_device_id, device, self.device))
+                        "{} torch device {} device received {}".format(self.cuda_device_id,
+                                                                       device, self.device))
             model = Tacotron3(self.trainer_spec, device).cuda()
             model = DistributedDataWrapper(model,
                                            device_ids=[self.cuda_device_id],
@@ -307,22 +330,39 @@ class Trainer(GeneratorTrainer, ABC):
         if self.trainer_spec.is_fp16_run():
             model.decoder.attention_layer.score_mask_value = finfo('float16').min
 
-    def create_model(self, model_name, is_set_cuda=False):
+        return model
+
+    def create_model_layers(self, model_name: str, layer_name: Optional[str] = None, is_set_cuda=False):
         """
           Method lookup model from dispatch and call respected creator.
           Later will move to a separate dispatcher creator or maybe
           register creator.
 
         :param model_name:
+        :param layer_name:
         :return: nothing
-        :param is_set_cuda: If need pin directly
+        :param is_set_cuda: will pin directly
         """
-        if model_name in self.model_creator:
-            raise ValueError("Unknown model, supported models", self.model_creator.keys())
+        logger.info(f"Creating layer {model_name} {layer_name}")
+        if model_name not in self.model_creator:
+            raise ValueError("Unknown {} model for a "
+                             "trainer, supported models are {}".format(model_name, list(self.model_creator.keys())))
 
-        creator = self.model_creator[model_name]
-        self._models[model_name] = creator(is_set_cuda)
-        self._last_epochs[model_name] = 0
+        creator = self.model_creator[model_name][layer_name]
+        if model_name not in self._models:
+            self._models[model_name] = {}
+
+        m = creator(is_set_cuda)
+        if m is None:
+            raise TrainerError("Failed create a model. {}".format(creator.__name__))
+
+        self._models[model_name][layer_name] = m
+        logger.debug(f"Added model layer {layer_name} to a model {model_name}")
+        if model_name not in self._last_ckt_epochs:
+            self._last_ckt_epochs[model_name] = {}
+
+        # update last epoch
+        self._last_ckt_epochs[model_name][layer_name] = 0
 
     def create_models(self):
         """
@@ -330,12 +370,12 @@ class Trainer(GeneratorTrainer, ABC):
         we create a target model
         :return: nothing, create_model will add each model to a dict[model_name] = model
         """
+        active_model = self.trainer_spec.get_active_mode()
         _models = self.trainer_spec.get_active_sub_models()
         for m in _models:
-            print(m)
-            self.create_model(m)
+            self.create_model_layers(active_model, m)
 
-    def load(self, model_name: str, to_device=True, ignore_layers=None, model_file=None):
+    def load(self, model_name: str, layer_name: str, to_device=True, ignore_layers=None, model_file=None):
         """Method loads model from a checkpoint.
            It will update internal state, that include model, last epoch, last step.
 
@@ -369,21 +409,21 @@ class Trainer(GeneratorTrainer, ABC):
                 checkpoint = torch.load(model_file)
 
             if 'model_state_dict' not in checkpoint:
-                raise Exception("model has no state dict")
+                raise TrainerError("model has no state dict")
 
-            self._models[model_name].load_state_dict(checkpoint['model_state_dict'])
+            self._models[model_name][layer_name].load_state_dict(checkpoint['model_state_dict'])
             if 'model_state_dict' not in checkpoint:
-                raise Exception("model has no state dict")
+                raise TrainerError("model has no state dict")
 
-            self.optimizers[model_name].load_state_dict(checkpoint['optimizer_state_dict'])
+            self._optimizers[model_name][layer_name].load_state_dict(checkpoint['optimizer_state_dict'])
             if 'optimizer_state_dict' not in checkpoint:
-                raise Exception("model has no optimizer_state_dict")
+                raise TrainerError("model has no optimizer_state_dict")
 
             # if model has scheduler, re-create.
             if model_name in self.schedulers:
                 self.schedulers[model_name].load_state_dict(checkpoint['scheduler_state_dict'])
                 if 'scheduler_state_dict' not in checkpoint:
-                    raise Exception("model has no scheduler_state_dict")
+                    raise TrainerError("model has no scheduler_state_dict")
 
             #  ignore layers.
             if ignore_layers is not None and len(ignore_layers) > 0:
@@ -395,13 +435,13 @@ class Trainer(GeneratorTrainer, ABC):
 
             # self.trainer_spec.set_lr(0.00001)
             if 'epoch' not in checkpoint:
-                raise Exception("saved checkpoint has no epoch key")
-            self._last_epochs[model_name] = checkpoint['epoch']
+                raise TrainerError("saved checkpoint has no epoch key")
+            self._last_ckt_epochs[model_name][layer_name] = checkpoint['epoch']
 
             # load last iterator.
             if 'it' not in checkpoint:
-                raise Exception("saved checkpoint has no last iteration key.")
-            self.iters[model_name] = checkpoint['it']
+                raise TrainerError("saved checkpoint has no last iteration key.")
+            self._steps[model_name] = checkpoint['it']
             logger.info("Last checkpoint. epoch {} step {}".format(checkpoint['epoch'], checkpoint['it']))
 
             # load metric
@@ -414,10 +454,11 @@ class Trainer(GeneratorTrainer, ABC):
 
         return 0, 0
 
-    def load_for_inference(self, model_name, model_file=None, to_device=True, ignore_layers=None):
+    def load_for_inference(self, model_name: str, layer_name: str, model_file=None, to_device=True, ignore_layers=None):
         """Method loads model from a checkpoint.
            It will update internal state, that include model, last epoch, last step.
 
+        :param layer_name:
         :param model_file:
         :param model_name: - mode name that method need to load
         :param ignore_layers: - a list contain of layers we skip
@@ -432,13 +473,13 @@ class Trainer(GeneratorTrainer, ABC):
         try:
             checkpoint = torch.load(model_file, map_location=self.device)
             if 'model_state_dict' not in checkpoint:
-                raise Exception("model has no state dict")
+                raise TrainerError("model has no state dict")
 
-            self.create_model(model_name)
+            self.create_model_layers(model_name)
 
             self._models[model_name].load_state_dict(checkpoint['model_state_dict'])
             if 'model_state_dict' not in checkpoint:
-                raise Exception("model has no state dict")
+                raise TrainerError("model has no state dict")
 
             if ignore_layers is not None and len(ignore_layers) > 0:
                 model_dict = {k: v for k, v in self._models[model_name].items()
@@ -448,13 +489,13 @@ class Trainer(GeneratorTrainer, ABC):
                 self._models[model_name] = new_state
 
             if 'epoch' not in checkpoint:
-                raise Exception("saved checkpoint has no epoch key")
-            self._last_epochs[model_name] = checkpoint['epoch']
+                raise TrainerError("saved checkpoint has no epoch key")
+            self._last_ckt_epochs[model_name][layer_name] = checkpoint['epoch']
 
             # load last iterator.
             if 'it' not in checkpoint:
-                raise Exception("saved checkpoint has no last iteration key.")
-            self.iters[model_name] = checkpoint['it']
+                raise TrainerError("saved checkpoint has no last iteration key.")
+            self._steps[model_name] = checkpoint['it']
 
             logger.info("Last checkpoint. epoch {} step {}".format(checkpoint['epoch'], checkpoint['it']))
             return checkpoint['epoch'], checkpoint['it']
@@ -464,16 +505,14 @@ class Trainer(GeneratorTrainer, ABC):
 
         return 0, 0
 
-    def trainer_iterator(self, model_name: str, last_epoch=0, max_epochs=0):
+    def trainer_iterator(self, model_name: str, layer_name: str, last_epoch=0, max_epochs=0):
         """
 
-        Args:
-            model_name:
-            last_epoch:
-            max_epochs:
-
-        Returns:
-
+        :param model_name:
+        :param layer_name:
+        :param last_epoch:
+        :param max_epochs:
+        :return:
         """
         # for notebook, we need a bit of hack for tqdm_iter.
         if self.is_notebook:
@@ -481,7 +520,7 @@ class Trainer(GeneratorTrainer, ABC):
             return tqdm_iter
 
         # load last epoch in case we do re-summing.
-        last_epoch = self._last_epochs[model_name]
+        last_epoch = self._last_ckt_epochs[model_name][layer_name]
         # early stopping
         early_stopping = None
 
@@ -526,7 +565,7 @@ class Trainer(GeneratorTrainer, ABC):
         else:
             reduced_loss = loss.item()
 
-    def create_optimizer(self, model_name, alias_name: str):
+    def _create_optimizer(self, model_name: str, layer_name: str, alias_name: str):
         """
         Creates an optimizer based on model specs.
 
@@ -536,13 +575,26 @@ class Trainer(GeneratorTrainer, ABC):
         Returns:
 
         """
+        if model_name is None or len(model_name) == 0:
+            raise TrainerError("Error. empty model name.")
+
+        if layer_name is None or len(layer_name) == 0:
+            raise TrainerError("Error. empty model layer.")
 
         if model_name not in self._models:
-            raise Exception("config.yaml must contains valid active settings. "
-                            "Failed create {} model".format(model_name))
+            raise TrainerError(f"{model_name} not found in model list.")
 
-        logger.info("Creating optimizer for {}", model_name, type(self._models[model_name]))
-        model = self._models[model_name]
+        print(self._models[model_name])
+
+        if layer_name not in self._models[model_name]:
+            raise TrainerError(f"{str(self.trainer_spec.config_file_name)} "
+                               f"must contains valid binding for optimizer. "
+                               f"Failed create '{model_name}' model")
+
+        logger.info(f"Creating optimizer for {model_name} layer {layer_name} "
+                    f"and optimizer type {self.trainer_spec.optimizer_type(alias_name)}")
+
+        model_layer = self._models[model_name][layer_name]
 
         optimizer_type = self.trainer_spec.optimizer_type(alias_name)
         spec = self.trainer_spec
@@ -556,12 +608,13 @@ class Trainer(GeneratorTrainer, ABC):
                 fmtl_print("{} weight decay".format(alias_name), spec.weight_decay(alias_name))
                 fmtl_print("{} amsgrad".format(alias_name), spec.amsgrad(alias_name))
 
-            opt = optim.Adam(list(model.parameters()),
+            opt = optim.Adam(list(model_layer.parameters()),
                              lr=spec.optimizer_learning_rate(alias_name),
                              betas=spec.adam_betas(alias_name),
                              eps=spec.adam_eps(alias_name),
                              weight_decay=spec.weight_decay(alias_name),
                              amsgrad=spec.amsgrad(alias_name))
+
         elif optimizer_type == 'SGD':
             if self.verbose:
                 fmtl_print("Creating {} optimizer.".format(alias_name), "SGD")
@@ -576,7 +629,11 @@ class Trainer(GeneratorTrainer, ABC):
         else:
             raise ValueError("unknown optimizer: {}".format(optimizer_type))
 
-        self.optimizers[model_name] = opt
+        logger.info(f"Bounded optimizer to a model {model_name}, model layer {layer_name}")
+        if model_name not in self._optimizers:
+            self._optimizers[model_name] = {}
+
+        self._optimizers[model_name][layer_name] = opt
         return opt
 
     # @logger.catch()
@@ -586,17 +643,17 @@ class Trainer(GeneratorTrainer, ABC):
         Each optimize in self.optimizers dict
         Returns: Nothing
         """
-        _models = self.trainer_spec.get_active_sub_models()
-        if len(_models) == 0:
-            logger.warning("trainer spec has no model")
+        model_name = self.trainer_spec.get_active_mode()
+        model_layers = self.trainer_spec.get_active_sub_models()
+        if len(model_layers) == 0:
+            logger.warning("trainer spec has no model.")
 
-        for model_name in _models:
-            logger.info("Loading {} optimizer settings".format(model_name))
-            opt_spec_alias = self.trainer_spec.get_sub_model_optimizer(model_name)
-            optimizer = self.create_optimizer(model_name, opt_spec_alias)
-            self.optimizers[model_name] = optimizer
+        for model_layer_name in model_layers:
+            logger.debug("Loading {} optimizer settings.".format(model_layer_name))
+            opt_spec_alias = self.trainer_spec.get_sub_model_optimizer(model_layer_name)
+            self._create_optimizer(model_name, model_layer_name, opt_spec_alias)
 
-    def create_lr_scheduler(self, model_name: str, optimizer) ->None:
+    def create_lr_scheduler(self, model_name: str, model_layer: str, optimizer) -> None:
         """
         Creates lr scheduler based on specs and attach to optimizer
         Args:
@@ -604,12 +661,13 @@ class Trainer(GeneratorTrainer, ABC):
             optimizer: target optimizer
 
         Returns: lr_scheduler
+        :param model_name:
+        :param model_layer:
 
         """
-        alias_name = self.trainer_spec.get_sub_model_lr_scheduler(model_name)
+        alias_name = self.trainer_spec.get_sub_model_lr_scheduler(model_layer)
         if len(alias_name) == 0:
-            if self.verbose:
-                fmtl_print("Model {}".format(model_name), "no scheduler attached")
+            logger.info("Model {model_layer} layer {model_layer} no scheduler attached.")
             return
 
         lr_scheduler_type = self.trainer_spec.lr_scheduler_type(alias_name)
@@ -647,66 +705,80 @@ class Trainer(GeneratorTrainer, ABC):
         Create all scheduler and bind to optimizer
         :return:
         """
-        _models = self.trainer_spec.get_active_sub_models()
-        for model_name in _models:
-            if model_name not in self.optimizers:
-                raise Exception("make sure optimizer spec created.")
-            opt = self.optimizers[model_name]
-            self.create_lr_scheduler(model_name, opt)
+        model_name = self.trainer_spec.get_active_model()
+        if model_name not in self._optimizers:
+            raise TrainerError(f"Model {model_name} must be created first.")
 
-    def save_if_need(self, model_name, it, epoch, last_epoch=False):
-        """ Method called by trainer, to check if model need to save or not.
+        # model_layers = self.trainer_spec.get_active_sub_models()
+        # for layer in model_layers:
+        #     if layer not in self._optimizers[model_name]:
+        #         raise TrainerError(f"Model {model_name}, model layer {layer} must contain attached optimizer.")
+        #     opt = self._optimizers[model_name][layer]
+        #     logger.debug("Attaching lr scheduler.")
+        #     self.create_lr_scheduler(model_name, layer, opt)
+
+    def save_if_need(self, model_name, epoch, step=0, last_epoch=False):
+        """
+        Method called by trainer, to check if model or model layer need to save or not.
+
         :param epoch: current epoch
-        :param it: Current iteration counter.
+        :param step: Current step in iteration , monotonic counter.
         :param model_name:  active model
-        :param last_epoch:
+        :param last_epoch:  if it last we save a model.
         """
         # by default condition to save epoch , if save per iteration we check iteration.
         if self.trainer_spec.is_save() is False:
             return False
 
-        if last_epoch is False and it == 0:
+        if last_epoch is False and step == 0:
             return False
 
         # in case we run distributed no need save.
         if self.trainer_spec.is_distributed_run() and self.rank > 0:
             return
 
-        # model save predicate condition , either iteration or epoch counter.
+        # model save predicate condition, either iteration or epoch counter.
         # for large model it makes sense to track iteration vs epoch counter.
-        save_condition = epoch
         model_file = self.trainer_spec.model_files.get_model_file_path(model_name)
-        if self.trainer_spec.is_save_per_iteration():
-            save_condition = it
+        save_condition = epoch if self.trainer_spec.is_save_per_iteration() else step
 
-        if save_condition % self.trainer_spec.epochs_save() == 0 or last_epoch is True:
-            if self.trainer_spec.is_train_verbose():
-                logger.info('Saving node model {}'.format(model_file))
+        # do nothing
+        if self.trainer_spec.epochs_save() != 0 and last_epoch is not True:
+            return False
 
-            if model_name in self.schedulers:
-                logger.info("Model saving with optimizer and scheduler state.")
-                torch.save({
-                    'epoch': epoch,
-                    'it': it,
-                    'model_state_dict': self._models[model_name].state_dict(),
-                    'optimizer_state_dict': self.optimizers[model_name].state_dict(),
-                    'scheduler_state_dict': self.schedulers[model_name].state_dict()
-                }, model_file)
-            else:
-                logger.info("Model saving with optimizer without a scheduler state.")
-                torch.save({
-                    'epoch': epoch,
-                    'it': it,
-                    'model_state_dict': self._models[model_name].state_dict(),
-                    'optimizer_state_dict': self.optimizers[model_name].state_dict(),
-                    #    'scheduler_state_dict': self.schedulers[model_name].state_dict()
-                }, model_file)
+        if self.trainer_spec.is_train_verbose():
+            logger.info('Saving node model {}'.format(model_file))
 
-            self.metric.save()
-            return True
-        return False
+        if model_name in self.schedulers:
+            logger.info("Model saving with optimizer and scheduler state.")
+            torch.save({
+                'epoch': epoch, 'it': step,
+                'model_state_dict': self._models[model_name].state_dict(),
+                'optimizer_state_dict': self._optimizers[model_name].state_dict(),
+                'scheduler_state_dict': self.schedulers[model_name].state_dict()
+            }, model_file)
+        else:
+            logger.info("Model saving with optimizer without a scheduler state.")
+            torch.save({
+                'epoch': epoch,
+                'it': step,
+                'model_state_dict': self._models[model_name].state_dict(),
+                'optimizer_state_dict': self._optimizers[model_name].state_dict(),
+                #    'scheduler_state_dict': self.schedulers[model_name].state_dict()
+            }, model_file)
+
+        self.metric.save()
+        return True
 
     def log_if_needed(self, it, reduced_loss, grad_norm, duration):
+        """
+
+        :param it:
+        :param reduced_loss:
+        :param grad_norm:
+        :param duration:
+        :return:
+        """
         """
 
         Args:
@@ -719,24 +791,16 @@ class Trainer(GeneratorTrainer, ABC):
 
         """
         if self.rank == 0 and it % self.trainer_spec.epochs_log() == 0:
-            print("Train loss "
-                  "{} {:.6f} Grad Norm {:.6f} {:.2f}s/it".format(it,
-                                                                 reduced_loss,
-                                                                 grad_norm,
-                                                                 duration))
+            print("Train loss {} {:.6f} Grad Norm {:.6f} {:.2f}s/it".format(it, reduced_loss, grad_norm, duration))
 
     def validate(self, model, model_name: str, it):
         """
 
-        Args:
-            model:
-            it:
-            n_gpus:
-
-        Returns:
-
+        :param model:
+        :param model_name:
+        :param it:
+        :return:
         """
-        t_writer = self.trainer_spec.get_tensorboard_writer()
 
         model.eval()
         with torch.no_grad():
@@ -763,18 +827,19 @@ class Trainer(GeneratorTrainer, ABC):
 
         return total_prediction_loss
 
-    def get_last_iterator(self, model_name):
+    def get_last_iterator(self, model_name: str, layer_name: str) -> int:
         """
-        Return last iterator,  during a model save each model might have own iterator counter.
-        thus, trainer has a dict that hold self.iters[mode_name] = it
-        Args:
-            model_name:
+         Return last iterator,  for a given model and layer.
+         During a model save each model might have own iterator counter.
+         thus, trainer has a dict that hold self.iters[mode_name][layer_name] = it
 
-        Returns:
+        :param model_name: model name that must already created.
+        :param layer_name: model layer must be already created.
+        :return: return last iterator counter.
         """
         it = 0
-        if model_name in self.iters:
-            it = self.iters[model_name]
+        if model_name in self._steps and layer_name in self._steps[model_name]:
+            it = self._steps[model_name][layer_name]
         return it
 
     def plot_data(self, data, figsize=(16, 4)):
@@ -797,6 +862,7 @@ class Trainer(GeneratorTrainer, ABC):
                   mel_alignment_path="mel_alignment.png"):
         """
         Perform inference on input
+        :param plot:
         :param mel_alignment_path:
         :param mel_output_path:
         :param mel_post_path:
@@ -844,7 +910,7 @@ class Trainer(GeneratorTrainer, ABC):
     #         dist.all_reduce(param.grad.data, op=dist.ReduceOp.SUM)
     #         param.grad.data /= size
     #
-    def train_epoch(self, model, model_name, optimizer, scheduler=None, save_callback=None):
+    def train_epoch(self, model, model_name, layer_name: str, optimizer, scheduler=None, save_callback=None):
         """
 
         :param model:
@@ -864,7 +930,7 @@ class Trainer(GeneratorTrainer, ABC):
 
         current_total_loss = 0
         total_accuracy = 0
-        step = self.get_last_iterator(model_name)
+        step = self.get_last_iterator(model_name, layer_name)
         for batch_idx, batch in enumerate(self.train_loader):
             # start = time.perf_counter()
             # for param_group in self.optimizer[model_name].param_groups:
@@ -911,7 +977,7 @@ class Trainer(GeneratorTrainer, ABC):
             #     total_accuracy += prediction_accuracy
 
             # save model checkpoint if needed
-            if self.rank == 0 and self.save_if_need(model_name, step, self.epoch):
+            if self.rank == 0 and self.save_if_need(model_name, self.epoch, step=step):
                 self.saved_run = step
 
             # dist.barrier()
@@ -931,7 +997,7 @@ class Trainer(GeneratorTrainer, ABC):
                                         hparams)
             step += 1
 
-        self.iters[model_name] = step
+        self._steps[model_name] = step
         return step
 
     def parse_batch(self, batch, device):
@@ -956,8 +1022,11 @@ class Trainer(GeneratorTrainer, ABC):
         # assert gate_padded.get_device() == 0
         # assert output_lengths.get_device() == 0
 
-        return (text_padded, input_lengths, mel_padded, max_len, output_lengths, spectral), \
+        return (text_padded, input_lengths, mel_padded, max_len, output_lengths), \
                (mel_padded, gate_padded, spectral)
+
+        # return (text_padded, input_lengths, mel_padded, max_len, output_lengths, spectral), \
+        #        (mel_padded, gate_padded, spectral)
 
     def cleanup(self):
         """
@@ -981,34 +1050,22 @@ class Trainer(GeneratorTrainer, ABC):
         rt /= n_gpus
         return rt
 
-    def train(self, model_name='encoder'):
+    def sequential(self, model_name: str, layer_name: str):
         """
+        Sequential training loop.
 
         :param model_name:
+        :param layer_name:
         :return:
         """
-        # torch.manual_seed(self.model_spec.seed())
-        # torch.cuda.manual_seed(self.model_spec.seed())
-        #
-        # if self.rank == 0:
-        #     self.load_models()
+        assert model_name in self._models
+        assert layer_name in self._models[model_name]
 
-        # if self.trainer_spec.is_distributed_run():
-        #     #torch.cuda.set_device(self.device)
-        torch.cuda.empty_cache()
+        if model_name in self._steps and layer_name in self._steps[model_name]:
+            logger.info("Epoch saved out of", self._last_ckt_epochs[model_name][layer_name], self.trainer_spec.epochs())
+            logger.info("Last iteration saved", self._steps[model_name])
 
-        if self.is_trained():
-            print("It looks like model already trained. \
-            Check file {}".format(self.trainer_spec.model_files.get_model_file_path(model_name)))
-            return
-
-        t_writer = self.trainer_spec.get_tensorboard_writer()
-
-        if model_name in self.iters:
-            logger.info("Epoch saved out of", self._last_epochs[model_name], self.trainer_spec.epochs())
-            logger.info("Last iteration saved", self.iters[model_name])
-
-        #
+        model = self._models[model_name][layer_name]
         if self.trainer_spec.is_distributed_run():
             # device = torch.device(f"cuda:{dist.get_rank()}")
             device = self.device
@@ -1016,13 +1073,16 @@ class Trainer(GeneratorTrainer, ABC):
             device = self.device
 
         self.criterion.to(device)
-        model = self._models[model_name]
+        self.tqdm_iter = self.trainer_iterator(model_name, layer_name)
 
-        self.tqdm_iter = self.trainer_iterator(model_name)
-        optimizer = self.optimizers[model_name]
+        assert model_name in self._optimizers
+        print(self._optimizers[model_name].keys())
+        # assert layer_name in self._optimizers[model_name]
 
+        optimizer = self._optimizers[model_name][layer_name]
         scheduler = None
-        if model_name in self.schedulers:
+
+        if layer_name in self.schedulers:
             logger.info("Model {} contains a scheduler".format(model_name))
             scheduler = self.schedulers[model_name]
 
@@ -1030,15 +1090,15 @@ class Trainer(GeneratorTrainer, ABC):
         #     logger.info("Running in distributed model. applying gradient reduce.".format(model_name))
         #     model = apply_gradient_allreduce(model)
 
-        it = self.get_last_iterator(model_name)
-        if self._last_epochs[model_name] == self.trainer_spec.epochs():
+        it = self.get_last_iterator(model_name, layer_name)
+        if self._last_ckt_epochs[model_name][layer_name] == self.trainer_spec.epochs():
             prediction_accuracy = self.validate(model, model_name, it)
 
         # TODO add option if epoch changed after save
         self.metric.set_num_iteration(self.trainer_spec.epochs() * self.total_batches)
         self.metric.init()
         logger.info("Staring training num epochs {}, epoch trained {} num batches {} expected total iteration {}",
-                    self.trainer_spec.epochs(), self._last_epochs, len(self.train_loader),
+                    self.trainer_spec.epochs(), self._last_ckt_epochs, len(self.train_loader),
                     self.trainer_spec.epochs() * len(self.train_loader))
 
         # if self.trainer_spec.is_distributed_run():
@@ -1052,16 +1112,49 @@ class Trainer(GeneratorTrainer, ABC):
             self.epoch = epoch
             # train epoch's batch
             self.metric.start_epoch_timer(epoch)
-            self.train_epoch(model, model_name, optimizer)
+            self.train_epoch(model, model_name, layer_name, optimizer)
             self.metric.update_epoch_timer(epoch)
 
             # model logs
             # for name, weight in model.named_parameters():
             #     t_writer.add_histogram(name, weight, epoch)
             #     t_writer.add_histogram(f'{name}.grad', weight.grad, epoch)
-
-            t_writer.flush()
             #  tune.report(loss=(val_loss / val_steps), accuracy=correct / total)
+
+        if self.rank == 0 and self.save_if_need(model_name, it, self.trainer_spec.epochs(), last_epoch=True):
+            if self.verbose:
+                fmtl_print("Saved last epoch", self.trainer_spec.epochs())
+
+    def train(self, model_name=None):
+        """
+
+        :param model_name:
+        :return:
+        """
+        # torch.manual_seed(self.model_spec.seed())
+        # torch.cuda.manual_seed(self.model_spec.seed())
+        #
+        # if self.rank == 0:
+        #     self.load_models()
+        # if self.trainer_spec.is_distributed_run():
+        #     #torch.cuda.set_device(self.device)
+
+        torch.cuda.empty_cache()
+        model_name = self.trainer_spec.get_active_mode()
+        model_layers = self.trainer_spec.get_active_sub_models()
+
+        if self.is_trained(model_name):
+            print("It looks like model already trained. \
+                   Check file {}".format(self.trainer_spec.model_files.get_model_file_path(model_name)))
+            return
+
+        strategy = self.trainer_spec.get_training_strategy()
+        if strategy == 'sequential':
+            for layer in model_layers:
+                self.q.put(layer)
+            while not self.q.empty():
+                layer_name = self.q.get()
+                self.sequential(model_name, layer_name)
 
         if self.rank == 0 and self.save_if_need(model_name, it, self.trainer_spec.epochs(), last_epoch=True):
             if self.verbose:
@@ -1092,7 +1185,7 @@ class Trainer(GeneratorTrainer, ABC):
             tqdm_iter = self.trainer_iterator(model_name)
             learning_rate = self.trainer_spec.learning_rate
 
-            optimizer = self.optimizers[model_name]
+            optimizer = self._optimizers[model_name]
             #
             if self.trainer_spec.is_fp16_run():
                 from apex import amp
@@ -1154,32 +1247,49 @@ class Trainer(GeneratorTrainer, ABC):
                         tqdm_iter.set_postfix({'total_epoch_loss': total_epoch_loss, 'saved': True})
                     iteration += 1
 
-    def is_trained(self):
+    def is_trained(self, model_name: str) -> bool:
         """
-
-        Returns:
-
+        Method check if specific model trained or not.
+        # TODO refactor epochs per layer
+        :param model_name:
+        :return:
         """
-        models = self.trainer_spec.get_active_sub_models()
         num_finished = 0
-        for m in models:
-            if m in self._last_epochs:
-                if int(self._last_epochs[m]) >= int(self.trainer_spec.epochs()):
+        if model_name not in self._last_ckt_epochs:
+            return False
+
+        layers = self.trainer_spec.get_active_sub_models()
+        for layer in layers:
+            if layer in self._last_ckt_epochs[model_name]:
+                last = self._last_ckt_epochs[model_name][layer]
+                if int(last) >= int(self.trainer_spec.epochs()):
                     num_finished += 1
 
-        if num_finished == len(models):
+        if num_finished == len(layers):
             return True
 
         return False
 
     def get_model(self, model_name):
         """
-
         :param model_name:
         :return:
         """
         if model_name in self._models:
             return self._models[model_name]
+
+    @staticmethod
+    def set_logger(is_enable: bool) -> None:
+        """
+        Sets logging level.
+        :param is_enable:
+        :return:
+        """
+        if is_enable:
+            logger.enable(__name__)
+        else:
+            logger.disable(__name__)
+
 #
 # def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
 #     config = {

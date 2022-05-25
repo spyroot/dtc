@@ -173,6 +173,19 @@ lr_schedulers:
       patience: 10
       name: dtc_scheduler
 
+# Training strategy
+strategy:
+  tacotron25:
+    type: sequential
+    order:
+     - spectrogram_layer
+     - wav2vec
+  dts:
+    type: sequential
+    order:
+     - spectrogram_layer
+     - wav2vec
+
 # Model definition
 models:
   # this pure model specific, single model can describe both edges and nodes
@@ -194,14 +207,15 @@ models:
       n_mel_channels: 80
       mel_fmin: 0.0
       mel_fmax: 8000.0
-#    edge_model:
-#      name: Test
-#      model: GraphLSTM
-#      optimizer: edge_optimizer
-#      lr_scheduler: main_lr_scheduler
-#      input_size: 1
+    vocoder:
+      state: disabled
+      name: Test
+      model: GraphLSTM
+      optimizer: edge_optimizer
+      lr_scheduler: main_lr_scheduler
+      input_size: 1
   dts:
-    encoder:
+    spectrogram_layer:
       model: tacotron3
       optimizer: tacotron2_optimizer
       #      lr_scheduler: main_lr_scheduler
@@ -216,12 +230,13 @@ models:
       n_mel_channels: 80
       mel_fmin: 0.0
       mel_fmax: 8000.0
-  #    edge_model:
-  #      name: Test
-  #      model: GraphLSTM
-  #      optimizer: edge_optimizer
-  #      lr_scheduler: main_lr_scheduler
-  #      input_size: 1
+    vocoder:
+      name: Test
+      state: disabled
+      model: GraphLSTM
+      optimizer: edge_optimizer
+      lr_scheduler: main_lr_scheduler
+      input_size: 1
   GraphLstmRnn:
     node_model:
       model: GraphLSTM

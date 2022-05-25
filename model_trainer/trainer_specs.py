@@ -23,6 +23,7 @@ MODULE_NAME = "ExperimentSpecs"
 class ExperimentSpecs:
     """
     """
+
     def __init__(self, spec_config='config.yaml', verbose=False, no_dir=False):
         """
 
@@ -40,15 +41,17 @@ class ExperimentSpecs:
         self.lr_schedulers = None
         self._optimizers = None
         self.config_file_name = None
-        current_dir = os.path.dirname(os.path.realpath(__file__))
+        #
+        self._current_dir = os.path.dirname(os.path.realpath(__file__))
 
+        # caller can pass string
         if isinstance(spec_config, str):
             logger.info("Loading {} file.", spec_config)
-            # a file name or io.string
-            self.config_file_name = Path(spec_config)
+            p = Path(spec_config).expanduser()
+            p = p.resolve()
+            self.config_file_name = p
 
         self._verbose = verbose
-
         #
         self._setting = None
 
@@ -227,7 +230,8 @@ class ExperimentSpecs:
 
         return model_dispatch
 
-    def dts_creator(self, model_spec, dataset_spec):
+    @staticmethod
+    def dts_creator(model_spec, dataset_spec):
         """
         Create spec, for dts.
         :return:
@@ -666,7 +670,7 @@ class ExperimentSpecs:
 
         if 'distributed' in self._setting:
             if self._verbose:
-                fmtl_print("Model uses distributed", self._setting['distributed'])
+                logger.debug("Model uses distributed", self._setting['distributed'])
             return self._setting['distributed']
 
         return False
@@ -678,7 +682,7 @@ class ExperimentSpecs:
         """
         if 'backend' in self._setting:
             if self._verbose:
-                fmtl_print("Model backend", self._setting['backend'])
+                logger.debug("Model backend", self._setting['backend'])
             return self._setting['backend']
 
         return "nccl"
@@ -813,8 +817,13 @@ class ExperimentSpecs:
         _model = _models[_active_model]
         sub_models = []
         for k in _model:
+            if 'model' not in _model[k]:
+                continue
+            if 'state' in _model[k]:
+                if _model[k]['state'].lower() == 'disabled'.lower():
+                    print("model disabled")
+                    continue
             sub_models.append(k)
-
         return sub_models
 
     def epochs_save(self) -> int:
@@ -880,11 +889,8 @@ class ExperimentSpecs:
     def get_sub_model_lr_scheduler(self, sub_model_name) -> str:
         """
 
-        Args:
-            sub_model_name:
-
-        Returns:
-
+        :param sub_model_name:
+        :return:
         """
         _active_model = self.config['use_model']
         _models = self.config['models']
@@ -893,6 +899,8 @@ class ExperimentSpecs:
 
         if sub_model_name is not None:
             _model = _models[_active_model]
+            if _model['state'] == 'disabled':
+                return ""
             sub_model = _model[sub_model_name]
             if 'lr_scheduler' in sub_model:
                 return sub_model['lr_scheduler']
@@ -1356,3 +1364,14 @@ class ExperimentSpecs:
             logger.enable(__name__)
         else:
             logger.disable(__name__)
+
+    def get_training_strategy(self):
+        """
+        @TODO
+        :return:
+        """
+        _active_model = self.config['use_model']
+        _models = self.config['models']
+        _strategy = self.config['strategy']
+        _type = _strategy[_active_model]['type']
+        return _type

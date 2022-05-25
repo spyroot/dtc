@@ -5,11 +5,14 @@
 # Mustafa
 #
 import time
+import warnings
+from typing import Optional
 
 import torch
 from loguru import logger
 from torch.utils.data import DataLoader, DistributedSampler
 
+from model_loader.base_sfts_dataset import DatasetError
 from model_loader.dataset_stft25 import SFTF2Dataset
 from model_loader.dataset_stft30 import SFTF3Dataset
 from model_loader.sfts2_collate import TextMelCollate2
@@ -39,6 +42,9 @@ class SFTFDataloader:
         :param num_worker:
         :param verbose:
         """
+
+        self._ds2_mandatory = ['path', 'meta']
+
         self.rank = rank
         self.world_size = world_size
         self.val_loader = None
@@ -67,22 +73,40 @@ class SFTFDataloader:
             self.create()
         return self.train_dataloader, self.val_loader, self.collate_fn
 
-    def create_v2raw(self):
+    def _validate_v2(self, raw_dataset, strict: Optional[bool] = True):
         """
+
+        :param raw_dataset:
+        :return:
+        """
+        # validate, dataset
+        for i in range(0, len(raw_dataset)):
+            for m in self._ds2_mandatory:
+                if m not in raw_dataset[i]:
+                    if strict:
+                        raise DatasetError("Each entry in dataset must contain key path")
+                    else:
+                        warnings.warn("Each entry in dataset must contain key path")
+
+    def create_v2raw(self, strict=True):
+        """
+        Create dataset for v25 model
+        :param strict:
         :return:
         """
         pk_dataset = self.trainer_spec.get_audio_dataset()
-        file_list = list(pk_dataset['train_set'].values())
-        print(file_list)
         if len(pk_dataset) == 0:
             raise ValueError("Empty dataset.")
 
-        self.train_dataset = SFTF2Dataset(self.mel_model_spec,
-                                          list(pk_dataset['train_set'].values()),
-                                          data_format='audio_raw')
-        self.validation_dataset = SFTF2Dataset(self.mel_model_spec,
-                                               list(pk_dataset['validation_set'].values()),
-                                               data_format='audio_raw')
+        train_set = list(pk_dataset['train_set'].values())
+        validation_set = list(pk_dataset['validation_set'].values())
+
+        self._validate_v2(train_set, strict=strict)
+        self._validate_v2(validation_set, strict=strict)
+        logger.debug("Validated dataset")
+
+        self.train_dataset = SFTF2Dataset(self.mel_model_spec, train_set, data_format='audio_raw')
+        self.validation_dataset = SFTF2Dataset(self.mel_model_spec, validation_set, data_format='audio_raw')
         self.collate_fn = TextMelCollate2(nfps=self.mel_model_spec.frames_per_step(), device=None)
 
     def create_v2dataset(self, device):
@@ -155,8 +179,8 @@ class SFTFDataloader:
             is_shuffle = True
 
         if self.verbose:
-            logger.info("Dataloader train set contains".format(len(self.train_dataset)))
-            logger.info("Dataloader validation set contains".format(len(self.validation_dataset)))
+            logger.info("Dataloader train set contains {} entries.".format(len(self.train_dataset)))
+            logger.info("Dataloader validation set contains {} entries.".format(len(self.validation_dataset)))
 
         if len(self.train_dataset) == 0:
             raise ValueError("Dataloader received empty train dataset.")
