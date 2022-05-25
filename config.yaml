@@ -188,8 +188,8 @@ models:
       max_wav_value: 32768.0
       frames_per_step: 1
       sampling_rate: 22050
-      filter_length: 1024
-      win_length: 1024
+      filter_length: 1024   # length of the FFT window
+      win_length: 1024      # each frame of audio is windowed by
       hop_length: 256
       n_mel_channels: 80
       mel_fmin: 0.0

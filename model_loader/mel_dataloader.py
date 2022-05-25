@@ -89,7 +89,6 @@ class Mel_Dataloader:
                                                    data_format='tensor_mel')
             self.collate_fn = TextMelCollate2(nfps=self.encoder_spec.frames_per_step(), device=None)
 
-
     def create_v3raw(self):
         """
 
@@ -176,7 +175,6 @@ class Mel_Dataloader:
                                      shuffle=is_shuffle,
                                      batch_size=self.batch_size,
                                      collate_fn=self.collate_fn)
-
 
     def to_gpu(x):
         """

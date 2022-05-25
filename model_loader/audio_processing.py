@@ -40,6 +40,13 @@ def window_sumsquare(window, n_frames, hop_length=200, win_length=800,
     -------
     wss : np.ndarray, shape=`(n_fft + hop_length * (n_frames - 1))`
         The sum-squared envelope of the window function
+        :param window:
+        :param n_frames:
+        :param win_length:
+        :param hop_length:
+        :param dtype:
+        :param n_fft:
+        :param norm:
     """
     if win_length is None:
         win_length = n_fft

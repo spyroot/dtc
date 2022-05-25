@@ -11,7 +11,7 @@ class TextMelCollate2:
 
     """
 
-    def __init__(self, device, nfps=1, sort_dim=0, descending=True, is_trace_time=False):
+    def __init__(self, device,  nfps=1, sort_dim=0, descending=True, is_trace_time=False):
         """
 
         Extract frame per step nfps
@@ -30,7 +30,7 @@ class TextMelCollate2:
         self.largest_seq = 0
         self.sort_dim = sort_dim
         self.descending = descending
-        self.device = None
+        self.device = device
         self.txt_id = 1
         self.mel = 2
 

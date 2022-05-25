@@ -47,8 +47,7 @@ class TacotronSpec:
 
         :return:
         """
-        list = ['english_cleaners']
-        return list
+        return ['english_cleaners']
 
     def get_seed(self):
         """

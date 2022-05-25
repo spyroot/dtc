@@ -26,7 +26,7 @@ class SFTF3Dataset(BaseSFTFDataset):
                                            is_trace_time=False)
 
         # if raw we need transcode to stft's
-        if self.is_a_raw:
+        if self.is_audio:
             logger.debug("Creating TacotronSTFT for raw file processing.")
             self.stft = TacotronSTFT3(
                     model_spec.filter_length(), model_spec.hop_length(), model_spec.win_length(),
@@ -83,7 +83,7 @@ class SFTF3Dataset(BaseSFTFDataset):
         if self.is_a_tensor:
             text, mel, = self._data[index]
             return text, mel
-        if self.is_a_raw:
+        if self.is_audio:
             if 'meta' not in self._data[index]:
                 raise Exception("data must contain meta key")
             if 'path' not in self._data[index]:

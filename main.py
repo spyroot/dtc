@@ -51,8 +51,7 @@ def convert_mel_to_data(encoder_spec, target_dir: str, dataset,
 
     data = []
     for i in range(0, len(dataset)):
-        txt, mel = dataset[i]
-        data.append((txt, mel))
+        data.append(dataset[i])
 
     meta['data'] = data
     file_name = Path(target_dir) / f'{dataset_name}_{data_type}_{encoder_spec.n_mel_channels()}.pt'
