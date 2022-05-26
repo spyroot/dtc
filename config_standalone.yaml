@@ -114,7 +114,7 @@ settings:
     save_per_iteration: True           # if we want save per iteration
     seed: 1234                         # fix seed
     fp16: False                        # fp16 run
-    distributed: True                  # what distributed backend uses.
+    distributed: False                 # what distributed backend uses.
     backend: "nccl"                    # backend: "gloo"
     url: "tcp://localhost:54321"       # ddp
     master_address: localhost          # master
