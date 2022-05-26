@@ -18,3 +18,4 @@
 !*.ipynb
 *__pycache__
 /dataset/
+/backups/
