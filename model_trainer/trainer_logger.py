@@ -1,8 +1,6 @@
-from tacotron2.plotting_utils import plot_alignment_to_numpy, plot_spectrogram_to_numpy, plot_gate_outputs_to_numpy
+from model_trainer.plotting_utils import plot_alignment_to_numpy, plot_spectrogram_to_numpy, plot_gate_outputs_to_numpy
 import random
-import torch
 from torch.utils.tensorboard import SummaryWriter
-import librosa
 import torch
 from torch import nn
 
@@ -11,24 +9,17 @@ class TensorboardTrainerLogger(SummaryWriter):
     """
 
     """
-    def __init__(self, tensorboard_update_rate=0, logdir=None, is_distributed=False):
-        super(TensorboardTrainerLogger, self).__init__()
-        self.update_rate = tensorboard_update_rate
-        # self.mel_filters_librosa = librosa.filters.mel(
-        #         sr=sampling_rate,
-        #         n_fft=n_fft,
-        #         fmin=mel_fmin,
-        #         fmax=mel_fmax,
-        #         norm="slaney",
-        #         htk=True,
-        # ).T
 
-    def log_training(self, step, cluster_loss, grad_norm, lr, hparams=None, extra_data=None) -> None:
+    def __init__(self, tensorboard_update_rate=0,  logdir=None, is_distributed=False):
+        super(TensorboardTrainerLogger, self).__init__("my_experiment", comment="LR_0.1_BATCH_16", flush_secs=2)
+        self.update_rate = tensorboard_update_rate
+
+    def log_training(self, criterions: dict, step, lr, hparams=None, metrics=None, extra_data=None) -> None:
         """
 
+        :param metrics:
+        :param criterions:
         :param step:  current step of in training loop
-        :param cluster_loss:  for distributed loss,
-        :param grad_norm:  normalized gradient loss
         :param lr: learning rate
         :param hparams:  dict host hparams.
         :param extra_data:  extra data key value pair
@@ -40,16 +31,20 @@ class TensorboardTrainerLogger(SummaryWriter):
         if step % self.update_rate != 0:
             return
 
-        self.add_scalar("training.loss", cluster_loss, step)
-        self.add_scalar("grad.norm", grad_norm, step)
+        for k in criterions:
+            self.add_scalar(k, criterions[k], step)
+
+        # self.add_scalar("training.loss", cluster_loss, step)
+        # self.add_scalar("grad.norm", grad_norm, step)
+
         self.add_scalar("learning.rate", lr, step)
+
         if hparams is not None:
-            self.add_hparams(hparams)
+            self.add_hparams(hparams, metrics)
+
         if extra_data is not None:
             for k in extra_data:
                 self.add_scalar(k, extra_data[k])
-
-        self.flush()
 
     def log_hparams(self, step, tf_hp_dict) -> None:
         """
@@ -64,7 +59,7 @@ class TensorboardTrainerLogger(SummaryWriter):
 
         self.add_hparams(tf_hp_dict)
 
-    def log_validation(self, reduced_loss, model: nn.Module, y, y_pred, step=None,  mel_filter=True) -> None:
+    def log_validation(self, reduced_loss, model: nn.Module, y, y_pred, step=None, mel_filter=True) -> None:
         """
         Log validation step.
         :param reduced_loss:
@@ -87,25 +82,24 @@ class TensorboardTrainerLogger(SummaryWriter):
         # plot alignment, mel target and predicted, gate target and predicted
         idx = random.randint(0, alignments.size(0) - 1)
         # if mel_filter:
-            # plot_filter_bank()
-            # img = librosa.display.specshow(melfb, x_axis='linear', ax=ax)
+        # plot_filter_bank()
+        # img = librosa.display.specshow(melfb, x_axis='linear', ax=ax)
 
         self.add_image(
-            "alignment",
-            plot_alignment_to_numpy(alignments[idx].data.cpu().numpy().T),
-            step, dataformats='HWC')
+                "alignment",
+                plot_alignment_to_numpy(alignments[idx].data.cpu().numpy().T),
+                step, dataformats='HWC')
         self.add_image(
-            "mel_target",
-            plot_spectrogram_to_numpy(mel_targets[idx].data.cpu().numpy()),
-            step, dataformats='HWC')
+                "mel_target",
+                plot_spectrogram_to_numpy(mel_targets[idx].data.cpu().numpy()),
+                step, dataformats='HWC')
         self.add_image(
-            "mel_predicted",
-            plot_spectrogram_to_numpy(mel_outputs[idx].data.cpu().numpy()),
-            step, dataformats='HWC')
+                "mel_predicted",
+                plot_spectrogram_to_numpy(mel_outputs[idx].data.cpu().numpy()),
+                step, dataformats='HWC')
         self.add_image(
-            "gate",
-            plot_gate_outputs_to_numpy(
-                gate_targets[idx].data.cpu().numpy(),
-                torch.sigmoid(gate_outputs[idx]).data.cpu().numpy()),
-            step, dataformats='HWC')
-        self.flush()
+                "gate",
+                plot_gate_outputs_to_numpy(
+                        gate_targets[idx].data.cpu().numpy(),
+                        torch.sigmoid(gate_outputs[idx]).data.cpu().numpy()),
+                step, dataformats='HWC')

@@ -6,6 +6,7 @@
 #
 import time
 import warnings
+from logging import warn
 from typing import Optional
 
 import torch
@@ -19,7 +20,7 @@ from model_loader.sfts2_collate import TextMelCollate2
 from model_loader.sfts3_collate import TextMelCollate3
 from model_trainer.specs.dtc_spec import ModelSpecDTC
 from model_trainer.trainer_specs import ExperimentSpecs
-from tacotron2.utils import fmtl_print, to_gpu
+from model_trainer.utils import fmtl_print, to_gpu
 
 
 class SFTFDataloader:
@@ -42,7 +43,7 @@ class SFTFDataloader:
         :param num_worker:
         :param verbose:
         """
-
+        self.set_logger(verbose)
         self._ds2_mandatory = ['path', 'meta']
 
         self.rank = rank
@@ -60,8 +61,23 @@ class SFTFDataloader:
         self.train_dataset = None
         self.collate_fn = None
         self.train_dataloader = None
-        self.batch_size = None
         self.validation_dataset = None
+        self.batch_size = None
+
+    def update_batch(self, new_batch: int):
+        """
+        Method update batch size
+
+        :return:
+        """
+        if self.train_dataloader is None:
+            print("Updating batch ", new_batch)
+            self.batch_size = new_batch
+            self.train_dataloader = None
+            self.val_loader = None
+            self.create(update=True)
+
+        return self.train_dataloader, self.val_loader, self.collate_fn
 
     def get_loader(self):
         """
@@ -71,6 +87,7 @@ class SFTFDataloader:
         """
         if self.train_dataloader is None:
             self.create()
+
         return self.train_dataloader, self.val_loader, self.collate_fn
 
     def _validate_v2(self, raw_dataset, strict: Optional[bool] = True):
@@ -105,8 +122,10 @@ class SFTFDataloader:
         self._validate_v2(validation_set, strict=strict)
         logger.debug("Validated dataset")
 
-        self.train_dataset = SFTF2Dataset(self.mel_model_spec, train_set, data_format='audio_raw')
-        self.validation_dataset = SFTF2Dataset(self.mel_model_spec, validation_set, data_format='audio_raw')
+        self.train_dataset = SFTF2Dataset(self.mel_model_spec, train_set, data_format='audio_raw',
+                                          overfit=self.trainer_spec.is_overfit())
+        self.validation_dataset = SFTF2Dataset(self.mel_model_spec, validation_set, data_format='audio_raw',
+                                               overfit=self.trainer_spec.is_overfit())
         self.collate_fn = TextMelCollate2(nfps=self.mel_model_spec.frames_per_step(), device=None)
 
     def create_v2dataset(self, device):
@@ -117,10 +136,12 @@ class SFTFDataloader:
         if pk_dataset['ds_type'] == 'tensor_mel':
             self.train_dataset = SFTF2Dataset(self.mel_model_spec,
                                               pk_dataset['train_set'],
-                                              data_format='tensor_mel')
+                                              data_format='tensor_mel',
+                                              overfit=self.trainer_spec.is_overfit())
             self.validation_dataset = SFTF2Dataset(self.mel_model_spec,
                                                    pk_dataset['validation_set'],
-                                                   data_format='tensor_mel')
+                                                   data_format='tensor_mel',
+                                                   overfit=self.trainer_spec.is_overfit())
             self.collate_fn = TextMelCollate2(nfps=self.mel_model_spec.frames_per_step(), device=None)
 
     def create_v3raw(self):
@@ -131,10 +152,12 @@ class SFTFDataloader:
         pk_dataset = self.train_dataset.get_audio_dataset()
         self.train_dataset = SFTF3Dataset(self.mel_model_spec,
                                           list(pk_dataset['train_set'].values()),
-                                          data_format='audio_raw')
+                                          data_format='audio_raw',
+                                          overfit=self.trainer_spec.is_overfit())
         self.validation_dataset = SFTF3Dataset(self.mel_model_spec,
                                                list(pk_dataset['validation_set'].values()),
-                                               data_format='audio_raw')
+                                               data_format='audio_raw',
+                                               overfit=self.trainer_spec.is_overfit())
         self.collate_fn = TextMelCollate3(nfps=self.mel_model_spec.frames_per_step(), device=None)
 
     def create_v3dataset(self, device):
@@ -146,25 +169,28 @@ class SFTFDataloader:
         if pk_dataset['ds_type'] == 'tensor_mel':
             self.train_dataset = SFTF3Dataset(self.mel_model_spec,
                                               pk_dataset['train_set'],
-                                              data_format='tensor_mel')
+                                              data_format='tensor_mel',
+                                              overfit=self.trainer_spec.is_overfit())
             self.validation_dataset = SFTF3Dataset(self.mel_model_spec,
                                                    pk_dataset['validation_set'],
-                                                   data_format='tensor_mel')
+                                                   data_format='tensor_mel',
+                                                   overfit=self.trainer_spec.is_overfit())
             self.collate_fn = TextMelCollate3(nfps=self.mel_model_spec.frames_per_step(), device=None)
 
-    def create(self):
+    def create(self, update: Optional[bool] = False):
         """
-        :return:
+         :return:
         """
         # training_set, validation_set, test_set = self.model_trainer_spec.get_audio_ds_files()
 
         experiment_specs = ExperimentSpecs(verbose=False)
         pk_dataset = experiment_specs.get_audio_dataset()
 
-        if pk_dataset['ds_type'] == 'tensor_mel':
-            self.create_v2dataset()
-        if pk_dataset['ds_type'] == 'audio_raw':
-            self.create_v2raw()
+        if not update:
+            if pk_dataset['ds_type'] == 'tensor_mel':
+                self.create_v2dataset()
+            if pk_dataset['ds_type'] == 'audio_raw':
+                self.create_v2raw()
 
         # test_set
         if self.trainer_spec.is_distributed_run():
@@ -189,15 +215,21 @@ class SFTFDataloader:
         if self.trainer_spec.batch_size == 0:
             raise ValueError("Dataloader need batch size > 0.")
 
-        self.batch_size = self.trainer_spec.batch_size
+        # we update only if need
+        if self.batch_size is None:
+            self.batch_size = self.trainer_spec.batch_size
+
         if self.trainer_spec.is_distributed_run():
             self.batch_size = int(self.trainer_spec.batch_size / float(self.world_size))
+
+        if self.trainer_spec.is_overfit():
+            warnings.warn("You are running in overfitting settings.")
 
         self.train_dataloader = DataLoader(self.train_dataset,
                                            num_workers=self.num_worker,
                                            shuffle=is_shuffle,
                                            sampler=train_sampler,
-                                           batch_size=self.trainer_spec.batch_size,
+                                           batch_size=self.batch_size,
                                            pin_memory=True,
                                            drop_last=True,
                                            collate_fn=self.collate_fn)
@@ -270,3 +302,15 @@ class SFTFDataloader:
 
         elapsed_time = time.process_time() - t
         fmtl_print("Total dataloader read time", elapsed_time)
+
+    @staticmethod
+    def set_logger(is_enable: bool) -> None:
+        """
+        Sets logging level.
+        :param is_enable:
+        :return:
+        """
+        if is_enable:
+            logger.enable(__name__)
+        else:
+            logger.disable(__name__)

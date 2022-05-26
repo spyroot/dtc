@@ -19,7 +19,7 @@ from tqdm import tqdm
 
 from model_loader import ds_util
 from model_trainer.specs.tacatron_spec import TacotronSpec
-from tacotron2.utils import load_wav_to_torch
+from model_trainer.utils import load_wav_to_torch
 from text import text_to_sequence
 
 
@@ -89,7 +89,8 @@ class BaseSFTFDataset(torch.utils.data.Dataset):
                  in_memory: Optional[bool] = True,
                  download: Optional[bool] = False,
                  transform: Optional[Callable] = None,
-                 target_transform: Optional[Callable] = None) -> None:
+                 target_transform: Optional[Callable] = None,
+                 verbose: Optional[bool] = False, overfit=False) -> None:
         """
         Data formats
            tensor_mel  Use case, entire dataset passed, batchified via data loader and saved on disk.
@@ -113,7 +114,10 @@ class BaseSFTFDataset(torch.utils.data.Dataset):
                if in_memory is false,  len can't return value, hence you need iterate manually.
         """
         super(torch.utils.data.Dataset, self).__init__()
+        self.set_logger(verbose)
+
         #
+        self._overfiting = overfit
         self._mirrors = [
             "https://www.dropbox.com/s/i2wzklf60vs5y3b/subset.npy?dl=0",
             "http://www.dropbox.com/s/i2wzklf60vs5y3b/subset.npy?dl=0"
@@ -547,6 +551,8 @@ class BaseSFTFDataset(torch.utils.data.Dataset):
         Note in this case __getitem__ will return item from iterator.
         :return:
         """
+        if len(self._data) > 0 and self._overfiting:
+            return 1
         if self._in_memory:
             return len(self._data)
         return self._data_len
@@ -602,3 +608,15 @@ class BaseSFTFDataset(torch.utils.data.Dataset):
             logger.info("File downloaded.")
 
         return self.is_download
+
+    @staticmethod
+    def set_logger(is_enable: bool) -> None:
+        """
+        Sets logging level.
+        :param is_enable:
+        :return:
+        """
+        if is_enable:
+            logger.enable(__name__)
+        else:
+            logger.disable(__name__)

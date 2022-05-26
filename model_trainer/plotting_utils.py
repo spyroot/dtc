@@ -1,8 +1,9 @@
-import librosa
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pylab as plt
 import numpy as np
+
 
 def _draw_single_box(image, xmin, ymin, xmax, ymax, display_str, color='black', color_text='black', thickness=2):
     from PIL import ImageDraw, ImageFont
@@ -17,14 +18,15 @@ def _draw_single_box(image, xmin, ymin, xmax, ymax, display_str, color='black', 
         text_width, text_height = font.getsize(display_str)
         margin = np.ceil(0.05 * text_height)
         draw.rectangle(
-            [(left, text_bottom - text_height - 2 * margin),
-             (left + text_width, text_bottom)], fill=color
+                [(left, text_bottom - text_height - 2 * margin),
+                 (left + text_width, text_bottom)], fill=color
         )
         draw.text(
-            (left + margin, text_bottom - text_height - margin),
-            display_str, fill=color_text, font=font
+                (left + margin, text_bottom - text_height - margin),
+                display_str, fill=color_text, font=font
         )
     return image
+
 
 def draw_boxes(disp_image, boxes, labels=None):
     """
@@ -46,6 +48,7 @@ def draw_boxes(disp_image, boxes, labels=None):
                                       display_str=None if labels is None else labels[i],
                                       color='Red')
     return disp_image
+
 
 def make_image(tensor, rescale=1, rois=None, labels=None):
     """
@@ -70,6 +73,7 @@ def make_image(tensor, rescale=1, rois=None, labels=None):
     image_string = output.getvalue()
     output.close()
     return height, width, channel, image_string
+
 
 def save_figure_to_numpy(fig):
     """

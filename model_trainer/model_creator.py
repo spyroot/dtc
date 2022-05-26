@@ -1,6 +1,6 @@
 from .trainer_specs import ExperimentSpecs
 from .model_trainer import GeneratorTrainer
-from tacotron2.utils import fmtl_print
+from model_trainer.utils import fmtl_print
 
 
 class ModelCreator:

@@ -6,7 +6,7 @@ from torch import nn
 from torch import Tensor
 
 from model_trainer.trainer_specs import ExperimentSpecs
-from tacotron2.utils import to_gpu, get_mask_from_lengths
+from model_trainer.utils import to_gpu, get_mask_from_lengths
 from .preandpost import Postnet
 from .decoder import Decoder
 from .encoder import Encoder

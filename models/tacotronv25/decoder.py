@@ -7,7 +7,7 @@ from model_trainer.trainer_specs import ExperimentSpecs
 from .PreAndPost import Prenet
 from .attention import Attention
 from .layers import LinearNorm
-from tacotron2.utils import get_mask_from_lengths
+from model_trainer.utils import get_mask_from_lengths
 
 
 class Decoder(nn.Module):

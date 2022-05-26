@@ -19,6 +19,8 @@ class ModelSpecDTC(ModelSpec, ABC):
         :param dataset_spec:
         """
         super(ModelSpecDTC, self).__init__(verbose=verbose)
+        self.set_logger(verbose)
+
         logger.debug("Creating model spec dts", model_spec, dataset_spec)
 
         self._model_dict = model_spec
@@ -67,3 +69,15 @@ class ModelSpecDTC(ModelSpec, ABC):
         :return:
         """
         return self._sub_models[name]
+
+    @staticmethod
+    def set_logger(is_enable: bool) -> None:
+        """
+        Sets logging level.
+        :param is_enable:
+        :return:
+        """
+        if is_enable:
+            logger.enable(__name__)
+        else:
+            logger.disable(__name__)

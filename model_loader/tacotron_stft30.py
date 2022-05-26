@@ -12,7 +12,7 @@ from torch import Tensor
 from pathlib import Path
 
 from model_trainer.trainer_specs import ExperimentSpecs
-from tacotron2.utils import load_wav_to_torch
+from model_trainer.utils import load_wav_to_torch
 from numba import jit
 from loguru import logger
 

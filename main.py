@@ -1,9 +1,11 @@
 import argparse
 import logging
 import os
+import pickle
 import random
 import signal
 import sys
+from functools import partial
 from pathlib import Path
 import socket
 
@@ -13,9 +15,17 @@ from loguru import logger
 
 from model_loader.mel_dataloader import SFTFDataloader
 from model_loader.dataset_stft30 import SFTF3Dataset
+from model_trainer.callbacks.time_meter import TimeMeter
+from model_trainer.callbacks.time_tracer import BatchTimer
 from model_trainer.trainer_specs import ExperimentSpecs, TrainerSpecError
 from model_trainer.trainer import Trainer, TrainerError
 import torch.distributed as dist
+
+from ray import tune
+from ray.tune import CLIReporter
+from ray.tune.schedulers import ASHAScheduler
+from ray import tune
+from ray.tune.suggest.optuna import OptunaSearch
 
 os.environ["NCCL_DEBUG"] = "INFO"
 os.environ["NCCL_IB_DISABLE"] = "1"
@@ -25,6 +35,7 @@ os.environ["RANK"] = "0"
 os.environ["WORLD_SIZE"] = "2"
 
 import warnings
+
 warnings.filterwarnings("ignore")
 
 
@@ -127,7 +138,7 @@ def convert(trainer_spec, verbose=True):
 #         win32api.SetConsoleCtrlHandler(handler, True)
 
 
-def cleanup(is_distributed : bool) -> None:
+def cleanup(is_distributed: bool) -> None:
     """
 
     :param is_distributed:
@@ -220,25 +231,76 @@ def train(spec=None, cmd_args=None, device=None, verbose=True, cudnn_bench=False
         # device = torch.device(device)
         dist.barrier()
 
-    dataloader = SFTFDataloader(spec, rank=cmd_args.rank, world_size=cmd_args.world_size, verbose=True)
+    if cmd_args.overfit:
+        spec.set_overfit()
+
+    dataloader = SFTFDataloader(spec, rank=cmd_args.rank, world_size=cmd_args.world_size, verbose=args.verbose)
     torch.backends.cudnn.enabled = True
     if cudnn_bench:
         torch.backends.cudnn.benchmark = True
 
-    logger.debug("Torch allow matmul fp16 {}", torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction)
-    logger.debug("Torch cudnn version, {}", torch.backends.cudnn.version())
-    logger.debug("Torch backend openmp", torch.backends.openmp)
+    if args.verbose:
+        logger.debug("Torch allow matmul fp16 {}", torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction)
+        logger.debug("Torch cudnn version, {}", torch.backends.cudnn.version())
+        logger.debug("Torch backend openmp", torch.backends.openmp)
     try:
-        Trainer(spec,
-                dataloader,
-                rank=int(args.rank),
-                world_size=int(cmd_args.world_size),
-                verbose=args.verbose, device=device).train()
+
+        config = {
+            # "l1": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
+            # "l2": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
+            "lr": tune.loguniform(1e-4, 1e-1),
+            "batch_size": tune.choice([2, 4, 8, 16, 32, 64])
+        }
+
+        scheduler = ASHAScheduler(
+                metric="loss",
+                mode="min",
+                max_t=spec.epochs(),
+                grace_period=1,
+                reduction_factor=2)
+
+        reporter = CLIReporter(
+                # parameter_columns=["l1", "l2", "lr", "batch_size"],
+                metric_columns=["loss", "accuracy", "training_iteration"])
+
+        trainer = Trainer(spec,
+                          dataloader,
+                          rank=int(args.rank),
+                          world_size=int(cmd_args.world_size),
+                          verbose=args.verbose, device=device,
+                          callback=[BatchTimer()])
+
+        # import dill
+        # d = dill.detect.baditems(trainer)
+        #
+        # print(d)
+        #
+        pickled_data = pickle.dumps(spec)
+
+        # sys.exit(1)
+        if args.tune:
+            tuner_result = tune.run(
+                    partial(trainer.train, config=config),
+                    # resources_per_trial={"cpu": 4, "gpu": 1},
+                    config=config,
+                    num_samples=10,
+                    scheduler=scheduler,
+                    stop={"training_iteration": 5},
+                    progress_reporter=reporter)
+
+            best_trial = tuner_result.get_best_trial("loss", "min", "last")
+            print("Best trial config: {}".format(best_trial.config))
+            print("Best trial final validation loss: {}".format(best_trial.last_result["loss"]))
+            print("Best trial final validation accuracy: {}".format(best_trial.last_result["accuracy"]))
+        else:
+            trainer.train()
+
     except TrainerError as e:
         print("Error: trainer error: ", e)
         cleanup(spec.is_distributed_run())
         sys.exit(10)
     except Exception as other:
+        print(other)
         raise other
 
 
@@ -253,7 +315,7 @@ def dataloader_dry(cmd_args, trainer_specs, verbose=False):
         data_loader.benchmark_read()
 
 
-def set_random_seeds(random_seed=0):
+def set_random_seeds(random_seed=0, verbose=False):
     """
 
     :param random_seed:
@@ -335,6 +397,18 @@ def main(cmd_args):
         inference(spec=trainer_spec, cmd_args=cmd_args, device=_device)
 
 
+def set_logger(is_enable: bool) -> None:
+    """
+    Sets logging level.
+    :param is_enable:
+    :return:
+    """
+    if is_enable:
+        logger.enable(__name__)
+    else:
+        logger.disable(__name__)
+
+
 if __name__ == '__main__':
     """
     """
@@ -361,8 +435,12 @@ if __name__ == '__main__':
                         required=False)
     parser.add_argument('--group_name', type=str, default='group_name',
                         required=False, help='Distributed group name')
-    parser.add_argument('--verbose', type=bool, default='store_true',
+    parser.add_argument('--verbose', action="store_true",
                         required=False, help='set verbose output')
+    parser.add_argument('--overfit', action='store_true',
+                        required=False, help='if set will reduce dataset and set batch 1 and overfit.')
+    parser.add_argument('--tune', action='store_true',
+                        required=False, help='rum hyperparameter optimization.')
     parser.add_argument('--train', type=bool, default=True,
                         required=False, help='set verbose output')
     parser.add_argument('--convert', type=bool, default=False,
@@ -422,6 +500,7 @@ if __name__ == '__main__':
         is_distributed = True
 
     try:
+        set_logger(args.verbose)
         main(args)
         # setup_handler(cleanup(is_distributed))
     except FileNotFoundError as file_error:

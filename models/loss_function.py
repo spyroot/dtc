@@ -11,6 +11,7 @@ class Tacotron2Loss(nn.Module):
     """
 
     """
+
     def __init__(self, filter_length=1024, hop_length=256, win_length=1024,
                  n_mel_channels=80, sampling_rate=22050, mel_fmin=0.0, sr=22050, n_fft=2048, fmax=8000,
                  mel_fmax=8000.0):
@@ -34,5 +35,6 @@ class Tacotron2Loss(nn.Module):
         gate_loss = nn.BCEWithLogitsLoss()(gate_targeT, gate_outT)
 
         total = mel_loss + gate_loss
-        print(f"loss mel_loss: {mel_loss} gate_loss: {gate_loss}")
-        return total
+        return {'loss': total,
+                'mel_loss': mel_loss,
+                'gate_loss': gate_loss}

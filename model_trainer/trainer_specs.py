@@ -1,21 +1,19 @@
-import logging
 import os
-import shutil
 import sys
 from pathlib import Path
-from time import gmtime, strftime
 from typing import List, Callable
 
 import torch
 import yaml
-from torch.utils.tensorboard import SummaryWriter
-
-from tacotron2.utils import fmtl_print, fmt_print
-from text.symbols import symbols
-from .specs.dtc_spec import ModelSpecDTC
-from .model_files import ModelFiles
-from .specs.model_spec import ModelSpec
 from loguru import logger
+
+from model_trainer.utils import fmt_print
+from text.symbols import symbols
+from .model_files import ModelFiles
+from .specs.dtc_spec import ModelSpecDTC
+from .specs.model_spec import ModelSpec
+
+# from torch.utils.tensorboard import SummaryWriter
 
 MODULE_NAME = "ExperimentSpecs"
 
@@ -36,10 +34,10 @@ class ExperimentSpecs:
         :param verbose:
         :param no_dir if true will not build structure directory structures for trainer.
         """
+        self._overfit = None
         self.spec_dispatcher = None
         self.set_logger(verbose)
-
-        # logger.add(sys.stderr, format="{time} {level} {message}", filter="my_module", level="INFO")
+        self._verbose: bool = verbose
 
         # a file name or io.string
         self._initialized = None
@@ -56,12 +54,11 @@ class ExperimentSpecs:
             p = p.resolve()
             self.config_file_name = p
 
-        self._verbose: bool = verbose
         self._setting = None
         self._model_spec = None
 
         #
-        self._inited: bool = None
+        self._inited: bool = False
 
         #
         self.writer = None
@@ -168,7 +165,7 @@ class ExperimentSpecs:
         #     if os.path.isdir("tensorboard"):
         #         shutil.rmtree("tensorboard")
 
-        self.writer = SummaryWriter()
+       # self.writer = SummaryWriter()
 
         # from tensorboard.plugins.hparams import api as hp
         # HP_OPTIMIZER = hp.HParam('optimizer', hp.Discrete(['adam', 'sgd']))
@@ -233,12 +230,12 @@ class ExperimentSpecs:
         return model_dispatch
 
     @staticmethod
-    def dts_creator(model_spec, dataset_spec):
+    def dts_creator(model_spec, dataset_spec, verbose: bool):
         """
         Create spec, for dts.
         :return:
         """
-        return ModelSpecDTC(model_spec, dataset_spec)
+        return ModelSpecDTC(model_spec, dataset_spec, verbose=verbose)
 
     def set_active_model(self) -> None:
         """
@@ -260,7 +257,7 @@ class ExperimentSpecs:
         # get dispatch and pass to creator and update current
         # active model spec
         spec_dispatcher = self.spec_dispatcher[self.active_model]
-        self._model_spec = spec_dispatcher(self.models_specs[self.active_model], self.dataset_specs)
+        self._model_spec = spec_dispatcher(self.models_specs[self.active_model], self.dataset_specs, self._verbose)
 
         if self.active_model not in self.models_specs:
             raise TrainerSpecError("config.yaml doesn't contain model {}.".format(self.active_model))
@@ -452,9 +449,9 @@ class ExperimentSpecs:
         """
         path_to_dir = self.resolve_home(self.get_dataset_dir())
         file_meta_kv = self.load_text_file(metadata_file)
-        files = self.model_files.make_file_dict(path_to_dir,
-                                                file_type_filter,
-                                                filter_dict=file_meta_kv)
+        files = self.model_files._make_file_dict(path_to_dir,
+                                                 file_type_filter,
+                                                 filter_dict=file_meta_kv)
 
         logger.debug("Updating metadata {}", metadata_file)
         for k in file_meta_kv:
@@ -655,8 +652,7 @@ class ExperimentSpecs:
             raise TrainerSpecError("Initialize settings first")
 
         if 'fp16' in self._setting:
-            if self._verbose:
-                fmtl_print("Model uses fp16", self._setting['fp16'])
+            logger.debug(f"Model uses fp16 {self._setting['fp16']}")
             return self._setting['fp16']
 
         return False
@@ -768,6 +764,10 @@ class ExperimentSpecs:
         if self._setting is None:
             raise TrainerSpecError("Initialize settings first")
 
+        # when we overfiting we take only 1 example
+        if self._overfit:
+            return 1
+
         if 'batch_size' in self._setting:
             return int(self._setting['batch_size'])
 
@@ -822,7 +822,7 @@ class ExperimentSpecs:
                 continue
             if 'state' in _model[k]:
                 if _model[k]['state'].lower() == 'disabled'.lower():
-                    print("model disabled")
+                    logger.debug(f"Model {k} disabled.")
                     continue
             sub_models.append(k)
         return sub_models
@@ -1431,3 +1431,15 @@ class ExperimentSpecs:
 
     def is_backup_before_save(self):
         pass
+
+    def set_overfit(self):
+        """
+        :return:
+        """
+        self._overfit = True
+
+    def is_overfit(self):
+        """
+        :return:
+        """
+        return self._overfit

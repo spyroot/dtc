@@ -2,85 +2,81 @@
 #  TODO check shuffle
 #  TODO Metric plot
 #  TODO Loss plot.
+# import torch.distributed as dist
 import os
 import queue
 import random
-import socket
-import time
 from abc import ABC
 from typing import Callable, Optional
 
-from models.tacatronv30.model import Tacotron3
-from models.tacotronv25.model import Tacotron25
-from tacotron2.plotting_utils import plot_alignment_to_numpy, plot_spectrogram_to_numpy
-
 import numpy as np
 import torch
-# import torch.distributed as dist
-import math
-
-from loguru import logger
 import torch.distributed as dist
+import torch.optim.lr_scheduler as lr_scheduler
+from loguru import logger
+from numpy import finfo
 from torch import Tensor
 from torch import nn
+from torch import optim
+from torch.nn.utils import clip_grad_norm_
+from tqdm import tqdm, tnrange
 
+from model_trainer.base_trainer import TrainerError, AbstractTrainer
+from model_trainer.callbacks.base import BaseCallbacks, Callback
 from model_trainer.distributed_wrapper import DistributedDataWrapper
+#from model_trainer.trainer_logger import TensorboardTrainerLogger
 from model_trainer.trainer_metrics import Metrics
-from model_trainer.trainer_logger import TensorboardTrainerLogger
 from model_trainer.trainer_specs import ExperimentSpecs
 # from distributed import apply_gradient_allreduce
 from models.loss_function import Tacotron2Loss
-from tacotron2.utils import fmtl_print, to_gpu
-from numpy import finfo
-from torch.nn.utils import clip_grad_norm_
-from model_trainer.base_trainer import TrainerError, AbstractTrainer
-from tqdm import tqdm, tnrange
-import torch.optim.lr_scheduler as lr_scheduler
-from torch import optim
-from torch.optim import Optimizer
+from models.tacatronv30.model import Tacotron3
+from models.tacotronv25.model import Tacotron25
+from model_trainer.plotting_utils import plot_alignment_to_numpy, plot_spectrogram_to_numpy
+from model_trainer.utils import fmtl_print, to_gpu
 
 # from torch.nn.parallel import DistributedDataParallel
 # from torch.autograd import Variable
 # import numpy as np
+import ray
+from ray import tune
 
-try:
-    import ray
-    from ray import tune
-    from ray.tune.schedulers import ASHAScheduler
-except ImportError:
-    logger.info("ray not found")
-    pass
+# try:
+#     import ray
+#     from ray import tune
+#     from ray.tune.schedulers import ASHAScheduler
+# except ImportError:
+#     logger.info("ray not found")
+#     pass
 
 import matplotlib.pylab as plt
-
 from text import text_to_sequence
 
-try:
-    O_BINARY = os.O_BINARY
-except:
-    O_BINARY = 0
-
-READ_FLAGS = os.O_RDONLY | O_BINARY
-WRITE_FLAGS = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | O_BINARY
-BUFFER_SIZE = 128 * 1024
-
-
-def copyfile(src, dst):
-    try:
-        fin = os.open(src, READ_FLAGS)
-        stat = os.fstat(fin)
-        fout = os.open(dst, WRITE_FLAGS, stat.st_mode)
-        for x in iter(lambda: os.read(fin, BUFFER_SIZE), ""):
-            os.write(fout, x)
-    finally:
-        try:
-            os.close(fin)
-        except:
-            pass
-        try:
-            os.close(fout)
-        except:
-            pass
+# try:
+#     O_BINARY = os.O_BINARY
+# except:
+#     O_BINARY = 0
+#
+# READ_FLAGS = os.O_RDONLY | O_BINARY
+# WRITE_FLAGS = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | O_BINARY
+# BUFFER_SIZE = 128 * 1024
+#
+#
+# def copyfile(src, dst):
+#     try:
+#         fin = os.open(src, READ_FLAGS)
+#         stat = os.fstat(fin)
+#         fout = os.open(dst, WRITE_FLAGS, stat.st_mode)
+#         for x in iter(lambda: os.read(fin, BUFFER_SIZE), ""):
+#             os.write(fout, x)
+#     finally:
+#         try:
+#             os.close(fin)
+#         except:
+#             pass
+#         try:
+#             os.close(fout)
+#         except:
+#             pass
 
 
 class Trainer(AbstractTrainer, ABC):
@@ -99,7 +95,8 @@ class Trainer(AbstractTrainer, ABC):
                  disable_pbar: Optional[int] = False,
                  device: Optional[int] = torch.device,
                  cuda_device_id: Optional[int] = 0,
-                 is_inference: Optional[bool] = False) -> None:
+                 is_inference: Optional[bool] = False,
+                 callback: Optional[list[Callback]] = None) -> None:
         """
 
         :param trainer_spec:  a trainer spec , trainer uses to train model
@@ -122,10 +119,11 @@ class Trainer(AbstractTrainer, ABC):
                                       device=device,
                                       cuda_device_id=cuda_device_id,
                                       is_inference=is_inference)
+        self.set_logger(verbose)
         #
         self.device = device
         # dict that hold all schedulers that trainer need to use
-        self.schedulers = {}
+        self._schedulers = {}
         # dict hold all optimizers. ( note trainer can train 2 model like in gan settings)
         self._optimizers = {}
 
@@ -167,15 +165,14 @@ class Trainer(AbstractTrainer, ABC):
             # clip or not grad
             self.clip_grad = trainer_spec.is_grad_clipped()
 
-            self.tf_logger = TensorboardTrainerLogger(trainer_spec.tensorboard_update_rate())
+            # self.tf_logger = TensorboardTrainerLogger(trainer_spec.tensorboard_update_rate())
             self.metric = Metrics(metric_step_file_path=trainer_spec.model_files.get_metric_file_path(),
                                   metric_batch_file_path=trainer_spec.model_files.get_time_file_path(),
                                   metric_perf_trace_path=trainer_spec.model_files.get_metric_batch_file_path(),
                                   num_epochs=self.trainer_spec.epochs(), num_batches=self.total_batches,
                                   verbose=False)
 
-        # tensorboard writer
-        self.t_writer = None
+        self._callback = BaseCallbacks(callbacks=callback)
         logger.info("Device ID {}".format(self.cuda_device_id))
         # main queue note that train loop can re-add model back for training.
         self.q = queue.Queue()
@@ -393,8 +390,8 @@ class Trainer(AbstractTrainer, ABC):
                 raise TrainerError("model has no optimizer_state_dict")
 
             # if model has scheduler, re-create.
-            if model_name in self.schedulers:
-                self.schedulers[model_name].load_state_dict(checkpoint['scheduler_state_dict'])
+            if model_name in self._schedulers:
+                self._schedulers[model_name].load_state_dict(checkpoint['scheduler_state_dict'])
                 if 'scheduler_state_dict' not in checkpoint:
                     raise TrainerError("model has no scheduler_state_dict")
 
@@ -472,7 +469,7 @@ class Trainer(AbstractTrainer, ABC):
             logger.info("Last checkpoint. epoch {} step {}".format(checkpoint['epoch'], checkpoint['it']))
             return checkpoint['epoch'], checkpoint['it']
         except FileNotFoundError as e:
-            print("Failed load model files {}. No saved model found.".format(model_file))
+            print("Failed load model files {}. No saved model found. {}".format(model_file, e))
             logger.info("No model file to load model file, return default epoch 0, iteration 0")
 
         return 0, 0
@@ -517,14 +514,14 @@ class Trainer(AbstractTrainer, ABC):
         # tqdm_iter.set_postfix({'total_epoch_loss': 0})
         return tqdm_iter
 
-    def load_models(self) -> None:
-        """
-        For each active model, which might consist of more than one model.
-        :return:
-        """
-        models = self.trainer_spec.get_active_sub_models()
-        for m in models:
-            self.load(m)
+    # def load_models(self) -> None:
+    #     """
+    #     For each active model, which might consist of more than one model.
+    #     :return:
+    #     """
+    #     models = self.trainer_spec.get_active_sub_models()
+    #     for m in models:
+    #         self.load(m)
 
     def reduce_if_needed(self, loss):
         """
@@ -565,8 +562,6 @@ class Trainer(AbstractTrainer, ABC):
 
         if model_name not in self._models:
             raise TrainerError(f"Can't create optimizer, {model_name} not found in model list.")
-
-        print(self._models[model_name])
 
         if layer_name not in self._models[model_name]:
             raise TrainerError(f"{str(self.trainer_spec.config_file_name)} "
@@ -682,7 +677,7 @@ class Trainer(AbstractTrainer, ABC):
         else:
             raise ValueError("unknown scheduler: {}".format(lr_scheduler_type))
 
-        self.schedulers[model_name] = scheduler
+        self._schedulers[model_name] = scheduler
         return scheduler
 
     def create_lr_schedulers(self) -> None:
@@ -704,25 +699,23 @@ class Trainer(AbstractTrainer, ABC):
         #     logger.debug("Attaching lr scheduler.")
         #     self.create_lr_scheduler(model_name, layer, opt)
 
-    def save_if_need(self, model_name: str, epoch: int,
+    def save_if_need(self, model_name: str, layer_name: str,
+                     epoch: int,
                      step: Optional[int] = 0,
-                     last_epoch=False,
-                     save_callback: Optional[Callable] = None) -> bool:
+                     last_epoch=False) -> bool:
         """
         Method called by trainer, to check if model 
         or model layer need to save or not.
         
+        :param layer_name:
         :param epoch: current epoch
         :param step: Current step in iteration , monotonic counter.
         :param model_name:  active model
         :param last_epoch: if it last we save a model.
-        :param save_callback:  callback called when model saved        
         """
         # by default condition to save epoch , if save per iteration we check iteration.
-        if self.trainer_spec.is_save_required() is False:
-            return False
-
-        if last_epoch is False and step == 0:
+        if self.trainer_spec.is_save_required() is False or step == 0 or \
+                self.trainer_spec.epochs_save() == 0:
             return False
 
         # in case we run distributed no need save.
@@ -731,55 +724,42 @@ class Trainer(AbstractTrainer, ABC):
 
         # model save predicate condition, either iteration or epoch counter.
         # for large model it makes sense to track iteration vs epoch counter.
-        model_file = self.trainer_spec.model_files.get_model_file_path(model_name)
+        model_file = self.trainer_spec.model_files.get_model_file_path(layer_name)
         save_condition = epoch if self.trainer_spec.is_save_iteration() else step
 
         # do nothing
-        if self.trainer_spec.epochs_save() != 0 and last_epoch is not True:
-            return False
+        if last_epoch is True or save_condition % self.trainer_spec.epochs_save() == 0:
+            if self.trainer_spec.is_train_verbose():
+                logger.info('Saving node model {}'.format(model_file))
+                self._callback.saving_start()
+                # backup before safe.
+                # if self.trainer_spec.is_backup_before_save():
+                #     self.backup_model(model_file)
 
-        if self.trainer_spec.is_train_verbose():
-            logger.info('Saving node model {}'.format(model_file))
+            if model_name in self._schedulers:
+                logger.info("Model saving with optimizer and scheduler state.")
+                torch.save({
+                    'epoch': epoch, 'it': step,
+                    'model_state_dict': self._models[model_name][layer_name].state_dict(),
+                    'optimizer_state_dict': self._optimizers[model_name][layer_name].state_dict(),
+                    'scheduler_state_dict': self._schedulers[model_name].state_dict()
+                }, model_file)
+            else:
+                logger.info("Model saving with optimizer without a scheduler state.")
+                torch.save({
+                    'epoch': epoch,
+                    'it': step,
+                    'model_state_dict': self._models[model_name][layer_name].state_dict(),
+                    'optimizer_state_dict': self._optimizers[model_name][layer_name].state_dict(),
+                    #    'scheduler_state_dict': self.schedulers[model_name].state_dict()
+                }, model_file)
 
-        # backup before safe.
-        if self.trainer_spec.is_backup_before_save():
-            self.backup_model(model_file)
+            self._callback.saved()
+            # save metrics
+            self.metric.save()
+            return True
 
-        if model_name in self.schedulers:
-            logger.info("Model saving with optimizer and scheduler state.")
-            torch.save({
-                'epoch': epoch, 'it': step,
-                'model_state_dict': self._models[model_name].state_dict(),
-                'optimizer_state_dict': self._optimizers[model_name].state_dict(),
-                'scheduler_state_dict': self.schedulers[model_name].state_dict()
-            }, model_file)
-        else:
-            logger.info("Model saving with optimizer without a scheduler state.")
-            torch.save({
-                'epoch': epoch,
-                'it': step,
-                'model_state_dict': self._models[model_name].state_dict(),
-                'optimizer_state_dict': self._optimizers[model_name].state_dict(),
-                #    'scheduler_state_dict': self.schedulers[model_name].state_dict()
-            }, model_file)
-
-        if save_callback is not None:
-            save_callback(model_file)
-
-        self.metric.save()
-        return True
-
-    def log_if_needed(self, it, reduced_loss, grad_norm, duration):
-        """
-
-        :param it:
-        :param reduced_loss:
-        :param grad_norm:
-        :param duration:
-        :return:
-        """
-        if self.rank == 0 and it % self.trainer_spec.epochs_log() == 0:
-            print("Train loss {} {:.6f} Grad Norm {:.6f} {:.2f}s/it".format(it, reduced_loss, grad_norm, duration))
+        return False
 
     def validate_epoch(self, model: nn.Module, model_name: str, layer_name: str, step: Optional[int] = None):
         """
@@ -796,29 +776,52 @@ class Trainer(AbstractTrainer, ABC):
         # take a batch.
         logger.info(f"Running validation for {model_name} {layer_name}")
 
+        self._callback.validation_start()
         take_batch = self._batch_loader[model_name][layer_name]
         model.eval()
         with torch.no_grad():
             total_prediction_loss = 0.0
-            for i, batch in enumerate(self.validation_loader):
+            for batch_idx, batch in enumerate(self.validation_loader):
                 x, y = take_batch(batch, self.device)
                 y_pred = model(x)
                 # our loss mel_loss + gate_loss
-                loss = self.criterion(y_pred, y)
-                print("validation loss", loss.item())
+                criterion_out = self.criterion(y_pred, y)
+                mel_loss = criterion_out['mel_loss']
+                gate_loss = criterion_out['gate_loss']
+                loss = criterion_out['loss']
+
                 if self.trainer_spec.is_distributed_run():
                     reduced_val_loss = self.split_tensor(loss.data, self.n_gpus).item()
                 else:
                     reduced_val_loss = loss.item()
                 total_prediction_loss += reduced_val_loss
+
+                self.tqdm_iter.set_postfix({'step': step,
+                                            'loss': loss.item(),
+                                            'batch_loss': total_prediction_loss // max(1, batch_idx + 1),
+                                            'avg loss': self.metric.total_mean_loss(),
+                                            'mel_loss': mel_loss.item(),
+                                            'gate_loss': gate_loss.item(),
+                                            'clip_loss': loss.item(),
+                                            'batch': batch_idx,
+                                            'saved step': self.saved_run})
             # normalize
             total_prediction_loss = total_prediction_loss / (len(self.validation_loader) + 1)
+        self._callback.validation_end()
 
+        # tune.report(loss=total_prediction_loss)
         model.train()
-        if self.rank == 0:
+       # if self.rank == 0:
             # t_writer.add_scalar('val_loss_' + model_name, loss.item(), it)
             # print("Validation loss {}: {:9f}  ".format(it, total_prediction_loss))
-            self.tf_logger.log_validation(total_prediction_loss, model, y, y_pred, step=step)
+            # criterions = {
+            #     "train_normal_loss": normal_loss,
+            #     "train_clipped_loss": grad_norm,
+            #     "train_mel_loss": mel_loss.item(),
+            #     "train_gate_loss": mel_loss.item(),
+            #     "total_prediction_loss": total_prediction_loss,
+            # }
+         #   self.tf_logger.log_validation(total_prediction_loss, model, y, y_pred, step=step)
 
         return total_prediction_loss
 
@@ -926,20 +929,22 @@ class Trainer(AbstractTrainer, ABC):
         # else:
         #     device = self.device
 
-        current_total_loss = 0
         total_accuracy = 0
+        current_total_loss = 0
         step = self.get_last_iterator(model_name, layer_name)
+        self._callback.on_loader_begin()
         for batch_idx, batch in enumerate(self.train_loader):
-            # start = time.perf_counter()
-            # for param_group in self.optimizer[model_name].param_groups:
-            #     param_group['lr'] = learning_rate
+            self._callback.on_batch_begin()
             model.zero_grad(set_to_none=True)
             x, y = take_batch(batch, device)
             y_pred = model(x)
-
             # if self.trainer_spec.is_distributed_run():
             #     reduced_loss = dist.reduce_tensor(loss.data, n_gpus).item()
-            loss = self.criterion(y_pred, y)
+            criterion_out = self.criterion(y_pred, y)
+            mel_loss = criterion_out['mel_loss']
+            gate_loss = criterion_out['gate_loss']
+            loss = criterion_out['loss']
+
             current_total_loss += loss.item()
             normal_loss = loss.item()
 
@@ -952,6 +957,7 @@ class Trainer(AbstractTrainer, ABC):
                 self.metric.update(batch_idx, step, normal_loss)
 
             optimizer.step()
+            self._callback.on_batch_begin()
             # run lr_scheduler
             if scheduler is not None:
                 scheduler.step()
@@ -962,9 +968,9 @@ class Trainer(AbstractTrainer, ABC):
                                             'loss': normal_loss,
                                             'batch_loss': current_total_loss // max(1, batch_idx + 1),
                                             'avg loss': self.metric.total_mean_loss(),
-                                            # 'acc': prediction_accuracy,
-                                            # 'acc_total': prediction_accuracy,
-                                            'grad_norm': grad_norm.item(),
+                                            'mel_loss': mel_loss.item(),
+                                            'gate_loss': gate_loss.item(),
+                                            'clip_loss': grad_norm.item(),
                                             'batch': batch_idx,
                                             'lr': optimizer.param_groups[0]['lr'],
                                             'saved step': self.saved_run})
@@ -974,25 +980,37 @@ class Trainer(AbstractTrainer, ABC):
             #     total_accuracy += prediction_accuracy
 
             # save model checkpoint if needed
-            if self.rank == 0 and self.save_if_need(model_name, self.epoch, step=step):
+            if self.rank == 0 and self.save_if_need(model_name=model_name, layer_name=layer_name,
+                                                    epoch=self.epoch, step=step):
+                print("Updating saved")
                 self.saved_run = step
 
             # dist.barrier()
             # hparam we want track.
-            hparams = \
-                {
-                    'lr': optimizer.param_groups[0]['lr'],
-                    'batch_size': self.trainer_spec.batch_size}, \
-                {
-                    # 'hparam/accuracy': prediction_accuracy,
-                    'hparam/loss': float(loss.item()),
-                    'hparam/grad_norm': float(grad_norm.item())
-                }
-            self.tf_logger.log_training(normal_loss, step, grad_norm,
-                                        optimizer.param_groups[0]['lr'],
-                                        hparams)
+            hparams = {
+                'lr': optimizer.param_groups[0]['lr'],
+                'batch_size': self.trainer_spec.batch_size,
+            }
+
+            metrics = {
+                'hparam/loss': normal_loss,
+                'hparam/grad_norm': grad_norm,
+                'hparam/mel_los': mel_loss,
+                'hparam/gate_loss': grad_norm,
+            }
+
+            criterions = {
+                "train_normal_loss": normal_loss,
+                "train_clipped_loss": grad_norm,
+                "train_mel_loss": mel_loss,
+                "train_gate_loss": gate_loss,
+            }
+
+            # self.tf_logger.log_training(criterions, step, optimizer.param_groups[0]['lr'],
+            #                             hparams=hparams, metrics=metrics)
             step += 1
 
+        self._callback.on_loader_end()
         self._steps[layer_name] = step
         return step
 
@@ -1051,14 +1069,13 @@ class Trainer(AbstractTrainer, ABC):
     def cleanup(self):
         """
         Cleanup call
-        :param rank:
         :return:
         """
         dist.destroy_process_group()
         logger.info(f"Rank {self.rank} is done.")
 
     @staticmethod
-    def reduce_tensor(self, tensor: Tensor, n_gpus) -> Tensor:
+    def reduce_tensor(tensor: Tensor, n_gpus) -> Tensor:
         """
         Reduce tensor based on number of gpu
         :param tensor:
@@ -1098,9 +1115,9 @@ class Trainer(AbstractTrainer, ABC):
         optimizer = self._optimizers[model_name][layer_name]
         scheduler = None
 
-        if layer_name in self.schedulers:
+        if layer_name in self._schedulers:
             logger.info("Model {} contains a scheduler".format(model_name))
-            scheduler = self.schedulers[model_name]
+            scheduler = self._schedulers[model_name]
 
         # if self.trainer_spec.is_distributed_run():
         #     logger.info("Running in distributed model. applying gradient reduce.".format(model_name))
@@ -1133,16 +1150,25 @@ class Trainer(AbstractTrainer, ABC):
         model, optimizer, scheduler, step = self.prepare_trainer(model_name, layer_name)
 
         if layer_name in self._steps:
-            logger.info("Epoch saved out of",
-                        self._last_ckt_epochs[model_name][layer_name],
-                        self.trainer_spec.epochs())
-            logger.info("Last iteration saved", self._steps[layer_name])
+            logger.info(f"Epoch saved out of",
+                        {self._last_ckt_epochs[model_name][layer_name]},
+                        {self.trainer_spec.epochs()})
+            logger.info(f"Last iteration saved {self._steps[layer_name]}")
 
         # if self.trainer_spec.is_distributed_run():
         #     model = dist
         model.train()
         self.tqdm_iter.set_postfix({'step': step})
+        self._callback.on_begin()
+
+        checkpoint_dir = self.trainer_spec.model_files.get_model_dir()
+        if checkpoint_dir:
+            model_state, optimizer_state = torch.load(os.path.join(checkpoint_dir, "checkpoint"))
+            model.load_state_dict(model_state)
+            optimizer.load_state_dict(optimizer_state)
+
         for epoch in self.tqdm_iter:
+            self._callback.on_epoch_begin()
             if self.trainer_spec.is_distributed_run():
                 dist.barrier()
             # update epoch
@@ -1151,18 +1177,26 @@ class Trainer(AbstractTrainer, ABC):
             self.metric.start_epoch_timer(epoch)
             step = self.train_epoch(model, model_name, layer_name, optimizer)
             self.metric.update_epoch_timer(epoch)
-            self.validate_epoch(model, model_name, layer_name, epoch)
+            validation_loss = self.validate_epoch(model, model_name, layer_name, epoch)
+            self._callback.on_epoch_end()
+            with tune.checkpoint_dir(epoch) as checkpoint_dir:
+                path = os.path.join(checkpoint_dir, "checkpoint")
+                torch.save((model.state_dict(), optimizer.state_dict()), path)
+            tune.report(loss=validation_loss)
+
+        self._callback.on_end()
 
         # save
-        if self.rank == 0 and self.save_if_need(model_name, step,
+        if self.rank == 0 and self.save_if_need(model_name, layer_name, step,
                                                 self.trainer_spec.epochs(),
                                                 last_epoch=True):
             logger.info(f"Saving {self.trainer_spec.epochs()} last epoch.")
+        self._callback.on_epoch_end()
         return step
 
-    def train(self, model_name=None):
+    def train(self, model_name=None, config=None):
         """
-
+        :param config:
         :param model_name:
         :return:
         """
@@ -1173,6 +1207,7 @@ class Trainer(AbstractTrainer, ABC):
         #     self.load_models()
         # if self.trainer_spec.is_distributed_run():
         #     #torch.cuda.set_device(self.device)
+        print("################# Started")
 
         torch.cuda.empty_cache()
         model_name = self.trainer_spec.get_active_mode()
@@ -1183,104 +1218,32 @@ class Trainer(AbstractTrainer, ABC):
                    Check file {}".format(self.trainer_spec.model_files.get_model_file_path(model_name)))
             return
 
+        # last_step = 0
         strategy = self.trainer_spec.get_training_strategy(model_name)
         if strategy == 'sequential':
             for layer in model_layers:
                 self.q.put(layer)
             while not self.q.empty():
-                layer_name = self.q.get()
-                last_step = self.sequential(model_name, layer_name)
 
-        if self.rank == 0 and self.save_if_need(model_name, last_step, self.trainer_spec.epochs(), last_epoch=True):
-            if self.verbose:
-                fmtl_print("Saved last epoch", self.trainer_spec.epochs())
+                layer_name = self.q.get()
+                # update whatever we need
+                if config is not None:
+                    if 'batch_size' in config:
+                        self.data_loader.update_batch(int(config["batch_size"]))
+                        self.train_loader, self.validation_loader, self.collate_fn = self.data_loader.get_loader()
+                    if 'lr' in config:
+                        for param_group in self._optimizers[model_name][layer_name].param_groups:
+                            param_group['lr'] = config["lr"]
+                # run model
+                last_step = self.sequential(model_name, layer_name)
+                if self.rank == 0 and self.save_if_need(model_name=model_name,
+                                                        layer_name=layer_name, epoch=self.trainer_spec.epochs(),
+                                                        step=last_step,
+                                                        last_epoch=True):
+                    if self.verbose:
+                        fmtl_print("Saved last epoch", self.trainer_spec.epochs())
 
         self.cleanup()
-
-        def train_scaled(self, model_name='encoder'):
-            """Training and validation logging results to tensorboard and stdout
-
-            Params
-            ------
-            output_directory (string): directory to save checkpoints
-            log_directory (string) directory to save tensorboard logs
-            checkpoint_path(string): checkpoint path
-            n_gpus (int): number of gpus
-            rank (int): rank of current gpu
-            hparams (object): comma separated list of "name=value" pairs.
-            """
-
-            # torch.manual_seed(self.model_spec.seed())
-            # torch.cuda.manual_seed(self.model_spec.seed())
-            #
-            self.load_models()
-
-            #
-            model = self._models[model_name].to(self.device)
-            tqdm_iter = self.trainer_iterator(model_name)
-            learning_rate = self.trainer_spec.learning_rate
-
-            optimizer = self._optimizers[model_name]
-            #
-            if self.trainer_spec.is_fp16_run():
-                from apex import amp
-                model, optimizer = amp.initialize(model, optimizer, opt_level='O2')
-            #
-            #    if self.trainer_spec.is_distributed_run():
-            # model = apply_gradient_allreduce(model)
-            #
-            #
-            # # logger = prepare_directories_and_logger(
-            # #     output_directory, log_directory, rank)
-            #
-            #
-            # # Load checkpoint if one exists
-            iteration = 0
-            epoch_offset = 0
-            # if checkpoint_path is not None:
-            #     if warm_start:
-            #         # model = warm_start_model(
-            #         #     checkpoint_path, model, hparams.ignore_layers)
-            #     else:
-            #         model, optimizer, _learning_rate, iteration = self.load_checkpoint(checkpoint_path, model, optimizer)
-            #         if self.model_spec.use_saved_learning_rate:
-            #             learning_rate = _learning_rate
-            #         iteration += 1  # next iteration is iteration + 1
-            #         epoch_offset = max(0, int(iteration / len(self.train_loader)))
-
-            model.train()
-            is_overflow = False
-            for epoch in tqdm_iter:
-                total_epoch_loss = 0
-                for i, batch in enumerate(self.train_loader):
-                    start = time.perf_counter()
-                    # for param_group in self.optimizer[model_name].param_groups:
-                    #     param_group['lr'] = learning_rate
-
-                    model.zero_grad()
-                    x, y = self.prepare_batch(batch)
-                    with torch.cuda.amp.autocast():
-                        y_pred = model(x)
-
-                    loss = self.criterion(y_pred, y)
-                    total_epoch_loss += loss.item()
-
-                    # reduced_loss = self.split_tensor(loss.data).item()
-                    #     else:
-                    #         reduced_loss = loss.item()
-                    #
-
-                    self.scaler.scale(loss).backward()
-                    grad_norm = clip_grad_norm_(model.parameters(), self.trainer_spec.grad_clip_thresh)
-                    is_overflow = math.isnan(grad_norm)
-
-                    self.scaler.step(optimizer)
-                    self.scaler.update()
-
-                    # save model checkpoint
-                    if self.save_if_need(model_name, iteration, epoch):
-                        tqdm_iter.set_postfix({'total_epoch_loss': total_epoch_loss, 'saved': True})
-                    iteration += 1
 
     def is_trained(self, model_name: str) -> bool:
         """
@@ -1340,130 +1303,13 @@ class Trainer(AbstractTrainer, ABC):
             t_writer.add_histogram(f'{name}.grad', weight.grad, epoch)
         # tune.report(loss=(val_loss / val_steps), accuracy=correct / total)
 
-    def backup_model(self, model_file):
-        """
-
-        :param model_file:
-        :return:
-        """
-        from datetime import datetime
-        dateTimeObj = datetime.now()
-        copyfile.copy(model_file, f"{dateTimeObj.year}{dateTimeObj.month}{dateTimeObj.day}_{model_file}_")
-
+    # def backup_model(self, model_file):
+    #     """
     #
-# def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
-#     config = {
-#         "l1": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
-#         "l2": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
-#         "lr": tune.loguniform(1e-4, 1e-1),
-#         "batch_size": tune.choice([2, 4, 8, 16])
-#     }
-#
-#     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-#     experiment_specs = ExperimentSpecs(verbose=False)
-#     dataloader = Mel_Dataloader(experiment_specs, verbose=False)
-#     trainer = Trainer(experiment_specs, dataloader, verbose=True, device=device)
-#
-#     scheduler = ASHAScheduler(
-#         max_t=max_num_epochs,
-#         grace_period=1,
-#         reduction_factor=2)
-#     result = tune.run(
-#         tune.with_parameters(trainer.train()),
-#         resources_per_trial={"cpu": 2, "gpu": gpus_per_trial},
-#         config=config,
-#         metric="loss",
-#         mode="min",
-#         num_samples=num_samples,
-#         scheduler=scheduler
-#     )
-#
-#     best_trial = result.get_best_trial("loss", "min", "last")
-#     print("Best trial config: {}".format(best_trial.config))
-#     print("Best trial final validation loss: {}".format(
-#         best_trial.last_result["loss"]))
-#     print("Best trial final validation accuracy: {}".format(
-#         best_trial.last_result["accuracy"]))
-#
-#     if ray.util.client.ray.is_connected():
-#         # If using Ray Client, we want to make sure checkpoint access
-#         # happens on the server. So we wrap `test_best_model` in a Ray task.
-#         # We have to make sure it gets executed on the same node that
-#         # ``tune.run`` is called on.
-#         from ray.util.ml_utils.node import force_on_current_node
-
-
-#     remote_fn = force_on_current_node(ray.remote(test_best_model))
-#  ray.get(remote_fn.remote(best_trial))
-# else:
-# test_best_model(best_trial)
-
-
-#
-# if is_inference:
-#     # trainer = Trainer(experiment_specs, dataloader, verbose=True, device=device)
-#     # text = "Hello world, I missed you so much."
-#     # utils = torch.hub.load('NVIDIA/DeepLearningExamples:torchhub', 'nvidia_tts_utils')
-#     # sequences, lengths = utils.prepare_input_sequence([text])
-#
-#     text = "artist would have difficulty in doing such accurate work"
-#     sequence = np.array(text_to_sequence(text, ['english_cleaners']))[None, :]
-#     sequence = torch.autograd.Variable(torch.from_numpy(sequence)).cuda().long()
-#
-#     # model_math = 'fp16'
-#     waveglow = torch.hub.load('NVIDIA/DeepLearningExamples:torchhub', 'nvidia_waveglow')
-#     waveglow = waveglow.remove_weightnorm(waveglow)
-#     waveglow = waveglow.to('cuda')
-#     waveglow.eval()
-#
-#     with torch.no_grad():
-#         print(sequence)
-#         mel_outputs, mel_outputs_post_net, alignments = trainer.inference(sequence)
-#         audio_from_mel = waveglow.infer(mel_outputs)
-#         audio_from_post = waveglow.infer(mel_outputs_post_net)
-#         print("waveglow return mel", audio_from_mel.shape)
-#         print("waveglow return post", audio_from_post.shape)
-#
-#         audio_numpy_mel = audio_from_mel[0].data.cpu().numpy()
-#         audio_numpy_post = audio_from_post[0].data.cpu().numpy()
-#         #
-#         rate = 22050
-#         from scipy.io.wavfile import write
-#
-#         write("audio_mel.wav", rate, audio_numpy_mel)
-#         write("audio_from_post.wav", rate, audio_numpy_post)
-
-# mel_outputs, mel_outputs_postnet, _, alignments = model.inference(sequence)
-# plot_data((mel_outputs.float().data.cpu().numpy()[0],
-#            mel_outputs_postnet.float().data.cpu().numpy()[0],
-#            alignments.float().data.cpu().numpy()[0].T))
-
-# train_loader, val_loader, xx = dataloader.create()
-# for i, batch in enumerate(train_loader):
-#     print(dir(batch))
-
-# model.zero_grad()
-# x, y = model.parse_batch(batch)
-# y_pred = model(x)
-
-# trainer.train()
-
-# train_set = TextMelLoader(encoder_spec, list(training_set.values()))
-#
-# start = timeit.timeit()
-# print("hello")
-# end = timeit.timeit()
-# for mel, text in train_set:
-#     mel, text = train_set.__getitem__(0)
-# print(end - start)
-
-# print("size of dataset", len(train_set))
-# print(text.shape)
-# print(mel.shape)
-# model_trainer_spec.build_training_set_from_files()
-# print(model_trainer_spec.dataset_specs['dir'])
-# training_set, validation_set, test_set = model_trainer_spec.get_audio_ds_files()
-# trainer = Trainer(model_trainer_spec)
-# train_set = TextMelLoader(model_trainer_spec, list(training_set.values()))
-# val_set = TextMelLoader(hparams.validation_files, hparams)
-# collate_fn = TextMelCollate(hparams.n_frames_per_step)
+    #     :param model_file:
+    #     :return:
+    #     """
+    #     from datetime import datetime
+    #     dateTimeObj = datetime.now()
+    #     copyfile.copy(model_file, f"{dateTimeObj.year}{dateTimeObj.month}{dateTimeObj.day}_{model_file}_")
+    #

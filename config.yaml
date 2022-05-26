@@ -88,7 +88,7 @@ settings:
     console_log_rate: 10        # when to log to console
     start_test: 20              # when to start run a validation test.
     epochs_test: 20             # epoch mod epochs_test_rate to start testing
-    epochs_save: 5              # when to save
+    epochs_save: 5              # rate when to save
     save_per_iteration: True    # if we want save per iteration for large model make sense not to wait
     seed: 1234                  # fix seed
     epochs: 2                   # total epochs

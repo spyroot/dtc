@@ -100,3 +100,15 @@ models:
 
     def __str__(self):
         return str(self._model_dict)
+
+    @staticmethod
+    def set_logger(is_enable: bool) -> None:
+        """
+        Sets logging level.
+        :param is_enable:
+        :return:
+        """
+        if is_enable:
+            logger.enable(__name__)
+        else:
+            logger.disable(__name__)

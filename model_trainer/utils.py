@@ -1,7 +1,5 @@
-from typing import Tuple
 import numpy as np
 import torch
-from torch import Tensor
 from scipy.io.wavfile import read as wav_reader
 
 
@@ -76,7 +74,7 @@ def load_filepaths_and_text(filename, split="|"):
     return filepaths_and_text
 
 
-def to_gpu(x, device):
+def to_gpu(x, device=None):
     """
     :param x:
     :param device:

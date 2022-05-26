@@ -32,8 +32,10 @@ class SFTF2Dataset(BaseSFTFDataset, ABC):
                  is_trace_time: Optional[bool] = False,
                  in_memory: Optional[bool] = True,
                  download: Optional[bool] = False,
+                 overfit: Optional[bool] = False,
                  transform: Optional[Callable] = None,
-                 target_transform: Optional[Callable] = None) -> None:
+                 target_transform: Optional[Callable] = None,
+                 verbose: Optional[bool] = False) -> None:
         """
         :param model_spec:
         :param data:  data is dict must hold key data
@@ -57,9 +59,12 @@ class SFTF2Dataset(BaseSFTFDataset, ABC):
                                            shuffle=shuffle,
                                            is_trace_time=is_trace_time,
                                            in_memory=in_memory,
+                                           verbose=verbose,
+                                           overfit=overfit,
                                            transform=transform,
                                            target_transform=target_transform)
         # if raw we need transcode to stft's
+        self.set_logger(verbose)
         if self.is_audio:
             logger.debug("Creating TacotronSTFT for raw file processing.")
             self.stft = TacotronSTFT25(
@@ -109,6 +114,18 @@ class SFTF2Dataset(BaseSFTFDataset, ABC):
         text = self.text_to_tensor(self._data[idx]['meta'])
         mel = self.audiofile_to_mel(self._data[idx]['path'])
         return text, mel
+
+    @staticmethod
+    def set_logger(is_enable: bool) -> None:
+        """
+        Sets logging level.
+        :param is_enable:
+        :return:
+        """
+        if is_enable:
+            logger.enable(__name__)
+        else:
+            logger.disable(__name__)
 
 
 def test_download():
