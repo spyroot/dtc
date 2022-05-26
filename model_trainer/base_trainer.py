@@ -22,7 +22,6 @@ from model_trainer.utils import fmt_print
 # import numpy as np
 
 class TrainerError(Exception):
-    """Base class for other exceptions"""
     pass
 
 
@@ -46,6 +45,7 @@ class AbstractTrainer(ABC, metaclass=ABCMeta):
 
         self.cuda_device_id = cuda_device_id
         self.disable_pbar = disable_pbar
+        self.device = device
 
         self.verbose = verbose
         self.is_notebook = is_notebook

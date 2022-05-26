@@ -10,6 +10,7 @@ from pathlib import Path
 import socket
 
 import numpy as np
+import ray
 import torch
 from loguru import logger
 
@@ -270,12 +271,18 @@ def train(spec=None, cmd_args=None, device=None, verbose=True, cudnn_bench=False
                           verbose=args.verbose, device=device,
                           callback=[BatchTimer()])
 
+        print("Checking serialize 1")
+        pickled_data = pickle.dumps(trainer)
+        print("Checking serialize 2")
+        ray.util.inspect_serializability(trainer)
+
         # import dill
         # d = dill.detect.baditems(trainer)
         #
         # print(d)
         #
-        pickled_data = pickle.dumps(spec)
+        # pickled_data = pickle.dumps(spec)
+        # pickled_data = pickle.dumps(spec)
 
         # sys.exit(1)
         if args.tune:
@@ -500,7 +507,7 @@ if __name__ == '__main__':
         is_distributed = True
 
     try:
-        set_logger(args.verbose)
+        # set_logger(args.verbose)
         main(args)
         # setup_handler(cleanup(is_distributed))
     except FileNotFoundError as file_error:

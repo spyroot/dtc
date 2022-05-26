@@ -24,7 +24,7 @@ from tqdm import tqdm, tnrange
 from model_trainer.base_trainer import TrainerError, AbstractTrainer
 from model_trainer.callbacks.base import BaseCallbacks, Callback
 from model_trainer.distributed_wrapper import DistributedDataWrapper
-#from model_trainer.trainer_logger import TensorboardTrainerLogger
+# from model_trainer.trainer_logger import TensorboardTrainerLogger
 from model_trainer.trainer_metrics import Metrics
 from model_trainer.trainer_specs import ExperimentSpecs
 # from distributed import apply_gradient_allreduce
@@ -33,6 +33,9 @@ from models.tacatronv30.model import Tacotron3
 from models.tacotronv25.model import Tacotron25
 from model_trainer.plotting_utils import plot_alignment_to_numpy, plot_spectrogram_to_numpy
 from model_trainer.utils import fmtl_print, to_gpu
+
+# from multiprocessing import Queue
+from collections import deque
 
 # from torch.nn.parallel import DistributedDataParallel
 # from torch.autograd import Variable
@@ -50,6 +53,7 @@ from ray import tune
 
 import matplotlib.pylab as plt
 from text import text_to_sequence
+
 
 # try:
 #     O_BINARY = os.O_BINARY
@@ -78,7 +82,7 @@ from text import text_to_sequence
 #         except:
 #             pass
 
-
+@AbstractTrainer.register
 class Trainer(AbstractTrainer, ABC):
     """
 
@@ -175,7 +179,7 @@ class Trainer(AbstractTrainer, ABC):
         self._callback = BaseCallbacks(callbacks=callback)
         logger.info("Device ID {}".format(self.cuda_device_id))
         # main queue note that train loop can re-add model back for training.
-        self.q = queue.Queue()
+        self.q = deque()
         # late we will move this to factory
         # type class that will do creation
         self.model_creator, self.trainer_dispatcher, self._batch_loader = self.create_model_dispatch()
@@ -811,17 +815,17 @@ class Trainer(AbstractTrainer, ABC):
 
         # tune.report(loss=total_prediction_loss)
         model.train()
-       # if self.rank == 0:
-            # t_writer.add_scalar('val_loss_' + model_name, loss.item(), it)
-            # print("Validation loss {}: {:9f}  ".format(it, total_prediction_loss))
-            # criterions = {
-            #     "train_normal_loss": normal_loss,
-            #     "train_clipped_loss": grad_norm,
-            #     "train_mel_loss": mel_loss.item(),
-            #     "train_gate_loss": mel_loss.item(),
-            #     "total_prediction_loss": total_prediction_loss,
-            # }
-         #   self.tf_logger.log_validation(total_prediction_loss, model, y, y_pred, step=step)
+        # if self.rank == 0:
+        # t_writer.add_scalar('val_loss_' + model_name, loss.item(), it)
+        # print("Validation loss {}: {:9f}  ".format(it, total_prediction_loss))
+        # criterions = {
+        #     "train_normal_loss": normal_loss,
+        #     "train_clipped_loss": grad_norm,
+        #     "train_mel_loss": mel_loss.item(),
+        #     "train_gate_loss": mel_loss.item(),
+        #     "total_prediction_loss": total_prediction_loss,
+        # }
+        #   self.tf_logger.log_validation(total_prediction_loss, model, y, y_pred, step=step)
 
         return total_prediction_loss
 
@@ -1222,10 +1226,10 @@ class Trainer(AbstractTrainer, ABC):
         strategy = self.trainer_spec.get_training_strategy(model_name)
         if strategy == 'sequential':
             for layer in model_layers:
-                self.q.put(layer)
-            while not self.q.empty():
+                self.q.append(layer)
+            while len(self.q) > 0:
 
-                layer_name = self.q.get()
+                layer_name = self.q.pop()
                 # update whatever we need
                 if config is not None:
                     if 'batch_size' in config:
