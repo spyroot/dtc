@@ -1,7 +1,7 @@
 train: True                 # train or not,  default is True for generation we only need load pre-trained model
 #active: 'grid_small'       # dataset set generated.
 #use_dataset: 'LJSpeechSmallPkl'     # dataset set generated.
-use_dataset: 'LJSpeechSmallRaw'     # dataset set generated.
+use_dataset: 'LJSpeechSmallPkl'     # dataset set generated.
 use_model: 'tacotron25'            # model to use , it must be defined in models section.
 draw_prediction: True       # at the of training draw.
 load_model: True            # load model or not, and what
@@ -51,7 +51,7 @@ datasets:
     test_meta: LJSpeechSmall_test_80.pt
     meta: metadata.csv
     recursive: False
-    file_type: "wav"
+    file_type: "torch"
 
 
 settings:

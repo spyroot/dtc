@@ -271,11 +271,10 @@ def train(spec=None, cmd_args=None, device=None, verbose=True, cudnn_bench=False
                           verbose=args.verbose, device=device,
                           callback=[BatchTimer()])
 
-        print("Checking serialize 1")
-        pickled_data = pickle.dumps(trainer)
-        print("Checking serialize 2")
-        ray.util.inspect_serializability(trainer)
-
+        # print("Checking serialize 1")
+        # pickled_data = pickle.dumps(trainer)
+        # print("Checking serialize 2")
+        # ray.util.inspect_serializability(trainer)
         # import dill
         # d = dill.detect.baditems(trainer)
         #

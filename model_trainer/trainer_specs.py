@@ -73,7 +73,7 @@ class ExperimentSpecs:
         self.active_model = None
 
         # dataset specs
-        self.dataset_specs = None
+        self._dataset_specs = None
 
         # active dataset
         self.use_dataset = None
@@ -209,7 +209,17 @@ class ExperimentSpecs:
         if self.use_dataset not in dataset_list:
             raise TrainerSpecError("config.yaml doesn't contain {} template, check config.".format(self.use_dataset))
 
-        self.dataset_specs = self.config['datasets'][self.use_dataset]
+        print("active dataset", self.config['datasets'])
+        print("active dataset", self.get_dataset_names())
+        print("active dataset", self.use_dataset)
+
+        self._dataset_specs = self.config['datasets'][self.use_dataset]
+
+    def get_dataset_names(self):
+        """
+        :return:
+        """
+        return list(self.config['datasets'].keys())
 
     def create_spec_dispatch(self) -> dict[str, Callable]:
         """
@@ -257,7 +267,7 @@ class ExperimentSpecs:
         # get dispatch and pass to creator and update current
         # active model spec
         spec_dispatcher = self.spec_dispatcher[self.active_model]
-        self._model_spec = spec_dispatcher(self.models_specs[self.active_model], self.dataset_specs, self._verbose)
+        self._model_spec = spec_dispatcher(self.models_specs[self.active_model], self._dataset_specs, self._verbose)
 
         if self.active_model not in self.models_specs:
             raise TrainerSpecError("config.yaml doesn't contain model {}.".format(self.active_model))
@@ -311,10 +321,10 @@ class ExperimentSpecs:
         """
         mandatory_kv = ["dir", "training_meta", "validation_meta", "test_meta", "file_type"]
 
-        dataset_type = self.dataset_specs['ds_type']
+        dataset_type = self._dataset_specs['ds_type']
         if dataset_type == "audio":
             for k in mandatory_kv:
-                if k not in self.dataset_specs:
+                if k not in self._dataset_specs:
                     raise TrainerSpecError("Audio dataset must contain config entry {}".format(k))
 
     def read_config(self, debug=False):
@@ -431,13 +441,13 @@ class ExperimentSpecs:
 
         Returns:
         """
-        if 'dir' not in self.dataset_specs:
+        if 'dir' not in self._dataset_specs:
             raise TrainerSpecError("config.yaml must contain dir entry.")
 
         # resolve home
-        path_to_dir = self.resolve_home(self.dataset_specs['dir'])
-        if path_to_dir != self.dataset_specs['dir']:
-            self.dataset_specs['dir'] = path_to_dir
+        path_to_dir = self.resolve_home(self._dataset_specs['dir'])
+        if path_to_dir != self._dataset_specs['dir']:
+            self._dataset_specs['dir'] = path_to_dir
 
         return path_to_dir
 
@@ -464,31 +474,31 @@ class ExperimentSpecs:
         """
         Returns:  Path to file contain meta information , such as file - text
         """
-        if 'training_meta' not in self.dataset_specs:
+        if 'training_meta' not in self._dataset_specs:
             raise TrainerSpecError("config.yaml must contain training_meta entry.")
-        return self.dataset_specs['training_meta']
+        return self._dataset_specs['training_meta']
 
     def get_validation_meta_file(self):
         """
         Returns:  Path to file contain meta information , such as file - text
         """
-        if 'validation_meta' not in self.dataset_specs:
+        if 'validation_meta' not in self._dataset_specs:
             raise TrainerSpecError("config.yaml must contain validation_meta entry.")
-        return self.dataset_specs['validation_meta']
+        return self._dataset_specs['validation_meta']
 
     def get_test_meta_file(self):
         """
         Returns:  Path to file contain meta information , such as file - text
         """
-        if 'test_meta' not in self.dataset_specs:
+        if 'test_meta' not in self._dataset_specs:
             raise TrainerSpecError("config.yaml doesn't contain test_meta entry.")
-        return self.dataset_specs['test_meta']
+        return self._dataset_specs['test_meta']
 
     def build_training_set(self):
         """
         :return:
         """
-        if 'training_meta' in self.dataset_specs:
+        if 'training_meta' in self._dataset_specs:
             return self.update_meta(self.get_training_meta_file())
 
         logger.warning("training_meta is empty dict.")
@@ -498,7 +508,7 @@ class ExperimentSpecs:
         """
         :return:
         """
-        if 'validation_meta' in self.dataset_specs:
+        if 'validation_meta' in self._dataset_specs:
             return self.update_meta(self.get_validation_meta_file())
 
         logger.warning("validation_meta is empty dict.")
@@ -508,7 +518,7 @@ class ExperimentSpecs:
         """
         :return:
         """
-        if 'test_meta' in self.dataset_specs:
+        if 'test_meta' in self._dataset_specs:
             return self.update_meta(self.get_test_meta_file())
         logger.warning("test_meta is empty dict.")
 
@@ -601,21 +611,28 @@ class ExperimentSpecs:
         """Method return audio dataset spec.
         :return:
         """
-        if 'format' not in self.dataset_specs:
+        if 'format' not in self._dataset_specs:
             raise TrainerSpecError("config.yaml doesn't dataset format entry.")
 
         self._verbose = True
 
-        data_type = self.dataset_specs['format']
-        file_type = self.dataset_specs['file_type']
-        if data_type == 'raw':
-            logger.debug("Dataset type raw file")
-            return self.get_raw_audio_ds_files()
-        if data_type == 'tensor_mel':
-            logger.debug("Dataset type torch tensor mel")
-            return self.get_tensor_audio_ds_files()
+        data_format = self._dataset_specs['format']
+        file_type = self._dataset_specs['file_type']
+        ds_type = self._dataset_specs['ds_type']
 
-        return None
+        if ds_type.lower().strip() == 'audio':
+            if data_format.lower().strip() == 'raw':
+                return self.get_raw_audio_ds_files()
+            elif data_format.lower().lower().strip() == 'tensor_mel':
+                logger.debug("Dataset type torch tensor mel.")
+                return self.get_tensor_audio_ds_files()
+            elif data_format.lower().lower().strip() == 'numpy_mel':
+                logger.debug("Dataset type numpy mel.")
+                return self.get_tensor_audio_ds_files()
+            else:
+                raise TrainerSpecError(f"Unsupported format {ds_type} error.")
+        else:
+            raise TrainerSpecError(f"Active dataset type {ds_type} error.")
 
     def tensorboard_sample_update(self):
         """

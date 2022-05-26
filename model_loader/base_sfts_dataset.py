@@ -76,6 +76,14 @@ class BaseSFTFDataset(torch.utils.data.Dataset):
     [{'path': '/LJSpeechSmall/wavs/LJ010-0188.wav',
       'meta': 'Oxford expressed little anxiety or concern.\n', 'label': '0'}
 
+
+    For tensor data set. The
+
+    Let say you serialized all object in batch to disk.
+    The data must contain following keys.
+
+    # Data Keys dict_keys(['filter_length', 'hop_length', 'win_length', 'n_mel_channels', 'sampling_rate', 'mel_fmin', 'mel_fmax', 'data'])
+
     """
 
     def __init__(self,
@@ -195,6 +203,9 @@ class BaseSFTFDataset(torch.utils.data.Dataset):
         # check dataset contain key
         if self.is_audio is False and self.is_a_numpy is False:
             if 'data' not in data:
+                for i in range(0, len(data)):
+                    print(type(data[i]))
+
                 raise DatasetError("Dataset dict doesn't contain key 'data'")
 
         self.text_cleaners = model_spec.get_text_cleaner()
@@ -214,7 +225,7 @@ class BaseSFTFDataset(torch.utils.data.Dataset):
 
         if self.is_a_tensor:
             if 'data' not in data:
-                raise ValueError("For tensor data format dict must storey key data")
+                raise ValueError("For tensor data format dict must storey key data.")
             self._data = data['data']
         elif self.is_audio:
             if len(data) == 0:

@@ -31,7 +31,8 @@ class SFTFDataloader:
     torch.Size([64, 855])
     torch.Size([64])
     """
-
+    # TODO add option to pass dataset object directly
+    # TODO add option indicate split ratio
     def __init__(self, experiment_specs: ExperimentSpecs, ping_memory=True,
                  rank=0, world_size=0, num_worker=1, verbose=False):
         """
@@ -43,6 +44,7 @@ class SFTFDataloader:
         :param num_worker:
         :param verbose:
         """
+        self.reduce_size = None
         self.set_logger(verbose)
         self._ds2_mandatory = ['path', 'meta']
 
@@ -99,11 +101,14 @@ class SFTFDataloader:
         # validate, dataset
         for i in range(0, len(raw_dataset)):
             for m in self._ds2_mandatory:
-                if m not in raw_dataset[i]:
+                # print("comparing", self._ds2_mandatory[m])
+                # print("comparing", raw_dataset[i])
+
+                if self._ds2_mandatory[m] not in raw_dataset[i]:
                     if strict:
-                        raise DatasetError("Each entry in dataset must contain key path")
+                        raise DatasetError("Each entry in dataset must contain key path.")
                     else:
-                        warnings.warn("Each entry in dataset must contain key path")
+                        warnings.warn("Each entry in dataset must contain key path.")
 
     def create_v2raw(self, strict=True):
         """
@@ -111,35 +116,46 @@ class SFTFDataloader:
         :param strict:
         :return:
         """
-        pk_dataset = self.trainer_spec.get_audio_dataset()
-        if len(pk_dataset) == 0:
+        dataset_files = self.trainer_spec.get_audio_dataset()
+        if len(dataset_files) == 0:
             raise ValueError("Empty dataset.")
 
-        train_set = list(pk_dataset['train_set'].values())
-        validation_set = list(pk_dataset['validation_set'].values())
-
+        train_set = list(dataset_files['train_set'].values())
+        validation_set = list(dataset_files['validation_set'].values())
+        
+        # drop if needed
+        #if self.reduce_size:
+            
+        # validate    
         self._validate_v2(train_set, strict=strict)
         self._validate_v2(validation_set, strict=strict)
         logger.debug("Validated dataset")
 
-        self.train_dataset = SFTF2Dataset(self.mel_model_spec, train_set, data_format='audio_raw',
+        # create
+        self.train_dataset = SFTF2Dataset(model_spec=self.mel_model_spec, data=train_set, data_format='audio_raw',
                                           overfit=self.trainer_spec.is_overfit())
         self.validation_dataset = SFTF2Dataset(self.mel_model_spec, validation_set, data_format='audio_raw',
                                                overfit=self.trainer_spec.is_overfit())
         self.collate_fn = TextMelCollate2(nfps=self.mel_model_spec.frames_per_step(), device=None)
 
-    def create_v2dataset(self, device):
+    def createv2_from_tensor(self):
         """
         :return:
         """
-        pk_dataset = self.trainer_spec.get_audio_dataset()
-        if pk_dataset['ds_type'] == 'tensor_mel':
-            self.train_dataset = SFTF2Dataset(self.mel_model_spec,
-                                              pk_dataset['train_set'],
-                                              data_format='tensor_mel',
+        dataset_files = self.trainer_spec.get_audio_dataset()
+
+        train_set = dataset_files['train_set'],
+        validation_set = dataset_files['validation_set']
+
+        # print(len(train_set))
+        # print("Data Keys", train_set[0].keys())
+        # print("Data Keys", train_set[1].keys())
+        # sys.exit(1)
+        # Data Keys dict_keys(['filter_length', 'hop_length', 'win_length', 'n_mel_channels', 'sampling_rate', 'mel_fmin', 'mel_fmax', 'data'])
+        if dataset_files['ds_type'] == 'tensor_mel':
+            self.train_dataset = SFTF2Dataset(model_spec=self.mel_model_spec, data=train_set, data_format='tensor_mel',
                                               overfit=self.trainer_spec.is_overfit())
-            self.validation_dataset = SFTF2Dataset(self.mel_model_spec,
-                                                   pk_dataset['validation_set'],
+            self.validation_dataset = SFTF2Dataset(self.mel_model_spec, validation_set,
                                                    data_format='tensor_mel',
                                                    overfit=self.trainer_spec.is_overfit())
             self.collate_fn = TextMelCollate2(nfps=self.mel_model_spec.frames_per_step(), device=None)
@@ -183,12 +199,17 @@ class SFTFDataloader:
         """
         # training_set, validation_set, test_set = self.model_trainer_spec.get_audio_ds_files()
 
-        experiment_specs = ExperimentSpecs(verbose=False)
-        pk_dataset = experiment_specs.get_audio_dataset()
+        # print(self.trainer_spec)
+        # experiment_specs = ExperimentSpecs(verbose=False)
+        pk_dataset = self.trainer_spec.get_audio_dataset()
+        mandatory_keys = ['train_set', 'validation_set', 'test_set', 'ds_type']
+        if mandatory_keys != list(pk_dataset.keys()):
+            raise ValueError("Dataset spec has no mandatory key.")
 
         if not update:
             if pk_dataset['ds_type'] == 'tensor_mel':
-                self.create_v2dataset()
+                print("data is tensor_mel")
+                self.createv2_from_tensor()
             if pk_dataset['ds_type'] == 'audio_raw':
                 self.create_v2raw()
 

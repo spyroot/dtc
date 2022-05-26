@@ -22,7 +22,6 @@ class SFTF2Dataset(BaseSFTFDataset, ABC):
     """
 
     """
-
     def __init__(self, model_spec: TacotronSpec,
                  data=None,
                  root: Optional[str] = "dts",
