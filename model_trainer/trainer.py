@@ -1236,8 +1236,11 @@ class Trainer(AbstractTrainer, ABC):
             logger.info(f"Saving {self.trainer_spec.epochs()} last epoch.")
 
         self._callback.on_epoch_end()
-        return {'step', step,
-                'validation_loss', validation_loss}
+        self.metric.total_mean_loss()
+        return {'step': step,
+                'validation_loss': validation_loss,
+                'loss': self.metric.total_mean_loss()
+        }
 
     def train(self, model_name=None, config=None, checkpoint_dir=None, dataloader=None):
         """
