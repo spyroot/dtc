@@ -43,6 +43,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 os.environ["LOCAL_RANK"] = "0"
 os.environ["RANK"] = "0"
 os.environ["WORLD_SIZE"] = "2"
+os.environ["TUNE_DISABLE_AUTO_CALLBACK_SYNCER"] = 1
 
 import warnings
 
