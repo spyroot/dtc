@@ -380,8 +380,12 @@ def train(spec=None, cmd_args=None, device=None, cudnn_bench=False):
 
         # sys.exit(1)
         if args.tune:
+            dataloader_id = ray.put(dataloader)
+
             tuner_result = tune.run(
-                    partial(trainer.train, config=config),
+                    partial(trainer.train,
+                            config=config,
+                            checkpoint_dir=spec.model_files.get_tuner_dir()),
                     # resources_per_trial={"cpu": 4, "gpu": 1},
                     config=config,
                     num_samples=10,

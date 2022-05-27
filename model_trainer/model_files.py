@@ -54,6 +54,7 @@ class ModelFiles:
         self._dirs["figures"] = self._dir_result / Path(self.figures_dir())
         self._dirs["graphs"] = self._dir_result / Path(self.figures_dir())
         self._dirs["prediction"] = self._dir_result / Path(self.figures_dir())
+        self._dirs["tuner"] = self._dir_result / Path(self.tuner_dir())
 
         # default dir where we store serialized prediction graph as image
         # self._dir_model_prediction = self._dir_result / Path(self.prediction_dir())
@@ -382,7 +383,7 @@ class ModelFiles:
 
         return checkpoints
 
-    def get_results_dir(self) -> pathlib.PosixPath:
+    def get_results_dir(self) -> Path:
         """
 
         :return:
@@ -390,16 +391,24 @@ class ModelFiles:
         if 'results' in self._dirs:
             return self._dirs["results"]
 
-        return "results"
+        return Path("results").resolve()
 
-    def get_figure_dir(self) -> pathlib.PosixPath:
+    def get_figure_dir(self) -> Path:
         """
         :return:
         """
         if 'figures' in self._dirs:
             return self._dirs["figures"]
+        return Path("results/figures").resolve()
 
-        return "figures"
+    def get_tuner_dir(self) -> Path:
+        """
+        :return:
+        """
+        if 'tuner' in self._dirs:
+            return self._dirs["tuner"]
+
+        return Path("results/tuner").resolve()
 
     @staticmethod
     def set_logger(is_enable: bool) -> None:
@@ -412,3 +421,11 @@ class ModelFiles:
             logger.enable(__name__)
         else:
             logger.disable(__name__)
+
+    def tuner_dir(self) -> str:
+        """
+        :return:
+        """
+        if self._config is not None and 'tuner' in self._config:
+            return self._config['tuner']
+        return 'tuner'

@@ -1143,7 +1143,7 @@ class Trainer(AbstractTrainer, ABC):
 
         return model, optimizer, scheduler, step
 
-    def sequential(self, model_name: str, layer_name: str):
+    def sequential(self, model_name: str, layer_name: str, checkpoint_dir: str):
         """
         Sequential training loop.
 
@@ -1168,8 +1168,10 @@ class Trainer(AbstractTrainer, ABC):
         self.tqdm_iter.set_postfix({'step': step})
         self._callback.on_begin()
 
-        checkpoint_dir = self.trainer_spec.model_files.get_model_dir()
-        if checkpoint_dir:
+        # if checkpoint_dir is None:
+        #     checkpoint_dir =
+        # checkpoint_dir = self.trainer_spec.model_files.get_model_dir()
+        if checkpoint_dir is not None:
             model_state, optimizer_state = torch.load(os.path.join(checkpoint_dir, "checkpoint"))
             model.load_state_dict(model_state)
             optimizer.load_state_dict(optimizer_state)
@@ -1201,10 +1203,12 @@ class Trainer(AbstractTrainer, ABC):
         self._callback.on_epoch_end()
         return step
 
-    def train(self, model_name=None, config=None):
+    @ray.remote
+    def train(self, model_name=None, config=None, checkpoint_dir=None):
         """
         :param config:
         :param model_name:
+        :param  checkpoint_dir this mainly for ray
         :return:
         """
         # torch.manual_seed(self.model_spec.seed())
@@ -1236,13 +1240,17 @@ class Trainer(AbstractTrainer, ABC):
                 # update whatever we need
                 if config is not None:
                     if 'batch_size' in config:
-                        self.data_loader.update_batch(int(config["batch_size"]))
-                        self.train_loader, self.validation_loader, self.collate_fn = self.data_loader.get_loader()
+                        self._dataloaders.update(config['batch_size'])
+                        # self.data_loader.update_batch(int(config["batch_size"]))
+                        # self._train_loader[self._tkey].update_batch(config["batch_size"])
+                        # self._validation_loader[self._tkey].update_batch(config["batch_size"])
+                        # self._train_loader.up
+                        # self.train_loader, self.validation_loader, self.collate_fn = self.data_loader.get_loader()
                     if 'lr' in config:
                         for param_group in self._optimizers[model_name][layer_name].param_groups:
                             param_group['lr'] = config["lr"]
                 # run model
-                last_step = self.sequential(model_name, layer_name)
+                last_step = self.sequential(model_name, layer_name, checkpoint_dir=checkpoint_dir)
                 if self.rank == 0 and self.save_if_need(model_name=model_name,
                                                         layer_name=layer_name, epoch=self.trainer_spec.epochs(),
                                                         step=last_step,

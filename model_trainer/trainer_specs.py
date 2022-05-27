@@ -59,13 +59,8 @@ class ExperimentSpecs:
 
         self._model_spec: Type[ModelSpec]
 
-        #
         self._inited: bool = False
-
-        #
         self.writer = None
-
-        #
         self._active_setting = None
 
         # list of models
@@ -286,7 +281,6 @@ class ExperimentSpecs:
         # active model spec
         spec_dispatcher = self.spec_dispatcher[self.active_model]
         self._model_spec = spec_dispatcher(self.models_specs[self.active_model], self._dataset_specs, self._verbose)
-
         if self.active_model not in self.models_specs:
             raise TrainerSpecError("config.yaml doesn't contain model {}.".format(self.active_model))
 

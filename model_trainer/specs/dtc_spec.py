@@ -13,6 +13,7 @@ class InvalidModelSpec(Exception):
 # @attr.s(frozen = True)
 class ModelSpecDTC(ModelSpec, ABC):
     """
+    MODEL SPEC {'spectrogram_layer': {'model': 'tacotron25', 'optimizer': 'tacotron2_optimizer', 'has_input': True, 'has_output': True, 'max_wav_value': 32768.0, 'frames_per_step': 1, 'sampling_rate': 22050, 'filter_length': 1024, 'win_length': 1024, 'hop_length': 256, 'n_mel_channels': 80, 'mel_fmin': 0.0, 'mel_fmax': 8000.0}, 'vocoder': {'state': 'disabled', 'name': 'Test', 'model': 'GraphLSTM', 'optimizer': 'edge_optimizer', 'lr_scheduler': 'main_lr_scheduler', 'input_size': 1}}
 
     """
     def __init__(self, model_spec, dataset_spec, verbose=False):
@@ -30,10 +31,13 @@ class ModelSpecDTC(ModelSpec, ABC):
         # list of sub-models
         self._sub_models = {}
 
+        print(model_spec.keys())
+
         # todo refactor this
-        self._encoder_spec = TacotronSpec(model_spec['spectrogram_layer'])
         if 'spectrogram_layer' not in model_spec:
             raise InvalidModelSpec("Model must contains spectrogram_layer.")
+
+        self._encoder_spec = TacotronSpec(model_spec['spectrogram_layer'])
         self._sub_models['spectrogram_layer'] = TacotronSpec(model_spec['spectrogram_layer'])
 
     def get_model_param(self):

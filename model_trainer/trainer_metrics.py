@@ -1,3 +1,6 @@
+from pathlib import Path
+from typing import Optional
+
 import numpy as np
 from timeit import default_timer as timer
 from loguru import logger
@@ -8,9 +11,9 @@ class Metrics:
 
     """
     def __init__(self,
-                 metric_step_file_path=None,
-                 metric_batch_file_path=None,
-                 metric_perf_trace_path=None,
+                 metric_step_file_path: Optional[Path] = None,
+                 metric_batch_file_path: Optional[Path] = None,
+                 metric_perf_trace_path: Optional[Path] = None,
                  num_epochs=0,
                  num_batches=0,
                  num_iteration=0,
@@ -126,26 +129,26 @@ class Metrics:
         :return:
         """
         if self.metric_step_file_path is not None:
-            np.save(self.metric_step_file_path, self.loss)
+            np.save(str(self.metric_step_file_path.resolve()), self.loss)
 
         if self.metric_batch_file_path is not None:
-            np.save(self.metric_batch_file_path, self.total_loss)
+            np.save(str(self.metric_batch_file_path.resolve()), self.total_loss)
 
         if self.metric_perf_trace_path is not None:
-            np.save(self.metric_perf_trace_path, self.epoch_timer)
+            np.save(str(self.metric_perf_trace_path.resolve()), self.epoch_timer)
 
     def load(self):
         """Method loads all metric traces.
         :return:
         """
         if self.metric_step_file_path is not None:
-            self.loss = np.load(self.metric_step_file_path)
+            self.loss = np.load(str(self.metric_step_file_path.resolve()))
 
         if self.metric_batch_file_path is not None:
-            self.total_loss = np.load(self.metric_batch_file_path)
+            self.total_loss = np.load(str(self.metric_batch_file_path.resolve()))
 
         if self.metric_perf_trace_path is not None:
-            self.epoch_timer = np.save(self.metric_perf_trace_path, self.epoch_timer)
+            self.epoch_timer = np.save(str(self.metric_perf_trace_path.resolve()), self.epoch_timer)
 
     def total_mean_loss(self):
         """Return mean loss, compute mean from entire loss history
