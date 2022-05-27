@@ -203,14 +203,14 @@ class Trainer(AbstractTrainer, ABC):
         # init trainer
         self.init_trainer()
 
-    def __call__(self, checkpoint_dir=None):
-        """
-
-        :return:
-        """
-
-        print("Got checkpoint dir")
-        return self.train()
+    # def __call__(self, checkpoint_dir=None):
+    #     """
+    #
+    #     :return:
+    #     """
+    #
+    #     print("Got checkpoint dir")
+    #     return self.train()
 
     def create_model_dispatch(self) -> tuple[dict[str, dict[str: Callable]],
                                              dict[str, Callable],
@@ -1173,7 +1173,7 @@ class Trainer(AbstractTrainer, ABC):
 
         return model, optimizer, scheduler, step
 
-    def trainer_sequential(self, model_name: str, layer_name: str, checkpoint_dir: str):
+    def trainer_sequential(self, model_name: str, layer_name: str):
         """
         Sequential training loop.
 
@@ -1329,8 +1329,6 @@ class Trainer(AbstractTrainer, ABC):
                 layer_name = self.q.pop()
                 # update whatever we need
                 if config is not None:
-                    if 'batch_size' in config:
-                        self._dataloaders.update(config['batch_size'])
                     if 'lr' in config:
                         for param_group in self._optimizers[model_name][layer_name].param_groups:
                             param_group['lr'] = config["lr"]

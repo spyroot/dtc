@@ -313,16 +313,30 @@ def init_distributed(spec=None, rank=0, world_size=0) -> None:
 
 class Trainable(tune.Trainable, Callback):
     def setup(self, config):
+
+        self.config = config
+        spec = config['spec']
+
+        batch_size = 0
+        if 'batch_size' in config:
+            spec.set_batch_size(int(config['batch_size']))
+            assert spec.batch_size() == int(config['batch_size'])
+        else:
+            batch_size = spec.batch_size()
+
+        SFTFDataloader.set_logger(False)
         data = SFTFDataloader(config['spec'],
+                              batch_size=batch_size,
                               rank=int(args.rank),
                               world_size=config['world_size'],
-                              verbose=args.verbose)
+                              verbose=False)
 
+        Trainer.set_logger(False)
         self.trainer = Trainer(config['spec'],
                                data_loader=data,
                                rank=int(args.rank),
                                world_size=config['world_size'],
-                               verbose=args.verbose,
+                               verbose=False,
                                device=config['device'],
                                hp_tunner=True,
                                disable_pbar=True)
@@ -351,7 +365,8 @@ class Trainable(tune.Trainable, Callback):
         # self.trainert.hp_trainer()
         # score = objective(self.x, self.a, self.b)
         # self.x += 1
-        return self.trainert.hp_trainer()
+        return self.trainer.hp_trainer(self.config)
+
 
     # def reset_config(self, new_config):
     #     self.trainer.update_optimizer(new_config)
@@ -367,6 +382,8 @@ class Trainable(tune.Trainable, Callback):
 
 
 def tune_hyperparam(spec=None, cmd_args=None, device=None, cudnn_bench=False):
+
+    spec.set_logger(False)
     if int(cmd_args.rank) == 0:
         logger.info("Staring rank zero node.")
 
@@ -634,6 +651,8 @@ def set_logger(is_enable: bool) -> None:
 if __name__ == '__main__':
     """
     """
+    logger.remove()
+
     set_logger(False)
 
     parser = argparse.ArgumentParser()
@@ -684,7 +703,7 @@ if __name__ == '__main__':
 
     # parser.add_argument('--load', type=bool, default=False,
     #                     required=False, help='set verbose output')
-    # level = logger.level("ERROR")
+    level = logger.level("ERROR")
     # logger.info(f"LOGURU_LEVEL: {os.environ['LOGURU_LEVEL']}")
     # logger.remove()
     # logger.enable("__main__")
@@ -726,7 +745,10 @@ if __name__ == '__main__':
         is_distributed = True
 
     try:
+
+
         set_logger(args.verbose)
+        trainer_spec = ExperimentSpecs(spec_config=args.config, verbose=args.verbose)
         main(args)
         # setup_handler(cleanup(is_distributed))
     except FileNotFoundError as file_error:

@@ -31,6 +31,7 @@ class SFTFDataloader:
     There many way data loader can be created.
     if you passed optional dataset=BaseSFTFDataset, by default it split to train and validation.
     """
+
     def __init__(self,
                  experiment_specs: ExperimentSpecs,
                  dataset: Optional[BaseSFTFDataset] = None,
@@ -70,7 +71,10 @@ class SFTFDataloader:
         if batch_size > 0:
             self._batch_size = batch_size
         else:
-            self._batch_size = self._trainer_spec.batch_size
+            if self._trainer_spec.batch_size() > 0:
+                self._batch_size = self._trainer_spec.batch_size()
+            else:
+                raise ValueError("Batch size less than zero.")
 
         # datasets and dataloaders
         self._datasets = {}
@@ -93,6 +97,7 @@ class SFTFDataloader:
 
         :return:
         """
+        # main point update batch size without entire dataset.
         if not self._initialized_before():
             logger.debug("Updating dataset.")
             print("Updating batch ", new_batch)
@@ -336,7 +341,7 @@ class SFTFDataloader:
 
         # for DDP we recompute.
         if self._trainer_spec.is_distributed_run():
-            self._batch_size = int(self._trainer_spec.batch_size / float(self._world_size))
+            self._batch_size = int(self._trainer_spec.batch_size() / float(self._world_size))
 
         if self._trainer_spec.is_overfit():
             warnings.warn("You are running in overfitting settings.")

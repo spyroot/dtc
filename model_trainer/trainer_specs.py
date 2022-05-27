@@ -18,6 +18,8 @@ from .specs.model_spec import ModelSpec
 
 MODULE_NAME = "ExperimentSpecs"
 
+logger.disable(__name__)
+
 
 class TrainerSpecError(Exception):
     """Base class for other exceptions"""
@@ -37,8 +39,8 @@ class ExperimentSpecs:
         """
         self._overfit = None
         self.spec_dispatcher = None
-        self.set_logger(verbose)
-        self._verbose: bool = verbose
+        ExperimentSpecs.set_logger(False)
+        self._verbose: bool = False
 
         # a file name or io.string
         self._initialized = None
@@ -142,7 +144,7 @@ class ExperimentSpecs:
         # self.optimizer = HParam('optimizer', hp.Discrete(['adam', 'sgd']))
 
         # model files
-        self.model_files = ModelFiles(self.config, verbose=verbose)
+        self.model_files = ModelFiles(self.config, verbose=self._verbose)
         if no_dir:
             self.model_files.build_dir()
         self.setup_tensorboard()
@@ -801,7 +803,7 @@ class ExperimentSpecs:
             raise TrainerSpecError("Initialize settings first")
 
         if 'fp16' in self._setting:
-            logger.debug(f"Model uses fp16 {self._setting['fp16']}")
+            logger.debug(f"Model uses fp16 {self._setting['fp16']} log level {self._verbose}")
             return self._setting['fp16']
 
         return False
@@ -898,13 +900,11 @@ class ExperimentSpecs:
     def validate_settings(self):
         """
 
-        Returns:
-
+        :return:
         """
         if 'batch_size' in self._setting:
             return int(self._setting['batch_size'])
 
-    @property
     def batch_size(self):
         """Returns batch size for current active model, each dataset has own batch size.
         Model batch size
@@ -921,6 +921,20 @@ class ExperimentSpecs:
             return int(self._setting['batch_size'])
 
         return 32
+
+    def set_batch_size(self, batch_size):
+        """Returns batch size for current active model, each dataset has own batch size.
+        Model batch size
+        :return:
+        """
+        if self._setting is None:
+            raise TrainerSpecError("Initialize settings first")
+
+        # when we overfiting we take only 1 example
+        if self._overfit:
+            return 1
+
+        self._setting['batch_size'] = batch_size
 
     def is_load_model(self) -> bool:
         """
@@ -1536,7 +1550,8 @@ class ExperimentSpecs:
         :return:
         """
         if is_enable:
-            logger.enable(__name__)
+            logger.disable(__name__)
+            # logger.enable(__name__)
         else:
             logger.disable(__name__)
 
