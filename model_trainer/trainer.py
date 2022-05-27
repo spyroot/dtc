@@ -940,7 +940,7 @@ class Trainer(AbstractTrainer, ABC):
         current_total_loss = 0
         step = self.get_last_iterator(model_name, layer_name)
         self._callback.on_loader_begin()
-        for batch_idx, batch in enumerate(self.train_loader):
+        for batch_idx, batch in enumerate(self._train_loader):
             self._callback.on_batch_begin()
             model.zero_grad(set_to_none=True)
             x, y = take_batch(batch, device)
@@ -1138,8 +1138,8 @@ class Trainer(AbstractTrainer, ABC):
         self.metric.set_num_iteration(self.trainer_spec.epochs() * self.total_batches)
         self.metric.init()
         logger.info("Staring training num epochs {}, epoch trained {} num batches {} expected total iteration {}",
-                    self.trainer_spec.epochs(), self._last_ckt_epochs, len(self.train_loader),
-                    self.trainer_spec.epochs() * len(self.train_loader))
+                    self.trainer_spec.epochs(), self._last_ckt_epochs, len(self._train_loader),
+                    self.trainer_spec.epochs() * len(self._train_loader))
 
         return model, optimizer, scheduler, step
 
