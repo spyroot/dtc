@@ -5,7 +5,6 @@ from scipy.io.wavfile import read as wav_reader
 
 def fmtl_print(left, *argv):
     """
-
     :param left:
     :param argv:
     :return:
@@ -18,7 +17,6 @@ def fmtl_print(left, *argv):
 
 def fmt_print(left, *argv):
     """
-
     :param left:
     :param argv:
     :return:

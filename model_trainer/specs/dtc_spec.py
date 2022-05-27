@@ -31,8 +31,6 @@ class ModelSpecDTC(ModelSpec, ABC):
         # list of sub-models
         self._sub_models = {}
 
-        print(model_spec.keys())
-
         # todo refactor this
         if 'spectrogram_layer' not in model_spec:
             raise InvalidModelSpec("Model must contains spectrogram_layer.")

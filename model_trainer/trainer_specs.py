@@ -144,7 +144,7 @@ class ExperimentSpecs:
         # self.optimizer = HParam('optimizer', hp.Discrete(['adam', 'sgd']))
 
         # model files
-        self.model_files = ModelFiles(self.config, verbose=self._verbose)
+        self.model_files = ModelFiles(self.config, parent=self, verbose=self._verbose)
         if no_dir:
             self.model_files.build_dir()
         self.setup_tensorboard()

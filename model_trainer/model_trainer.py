@@ -1,7 +1,7 @@
 import pickle
 from abc import ABC, abstractmethod, ABCMeta
 
-from model_trainer.utils import fmt_print
+from .utils import fmt_print
 
 
 class GeneratorTrainer(ABC, metaclass=ABCMeta):

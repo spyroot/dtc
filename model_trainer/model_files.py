@@ -2,6 +2,7 @@ import os
 import pathlib
 from os.path import join
 from pathlib import Path
+from typing import Optional, Callable
 
 import torch
 from loguru import logger
@@ -17,13 +18,21 @@ class ModelFiles:
 
     """
 
-    def __init__(self, config, root_dir=".", name_generator=None, dir_walker_callback=None, verbose=False):
+    def __init__(self, config, parent, root_dir: Optional[str] = ".",
+                 name_generator: Optional[Callable] = None,
+                 dir_walker_callback: Optional[Callable] = None,
+                 verbose: Optional[bool] = False):
         """
 
+        :param config:
         :param root_dir:
+        :param name_generator:
+        :param dir_walker_callback:
+        :param verbose:
         """
         self._verbose = verbose
         self.set_logger(verbose)
+        self.parent = parent
 
         if config is None:
             raise ModelFileError("config argument is none.")
@@ -55,6 +64,8 @@ class ModelFiles:
         self._dirs["graphs"] = self._dir_result / Path(self.figures_dir())
         self._dirs["prediction"] = self._dir_result / Path(self.figures_dir())
         self._dirs["tuner"] = self._dir_result / Path(self.tuner_dir())
+        self._dirs["tuner_logs"] = self._dir_result / Path(self.tuner_log_dir())
+        self._dirs["tuner_safe_dir"] = self._dir_result / Path(self.tuner_safe_dir())
 
         # default dir where we store serialized prediction graph as image
         # self._dir_model_prediction = self._dir_result / Path(self.prediction_dir())
@@ -73,7 +84,7 @@ class ModelFiles:
 
         self._model = self._models[self._active_model]
         _settings = self._config['settings']
-        self._setting = _settings[self._active_setting].copy()
+        self._setting = _settings[self._active_setting]
 
         # generate all names
         self.generate_file_name_template()
@@ -242,7 +253,7 @@ class ModelFiles:
     def get_model_log_dir(self, file_type="log"):
         """Return log dir
         """
-        if self._config is not None and 'graph_dir' in self._config:
+        if self._config is not None and 'log_dir' in self._config:
             return self.normalize_dir(self._config['log_dir'])
 
         return 'log_dir'
@@ -254,9 +265,10 @@ class ModelFiles:
         :param file_type:
         :return:
         """
-        batch_size = 0
-        if 'batch_size' in self._setting:
-            batch_size = int(self._setting['batch_size'])
+        batch_size = self.parent.batch_size()
+        # self.parent.batch_size = batch_size
+        # if 'batch_size' in self._setting:
+        #     batch_size = int(self._setting['batch_size'])
 
         if suffix is None:
             return f"{self.filename}_batch_{str(batch_size)}_epoch_{self.load_epoch()}.{file_type}"
@@ -268,7 +280,7 @@ class ModelFiles:
         :param file_type:
         :return:
         """
-        return str(self._dirs["metric"] / self.file_name_generator(suffix="metric", file_type=file_type))
+        return str(self._dirs["metric"] / self.file_name_generator(suffix="step_metric", file_type=file_type))
 
     def get_metric_batch_file_path(self, file_type="npy"):
         """Return full path to a metric path.
@@ -390,7 +402,6 @@ class ModelFiles:
         """
         if 'results' in self._dirs:
             return self._dirs["results"]
-
         return Path("results").resolve()
 
     def get_figure_dir(self) -> Path:
@@ -407,8 +418,23 @@ class ModelFiles:
         """
         if 'tuner' in self._dirs:
             return self._dirs["tuner"]
-
         return Path("results/tuner").resolve()
+
+    def get_tuner_log_dir(self) -> Path:
+        """
+        :return:
+        """
+        if 'tuner_logs' in self._dirs:
+            return self._dirs["tuner_logs"]
+        return Path("results/tuner_logs").resolve()
+
+    def get_tuner_safe_dir(self) -> Path:
+        """
+        :return:
+        """
+        if 'tuner_logs' in self._dirs:
+            return self._dirs["tuner_logs"]
+        return Path("results/tuner_logs").resolve()
 
     @staticmethod
     def set_logger(is_enable: bool) -> None:
@@ -429,3 +455,20 @@ class ModelFiles:
         if self._config is not None and 'tuner' in self._config:
             return self._config['tuner']
         return 'tuner'
+
+    def tuner_log_dir(self) -> str:
+        """
+        :return:
+        """
+        if self._config is not None and 'tuner_logs' in self._config:
+            return self._config['tuner_logs']
+        return 'tuner_logs'
+
+    def tuner_safe_dir(self):
+        """
+
+        :return:
+        """
+        if self._config is not None and 'tuner_save_dir' in self._config:
+            return self._config['tuner_save_dir']
+        return 'tuner_save_dir'

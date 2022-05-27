@@ -5,11 +5,15 @@ import numpy as np
 from timeit import default_timer as timer
 from loguru import logger
 
+from model_loader.mel_dataloader import SFTFDataloader
+from .trainer_specs import ExperimentSpecs
+
 
 class Metrics:
     """
 
     """
+
     def __init__(self,
                  metric_step_file_path: Optional[Path] = None,
                  metric_batch_file_path: Optional[Path] = None,
@@ -180,3 +184,34 @@ class Metrics:
             logger.enable(__name__)
         else:
             logger.disable(__name__)
+
+
+def batch_loss_compute():
+    """
+
+    :return:
+    """
+    spec = ExperimentSpecs(spec_config='../config.yaml')
+    loader = SFTFDataloader(spec, verbose=False)
+    loaders, colleter= loader.get_loader()
+
+    total_batches = len(loaders['train_set'])
+
+    # self.tf_logger = TensorboardTrainerLogger(trainer_spec.tensorboard_update_rate())
+    metric = Metrics(metric_step_file_path=spec.model_files.get_metric_file_path(),
+                     metric_batch_file_path=spec.model_files.get_metric_batch_file_path(),
+                     metric_perf_trace_path=spec.model_files.get_time_file_path(),
+                     num_epochs=spec.epochs(),
+                     num_batches=total_batches,
+                     verbose=False)
+
+    metric.set_num_iteration(spec.epochs() * total_batches)
+    metric.init()
+
+    # metric.update(batch_idx, step, normal_loss, grad_norm=grad_norm.item())
+
+
+if __name__ == '__main__':
+    """
+    """
+    batch_loss_compute()

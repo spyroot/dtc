@@ -187,8 +187,8 @@ class Trainer(AbstractTrainer, ABC):
 
             # self.tf_logger = TensorboardTrainerLogger(trainer_spec.tensorboard_update_rate())
             self.metric = Metrics(metric_step_file_path=trainer_spec.model_files.get_metric_file_path(),
-                                  metric_batch_file_path=trainer_spec.model_files.get_time_file_path(),
-                                  metric_perf_trace_path=trainer_spec.model_files.get_metric_batch_file_path(),
+                                  metric_batch_file_path=trainer_spec.model_files.get_metric_batch_file_path(),
+                                  metric_perf_trace_path=trainer_spec.model_files.get_time_file_path(),
                                   num_epochs=self.trainer_spec.epochs(), num_batches=self.total_batches,
                                   verbose=False)
 
@@ -1293,7 +1293,7 @@ class Trainer(AbstractTrainer, ABC):
                         for param_group in self._optimizers[model_name][layer_name].param_groups:
                             param_group['lr'] = config["lr"]
                 # run model
-                last_step = self.trainer_sequential(model_name, layer_name, checkpoint_dir=checkpoint_dir)
+                last_step = self.trainer_sequential(model_name, layer_name)
                 if self.rank == 0 and self.save_if_need(model_name=model_name,
                                                         layer_name=layer_name, epoch=self.trainer_spec.epochs(),
                                                         step=last_step,

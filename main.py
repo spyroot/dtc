@@ -366,12 +366,11 @@ class Trainable(tune.Trainable, Callback):
         # self.trainert.hp_trainer()
         # score = objective(self.x, self.a, self.b)
         # self.x += 1
-        result = self.trainer.hp_trainer(self.config)
-        if isinstance(result, dist):
-            print(result.keys())
-            print(result.values())
+        step_seq = self.trainer.hp_trainer(self.config)
+        if isinstance(step_seq, dist):
+            print(step_seq.keys())
+            print(step_seq.values())
         return self.trainer.hp_trainer(self.config)
-
 
     # def reset_config(self, new_config):
     #     self.trainer.update_optimizer(new_config)
@@ -387,7 +386,6 @@ class Trainable(tune.Trainable, Callback):
 
 
 def tune_hyperparam(spec=None, cmd_args=None, device=None, cudnn_bench=False):
-
     spec.set_logger(False)
     if int(cmd_args.rank) == 0:
         logger.info("Staring rank zero node.")
@@ -436,13 +434,45 @@ def tune_hyperparam(spec=None, cmd_args=None, device=None, cudnn_bench=False):
             "batch_size": ray.tune.choice([2, 4, 8, 16, 32, 64])
         }
 
+        print("all metric paths before")
+        print(spec.model_files.get_metric_dir())
+        print(spec.model_files.get_metric_file_path())
+        print(spec.model_files.get_metric_batch_file_path())
+        print(spec.model_files.get_time_file_path())
+        spec.set_batch_size(10)
+        print("all metric paths and after")
+        print(spec.model_files.get_metric_dir())
+        print(spec.model_files.get_time_file_path())
+        print(spec.model_files.get_metric_batch_file_path())
+        print(spec.model_files.get_metric_file_path())
+
+        print("all tuner related dirs and files")
+        print(spec.model_files.get_tuner_dir())
+        print(spec.model_files.get_tuner_log_dir())
+        print(spec.model_files.get_tuner_safe_dir())
+
+        # print(spec.model_files.get_tuner_checkpointer())
+        print("--------")
+
+        print("--------")
+        print("all files")
+        print(spec.model_files.get_all_model_filenames())
+        print("--------")
+
+        print(spec.model_files.get_model_log_file_path())
+        print(spec.model_files.get_model_file_path())
+        print(spec.model_files.get_model_log_file_path())
+        print(spec.batch_size())
+        print(spec.model_files.get_metric_file_path())
+        print(spec.model_files.get_tuner_dir())
+
         tuner_result = ray.tune.run(Trainable,
                                     resources_per_trial={"gpu": 1},
                                     config=config,
                                     num_samples=10,
                                     scheduler=scheduler,
                                     checkpoint_freq=2,
-                                    local_dir="/Users/spyroot/Dropbox/macbook2022/git/dtc/results/ray_log",
+                                    local_dir=spec.model_files.get_tuner_log_dir(),
                                     stop={"training_iteration": 5},
                                     max_concurrent_trials=1,
                                     progress_reporter=reporter)
@@ -750,8 +780,6 @@ if __name__ == '__main__':
         is_distributed = True
 
     try:
-
-
         set_logger(args.verbose)
         trainer_spec = ExperimentSpecs(spec_config=args.config, verbose=args.verbose)
         main(args)
