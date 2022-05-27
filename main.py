@@ -327,6 +327,8 @@ class Trainable(tune.Trainable, Callback):
                                hp_tunner=True,
                                disable_pbar=True)
 
+        self.trainer.set_logger(False)
+
     def on_epoch_begin(self):
         # loss = validation_loss)
         pass
