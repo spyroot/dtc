@@ -437,7 +437,7 @@ def tune_hyperparam(spec=None, cmd_args=None, device=None, cudnn_bench=False):
         }
 
         tuner_result = ray.tune.run(Trainable,
-                                    # resources_per_trial={"gpu": 1},
+                                    resources_per_trial={"gpu": 1},
                                     config=config,
                                     num_samples=10,
                                     scheduler=scheduler,
