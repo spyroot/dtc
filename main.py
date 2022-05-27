@@ -386,7 +386,7 @@ def train(spec=None, cmd_args=None, device=None, cudnn_bench=False):
                     partial(trainer.train,
                             config=config,
                             checkpoint_dir=spec.model_files.get_tuner_dir()),
-                    # resources_per_trial={"cpu": 4, "gpu": 1},
+                    resources_per_trial={"gpu": 1},
                     config=config,
                     num_samples=10,
                     scheduler=scheduler,
