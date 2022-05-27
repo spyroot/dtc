@@ -21,6 +21,7 @@ from torch import optim
 from torch.nn.utils import clip_grad_norm_
 from tqdm import tqdm, tnrange
 
+from model_loader.mel_dataloader import SFTFDataloader
 from model_trainer.base_trainer import TrainerError, AbstractTrainer
 from model_trainer.callbacks.base import BaseCallbacks, Callback
 from model_trainer.distributed_wrapper import DistributedDataWrapper
@@ -87,11 +88,10 @@ class Trainer(AbstractTrainer, ABC):
     """
 
     """
-
     # root: Optional[str] = "dtc",
     def __init__(self,
                  trainer_spec: ExperimentSpecs,
-                 data_loader=None,
+                 data_loader: Optional[SFTFDataloader] = None,
                  verbose: Optional[bool] = False,
                  is_notebook: Optional[bool] = False,
                  rank: Optional[int] = 0,
@@ -126,7 +126,7 @@ class Trainer(AbstractTrainer, ABC):
         self.set_logger(verbose)
         #
         self.device = device
-        # dict that hold all schedulers that trainer need to use
+        # dict that hold all schedulers that trainer need to use. TODO This will be moved.
         self._schedulers = {}
         # dict hold all optimizers. ( note trainer can train 2 model like in gan settings)
         self._optimizers = {}
@@ -138,11 +138,15 @@ class Trainer(AbstractTrainer, ABC):
         # if self.trainer_spec.is_distributed_run():
         #     self.init_distributed()
 
+        self._tkey = self.trainer_spec.get_default_train_set_key()
+        self._vkey = self.trainer_spec.get_default_val_set_key()
+
         if not self.is_inference:
             if data_loader is None:
                 raise TrainerError("Trainer need torch data loader.")
-            self.dataloader = data_loader
-            self.train_loader, self.validation_loader, self.collate_fn = data_loader.get_loader()
+            self._dataloaders, self.collate_fn = data_loader.get_all()
+            self._train_loader = self._dataloaders[self._tkey]
+            self._validation_loader = self._dataloaders[self._vkey]
 
         # TODO need refactor that, and move to dict and abstract,
         self.criterion = Tacotron2Loss()
@@ -165,7 +169,7 @@ class Trainer(AbstractTrainer, ABC):
         self.total_batches = 0
         if self.is_inference is False:
             # total batches
-            self.total_batches = len(self.train_loader)
+            self.total_batches = len(self._dataloaders[self._tkey])
             # clip or not grad
             self.clip_grad = trainer_spec.is_grad_clipped()
 
@@ -779,7 +783,6 @@ class Trainer(AbstractTrainer, ABC):
 
         # take a batch.
         logger.info(f"Running validation for {model_name} {layer_name}")
-
         self._callback.validation_start()
         take_batch = self._batch_loader[model_name][layer_name]
         model.eval()

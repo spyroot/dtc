@@ -1600,6 +1600,19 @@ class ExperimentSpecs:
         return self._overfit
 
     @staticmethod
+    def get_default_train_set_key() -> str:
+        """ default key suppose  to be everywhere the same """
+        return 'train_set'
+
+    @staticmethod
+    def get_default_val_set_key() -> str:
+        return 'validation_set'
+
+    @staticmethod
+    def get_default_test_set_key() -> str:
+        return 'test_set'
+
+    @staticmethod
     def get_audio_dataset_keys() -> list[str]:
         """
         :return:

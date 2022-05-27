@@ -315,7 +315,7 @@ def train(spec=None, cmd_args=None, device=None, cudnn_bench=False):
     :param device: device where run
     :return:
     """
-    if int(cmd_args._rank) == 0:
+    if int(cmd_args.rank) == 0:
         logger.info("Staring rank zero node.")
 
     if spec.is_distributed_run():
@@ -330,7 +330,7 @@ def train(spec=None, cmd_args=None, device=None, cudnn_bench=False):
     if cmd_args.overfit:
         spec.set_overfit()
 
-    dataloader = SFTFDataloader(spec, rank=cmd_args._rank, world_size=cmd_args._world_size, verbose=args.verbose)
+    dataloader = SFTFDataloader(spec, rank=cmd_args.rank, world_size=cmd_args.world_size, verbose=args.verbose)
     torch.backends.cudnn.enabled = True
     if cudnn_bench:
         torch.backends.cudnn.benchmark = True
@@ -362,7 +362,7 @@ def train(spec=None, cmd_args=None, device=None, cudnn_bench=False):
         trainer = Trainer(spec,
                           dataloader,
                           rank=int(args.rank),
-                          world_size=int(cmd_args._world_size),
+                          world_size=int(cmd_args.world_size),
                           verbose=args.verbose, device=device,
                           callback=[BatchTimer()])
 

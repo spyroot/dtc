@@ -103,6 +103,17 @@ class SFTFDataloader:
 
         return list(self._dataloaders.values()), self.collate_fn
 
+    def get_all(self) -> tuple[dict[str, DataLoader], Callable]:
+        """
+        Return all data loaders packed as dict,
+        key : dataloader(Dataset)
+        :return:
+        """
+        if not self._initialized_before():
+            self._create()
+
+        return self._dataloaders, self.collate_fn
+
     def get_loader(self) -> tuple[list[DataLoader], Callable]:
         """
         Method return all data loaders and collate callback.
