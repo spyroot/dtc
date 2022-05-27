@@ -381,7 +381,6 @@ def train(spec=None, cmd_args=None, device=None, cudnn_bench=False):
         # sys.exit(1)
         if args.tune:
             dataloader_id = ray.put(dataloader)
-
             tuner_result = tune.run(
                     partial(trainer.train,
                             config=config,

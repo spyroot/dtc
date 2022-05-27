@@ -1203,7 +1203,6 @@ class Trainer(AbstractTrainer, ABC):
         self._callback.on_epoch_end()
         return step
 
-    @ray.remote
     def train(self, model_name=None, config=None, checkpoint_dir=None):
         """
         :param config:
@@ -1328,3 +1327,59 @@ class Trainer(AbstractTrainer, ABC):
     #     dateTimeObj = datetime.now()
     #     copyfile.copy(model_file, f"{dateTimeObj.year}{dateTimeObj.month}{dateTimeObj.day}_{model_file}_")
     #
+
+#
+# def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
+#
+#     data_dir = os.path.abspath("./data")
+#
+#     load_data(data_dir)
+#     dataloader = SFTFDataloader(spec, rank=cmd_args.rank, world_size=cmd_args.world_size, verbose=args.verbose)
+#
+#     config = {
+#         "l1": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
+#         "l2": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
+#         "lr": tune.loguniform(1e-4, 1e-1),
+#         "batch_size": tune.choice([2, 4, 8, 16])
+#     }
+#     scheduler = ASHAScheduler(
+#         metric="loss",
+#         mode="min",
+#         max_t=max_num_epochs,
+#         grace_period=1,
+#         reduction_factor=2)
+#
+#     reporter = CLIReporter(
+#         # parameter_columns=["l1", "l2", "lr", "batch_size"],
+#         metric_columns=["loss", "accuracy", "training_iteration"])
+#
+#     result = tune.run(
+#         partial(train_cifar, data_dir=data_dir),
+#         resources_per_trial={"cpu": 2, "gpu": gpus_per_trial},
+#         config=config,
+#         num_samples=num_samples,
+#         scheduler=scheduler,
+#         progress_reporter=reporter)
+#
+#     best_trial = result.get_best_trial("loss", "min", "last")
+#     print("Best trial config: {}".format(best_trial.config))
+#     print("Best trial final validation loss: {}".format(
+#         best_trial.last_result["loss"]))
+#     print("Best trial final validation accuracy: {}".format(
+#         best_trial.last_result["accuracy"]))
+#
+#     best_trained_model = Net(best_trial.config["l1"], best_trial.config["l2"])
+#     device = "cpu"
+#     if torch.cuda.is_available():
+#         device = "cuda:0"
+#         if gpus_per_trial > 1:
+#             best_trained_model = nn.DataParallel(best_trained_model)
+#     best_trained_model.to(device)
+#
+#     best_checkpoint_dir = best_trial.checkpoint.value
+#     model_state, optimizer_state = torch.load(os.path.join(
+#         best_checkpoint_dir, "checkpoint"))
+#     best_trained_model.load_state_dict(model_state)
+#
+#     test_acc = test_accuracy(best_trained_model, device)
+#     print("Best trial test set accuracy: {}".format(test_acc))
