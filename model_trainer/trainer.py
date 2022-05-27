@@ -1016,7 +1016,8 @@ class Trainer(AbstractTrainer, ABC):
             #     total_accuracy += prediction_accuracy
 
             # save model checkpoint if needed
-            if self.rank == 0 and self.save_if_need(model_name=model_name, layer_name=layer_name,
+            if self.rank == 0 and self.save_if_need(model_name=model_name,
+                                                    layer_name=layer_name,
                                                     epoch=self.epoch, step=step):
                 print("Updating saved")
                 self.saved_run = step
@@ -1046,6 +1047,7 @@ class Trainer(AbstractTrainer, ABC):
             #                             hparams=hparams, metrics=metrics)
             step += 1
 
+        self.metric.on_batch_end()
         self._callback.on_loader_end()
         self._steps[layer_name] = step
         return step

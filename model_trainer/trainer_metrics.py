@@ -32,21 +32,49 @@ class Metrics:
         :param num_iteration: num total iteration
         :param verbose:  verbose or not
         """
-        self.set_logger(verbose)
+        Metrics.set_logger(verbose)
         self.loss = None
-        self.total_loss = None
-        self.num_epochs = num_epochs
+        self.batch_loss = None
         self.grad_norm_loss = None
 
+        self.num_epochs = num_epochs
         self.total_iteration = None
         self.num_batches = num_batches
         self.num_iteration = num_iteration
         self.epoch_timer = None
 
         # file to save and load metrics
-        self.metric_perf_trace_path = metric_step_file_path
+        if not isinstance(metric_step_file_path, str):
+            self.metric_step_file_path = metric_step_file_path
+        self.metric_step_file_path = metric_step_file_path
+
+        if not isinstance(metric_batch_file_path, str):
+            self.metric_batch_file_path = metric_batch_file_path
         self.metric_batch_file_path = metric_batch_file_path
-        self.metric_step_file_path = metric_perf_trace_path
+
+        if not isinstance(metric_perf_trace_path, str):
+            self.metric_perf_trace_path = metric_perf_trace_path
+        self.metric_perf_trace_path = metric_perf_trace_path
+
+        self._self_metric_files = [self.metric_step_file_path,
+                                   self.metric_batch_file_path,
+                                   self.metric_perf_trace_path]
+
+        self._epoc_counter = 0
+
+    def on_batch_start(self, batch_idx, step, loss: float, grad_norm=None):
+        pass
+
+    def on_batch_end(self):
+        print("batch size", self.num_batches)
+        print(self.batch_loss)
+        self.batch_loss = np.zeros((self.num_batches, 1))
+
+    def on_epoch_begin(self, epoch_idx):
+        self._epoc_counter = self._epoc_counter + 1
+
+    def on_epoch_end(self, ):
+        pass
 
     def update(self, batch_idx, step, loss: float, grad_norm=None):
         """Update metric history.
@@ -57,7 +85,9 @@ class Metrics:
         :return: nothing11
         """
         self.loss[step] = loss
-        self.total_loss[batch_idx] += loss
+        self.batch_loss[batch_idx] += loss
+
+        # print(batch_idx, self.batch_loss)
         if grad_norm is not None:
             self.grad_norm_loss[step] = grad_norm
             logger.info("Batch {} Step {} Loss {} mean {} grad norm loss {}",
@@ -68,7 +98,7 @@ class Metrics:
 
     def set_num_iteration(self, num_iteration):
         """Update number of total iterations
-        :param num_iteration: - should total iteration
+        :param num_iteration: - should be total iteration
         :return: nothing
         """
         self.num_iteration = max(1, num_iteration)
@@ -96,19 +126,19 @@ class Metrics:
         :return:
         """
         self.total_iteration = max(1, self.num_batches) * max(1, self.num_iteration)
+
         if self.num_batches > 0 and self.num_iteration > 0 and self.total_iteration > 0:
             logger.info("Creating metric data. {} ".format(self.num_batches))
-            self.total_loss = np.zeros((self.num_batches, 1))
+            self.batch_loss = np.zeros((self.num_batches, 1))
             self.loss = np.zeros((self.total_iteration, 1))
             self.grad_norm_loss = np.zeros((self.total_iteration, 1))
             self.epoch_timer = np.zeros((self.num_epochs, 1))
 
-        logger.info("Metric started, expected num batches {}".format(self.num_batches))
-        logger.info("Metric expected iter per step {} and {} total iteration".format(self.num_iteration,
-                                                                                     self.total_iteration))
+        logger.info(f"Metric started, expected num batches {self.num_batches}")
+        logger.info(f"Metric expected iter per step {self.num_iteration} and {self.total_iteration} total iteration")
         logger.debug("Metric shapes loss {} total_loss {} delta timer {}",
                      self.loss.shape,
-                     self.total_loss.shape,
+                     self.batch_loss.shape,
                      self.epoch_timer.shape)
 
         return
@@ -132,37 +162,17 @@ class Metrics:
         """Method saves all metrics
         :return:
         """
-        if self.metric_step_file_path is not None:
-            np.save(str(self.metric_step_file_path.resolve()), self.loss)
-
-        if self.metric_batch_file_path is not None:
-            np.save(str(self.metric_batch_file_path.resolve()), self.total_loss)
-
-        if self.metric_perf_trace_path is not None:
-            np.save(str(self.metric_perf_trace_path.resolve()), self.epoch_timer)
+        np.save(self.metric_step_file_path, self.loss)
+        np.save(self.metric_batch_file_path, self.batch_loss)
+        np.save(self.metric_perf_trace_path, self.epoch_timer)
 
     def load(self):
         """Method loads all metric traces.
         :return:
         """
-        if self.metric_step_file_path is not None:
-            if not isinstance(self.metric_step_file_path, str):
-                self.loss = np.load(str(self.metric_step_file_path.resolve()))
-            else:
-                self.loss = np.load(self.metric_step_file_path)
-
-        if self.metric_batch_file_path is not None:
-            if not isinstance(self.metric_batch_file_path, str):
-                self.total_loss = np.load(str(self.metric_batch_file_path.resolve()))
-            else:
-
-                self.total_loss = np.load(self.metric_batch_file_path)
-
-        if self.metric_perf_trace_path is not None:
-            if not isinstance(self.metric_batch_file_path, str):
-                self.epoch_timer = np.load(str(self.metric_perf_trace_path.resolve()))
-            else:
-                self.epoch_timer = np.load(self.metric_perf_trace_path)
+        self.loss = np.load(self.metric_step_file_path)
+        self.batch_loss = np.load(self.metric_batch_file_path)
+        self.epoch_timer = np.load(self.metric_perf_trace_path)
 
     def total_mean_loss(self):
         """Return mean loss, compute mean from entire loss history
@@ -193,7 +203,7 @@ def batch_loss_compute():
     """
     spec = ExperimentSpecs(spec_config='../config.yaml')
     loader = SFTFDataloader(spec, verbose=False)
-    loaders, colleter= loader.get_loader()
+    loaders, colleter = loader.get_loader()
 
     total_batches = len(loaders['train_set'])
 
