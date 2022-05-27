@@ -1,7 +1,6 @@
 from torch.cuda import amp
 
-from model_trainer.callbacks.base import listify
-from model_trainer.callbacks.callback import Callback
+from .base import listify, Callback
 from model_trainer.callbacks.time_meter import AverageMeter
 import torch
 

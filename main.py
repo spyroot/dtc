@@ -11,6 +11,10 @@ import socket
 
 import numpy as np
 import ray
+from ray import tune
+from ray.tune import CLIReporter
+from ray.tune.schedulers import ASHAScheduler
+
 import torch
 from loguru import logger
 
@@ -18,6 +22,7 @@ from model_loader.dataset_stft25 import SFTF2Dataset
 from model_loader.ds_util import md5_checksum
 from model_loader.mel_dataloader import SFTFDataloader
 from model_loader.dataset_stft30 import SFTF3Dataset
+from model_trainer.callbacks.base import Callback
 from model_trainer.callbacks.time_meter import TimeMeter
 from model_trainer.callbacks.time_tracer import BatchTimer
 from model_trainer.specs.dtc_spec import TacotronSpec, ModelSpecDTC
@@ -210,6 +215,7 @@ def convert(trainer_spec, version=2, dataset_name=None, merge=True, verbose=True
                         meta_file=data['test_meta'],
                         data_type="test")
 
+
 # def handler(a,b=None):
 #     """
 #
@@ -305,6 +311,154 @@ def init_distributed(spec=None, rank=0, world_size=0) -> None:
     logger.debug("Done initializing distributed")
 
 
+class Trainable(tune.Trainable, Callback):
+    def setup(self, config):
+        data = SFTFDataloader(config['spec'],
+                              rank=int(args.rank),
+                              world_size=config['world_size'],
+                              verbose=args.verbose)
+
+        self.trainer = Trainer(config['spec'],
+                               data_loader=data,
+                               rank=int(args.rank),
+                               world_size=config['world_size'],
+                               verbose=args.verbose,
+                               device=config['device'],
+                               hp_tunner=True,
+                               disable_pbar=True)
+
+    def on_epoch_begin(self):
+        # loss = validation_loss)
+        pass
+
+    def on_epoch_end(self):
+        pass
+
+    def save_checkpoint(self, tmp_checkpoint_dir):
+        print("called save_checkpoint with tmp dir ", tmp_checkpoint_dir)
+        checkpoint_path = os.path.join(tmp_checkpoint_dir, "model.pth")
+        torch.save(self.model.state_dict(), checkpoint_path)
+        return tmp_checkpoint_dir
+
+    def load_checkpoint(self, tmp_checkpoint_dir):
+        print("load_checkpoint with tmp dir ", tmp_checkpoint_dir)
+        checkpoint_path = os.path.join(tmp_checkpoint_dir, "model.pth")
+        self.model.load_state_dict(torch.load(checkpoint_path))
+
+    def step(self):
+        self.trainert.hp_trainer()
+        # score = objective(self.x, self.a, self.b)
+        # self.x += 1
+        return {"score": 1}
+
+    # def reset_config(self, new_config):
+    #     self.trainer.update_optimizer(new_config)
+    #     for param_group in self.optimizer.param_groups:
+    #         if "lr" in new_config:
+    #             param_group["lr"] = new_config["lr"]
+    #         if "momentum" in new_config:
+    #             param_group["momentum"] = new_config["momentum"]
+    #
+    #     self.model = ConvNet()
+    #     self.config = new_config
+    #     return True
+
+
+def tune_hyperparam(spec=None, cmd_args=None, device=None, cudnn_bench=False):
+    if int(cmd_args.rank) == 0:
+        logger.info("Staring rank zero node.")
+
+    if spec.is_distributed_run():
+        logger.info("Staring training in distributed settings. "
+                    "rank {} world size {}".format(args.rank, args.world_size))
+        init_distributed(spec, int(args.rank), int(args.world_size))
+        # device = torch.device(f"cuda:{int(0)}")
+        # device = torch.device(f"cuda:{dist.get_rank()}")
+        # device = torch.device(device)
+        dist.barrier()
+
+    if cmd_args.overfit:
+        spec.set_overfit()
+
+    torch.backends.cudnn.enabled = True
+    if cudnn_bench:
+        torch.backends.cudnn.benchmark = True
+
+    if args.verbose:
+        logger.debug("Torch allow matmul fp16 {}", torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction)
+        logger.debug("Torch cudnn version, {}", torch.backends.cudnn.version())
+        logger.debug("Torch backend openmp", torch.backends.openmp)
+
+    try:
+
+        scheduler = ASHAScheduler(
+                metric="loss",
+                mode="min",
+                max_t=spec.epochs(),
+                grace_period=1,
+                reduction_factor=2)
+
+        reporter = CLIReporter(
+                # parameter_columns=["l1", "l2", "lr", "batch_size"],
+                metric_columns=["loss", "accuracy", "training_iteration"])
+
+        config = {
+            # "l1": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
+            # "l2": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
+            "spec": spec,
+            "world_size": int(0),
+            "device": device,
+            "lr": ray.tune.loguniform(1e-4, 1e-1),
+            "batch_size": ray.tune.choice([2, 4, 8, 16, 32, 64])
+        }
+
+        tuner_result = ray.tune.run(Trainable,
+                                    resources_per_trial={"gpu": 1},
+                                    config=config,
+                                    num_samples=10,
+                                    scheduler=scheduler,
+                                    checkpoint_freq=2,
+                                    local_dir="/Users/spyroot/Dropbox/macbook2022/git/dtc/results/ray_log",
+                                    stop={"training_iteration": 5},
+                                    max_concurrent_trials=1,
+                                    progress_reporter=reporter)
+
+        best_trial = tuner_result.get_best_trial("loss", "min", "last")
+        print("Best trial config: {}".format(best_trial.config))
+        print("Best trial final validation loss: {}".format(best_trial.last_result["loss"]))
+        # print("Best trial final validation accuracy: {}".format(best_trial.last_result["accuracy"]))
+
+        # print('best config: ', analysis.get_best_config(metric="score", mode="max"))
+
+        # tuner_result = ray.tune.run(
+        #         tune.with_parameters(
+        #                 Trainer(spec,
+        #                         SFTFDataloader(spec, rank=cmd_args.rank,
+        #                                        world_size=cmd_args.world_size,
+        #                                        verbose=args.verbose),
+        #                         rank=int(args.rank),
+        #                         world_size=int(cmd_args.world_size),
+        #                         verbose=args.verbose, device=device,
+        #                         callback=[BatchTimer()],
+        #                         config=config,
+        #                         checkpoint_dir=spec.model_files.get_tuner_dir())
+        #         ),
+        #         resources_per_trial={"gpu": 1},
+        #         config=config,
+        #         num_samples=10,
+        #         scheduler=scheduler,
+        #         stop={"training_iteration": 5},
+        #         progress_reporter=reporter)
+
+    except TrainerError as e:
+        print("Error: trainer error: ", e)
+        cleanup(spec.is_distributed_run())
+        sys.exit(10)
+    except Exception as other:
+        print(other)
+        raise other
+
+
 def train(spec=None, cmd_args=None, device=None, cudnn_bench=False):
     """
     Main routine for to train a models.
@@ -317,6 +471,9 @@ def train(spec=None, cmd_args=None, device=None, cudnn_bench=False):
     """
     if int(cmd_args.rank) == 0:
         logger.info("Staring rank zero node.")
+
+    if args.tune:
+        tune_hyperparam(spec, cmd_args, device, cudnn_bench)
 
     if spec.is_distributed_run():
         logger.info("Staring training in distributed settings. "
@@ -341,63 +498,12 @@ def train(spec=None, cmd_args=None, device=None, cudnn_bench=False):
         logger.debug("Torch backend openmp", torch.backends.openmp)
     try:
 
-        config = {
-            # "l1": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
-            # "l2": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
-            "lr": tune.loguniform(1e-4, 1e-1),
-            "batch_size": tune.choice([2, 4, 8, 16, 32, 64])
-        }
-
-        scheduler = ASHAScheduler(
-                metric="loss",
-                mode="min",
-                max_t=spec.epochs(),
-                grace_period=1,
-                reduction_factor=2)
-
-        reporter = CLIReporter(
-                # parameter_columns=["l1", "l2", "lr", "batch_size"],
-                metric_columns=["loss", "accuracy", "training_iteration"])
-
-        trainer = Trainer(spec,
-                          dataloader,
-                          rank=int(args.rank),
-                          world_size=int(cmd_args.world_size),
-                          verbose=args.verbose, device=device,
-                          callback=[BatchTimer()])
-
-        # print("Checking serialize 1")
-        # pickled_data = pickle.dumps(trainer)
-        # print("Checking serialize 2")
-        # ray.util.inspect_serializability(trainer)
-        # import dill
-        # d = dill.detect.baditems(trainer)
-        #
-        # print(d)
-        #
-        # pickled_data = pickle.dumps(spec)
-        # pickled_data = pickle.dumps(spec)
-
-        # sys.exit(1)
-        if args.tune:
-            dataloader_id = ray.put(dataloader)
-            tuner_result = tune.run(
-                    partial(trainer.train,
-                            config=config,
-                            checkpoint_dir=spec.model_files.get_tuner_dir()),
-                    resources_per_trial={"gpu": 1},
-                    config=config,
-                    num_samples=10,
-                    scheduler=scheduler,
-                    stop={"training_iteration": 5},
-                    progress_reporter=reporter)
-
-            best_trial = tuner_result.get_best_trial("loss", "min", "last")
-            print("Best trial config: {}".format(best_trial.config))
-            print("Best trial final validation loss: {}".format(best_trial.last_result["loss"]))
-            print("Best trial final validation accuracy: {}".format(best_trial.last_result["accuracy"]))
-        else:
-            trainer.train()
+        Trainer(spec,
+                dataloader,
+                rank=int(args.rank),
+                world_size=int(cmd_args.world_size),
+                verbose=args.verbose, device=device,
+                callback=[BatchTimer()]).train()
 
     except TrainerError as e:
         print("Error: trainer error: ", e)
@@ -449,7 +555,7 @@ def inference(spec: ExperimentSpecs, cmd_args, device):
         model_path = Path(cmd_args.model_file)
         if model_path.exists() and model_path.is_file():
             trainer = Trainer(spec, rank=int(args.rank),
-                              world_size=int(cmd_args._world_size),
+                              world_size=int(cmd_args.world_size),
                               verbose=args.verbose, device=device, is_inference=True)
             trainer.load_for_inference(model_name="encoder", model_file=str(model_path.resolve()))
             logger.info("Model loaded.")

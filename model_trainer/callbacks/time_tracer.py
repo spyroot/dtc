@@ -1,12 +1,14 @@
-from model_trainer.callbacks.base import Callback
-from model_trainer.callbacks.time_meter import TimeMeter
+from .base import Callback
+from .time_meter import TimeMeter
 from loguru import logger
+
 
 # log to tensorboard
 class BatchTimer(Callback):
     """
 
     """
+
     def __init__(self):
         super().__init__()
         self.has_printed = False

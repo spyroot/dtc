@@ -4,7 +4,7 @@
 #  TODO Loss plot.
 # import torch.distributed as dist
 import os
-import queue
+# import queue
 import random
 from abc import ABC
 from typing import Callable, Optional
@@ -88,6 +88,7 @@ class Trainer(AbstractTrainer, ABC):
     """
 
     """
+
     # root: Optional[str] = "dtc",
     def __init__(self,
                  trainer_spec: ExperimentSpecs,
@@ -100,7 +101,10 @@ class Trainer(AbstractTrainer, ABC):
                  device: Optional[int] = torch.device,
                  cuda_device_id: Optional[int] = 0,
                  is_inference: Optional[bool] = False,
-                 callback: Optional[list[Callback]] = None) -> None:
+                 callback: Optional[list[Callback]] = None,
+                 hp_tunner=False,
+                 config=None,
+                 checkpoint_dir=None) -> None:
         """
 
         :param trainer_spec:  a trainer spec , trainer uses to train model
@@ -123,6 +127,15 @@ class Trainer(AbstractTrainer, ABC):
                                       device=device,
                                       cuda_device_id=cuda_device_id,
                                       is_inference=is_inference)
+
+        if config is not None:
+            print("God config")
+            self.config = config
+
+        self.is_hp_tunner = hp_tunner
+
+        self.checkpoint_dir = checkpoint_dir
+
         self.set_logger(verbose)
         #
         self.device = device
@@ -189,6 +202,15 @@ class Trainer(AbstractTrainer, ABC):
         self.model_creator, self.trainer_dispatcher, self._batch_loader = self.create_model_dispatch()
         # init trainer
         self.init_trainer()
+
+    def __call__(self, checkpoint_dir=None):
+        """
+
+        :return:
+        """
+
+        print("Got checkpoint dir")
+        return self.train()
 
     def create_model_dispatch(self) -> tuple[dict[str, dict[str: Callable]],
                                              dict[str, Callable],
@@ -367,6 +389,9 @@ class Trainer(AbstractTrainer, ABC):
         if not self.trainer_spec.is_load_model():
             return 0
 
+        if self.is_hp_tunner:
+            return 0
+
         if model_file is None:
             model_file = self.trainer_spec.model_files.get_model_file_path(model_name)
         else:
@@ -428,7 +453,8 @@ class Trainer(AbstractTrainer, ABC):
             return checkpoint['epoch'], checkpoint['it']
         except FileNotFoundError as e:
             print("Failed load model files {}. No saved model found.".format(model_file))
-            logger.info("No model file to load model file, return default epoch 0, iteration 0")
+            logger.info(f"No model file to load model file, return default epoch 0, iteration 0 {e}")
+            logger.info(e)
 
         return 0, 0
 
@@ -484,7 +510,7 @@ class Trainer(AbstractTrainer, ABC):
 
     def trainer_iterator(self, model_name: str, layer_name: str, last_epoch=0, max_epochs=0):
         """
-        Method return iterator, i.e if need compute, offset , update tqdm etc.
+        Method return iterator, i.e if you need compute, offset , update tqdm etc.
         :param model_name:
         :param layer_name:
         :param last_epoch:
@@ -605,6 +631,7 @@ class Trainer(AbstractTrainer, ABC):
                          f"eps: {spec.dampening(alias_name)} "
                          f"weight_decay: {spec.weight_decay(alias_name)} "
                          f"nesterov: {spec.nesterov(alias_name)}")
+
             opt = optim.opt = optim.SGD(list(self._models[model_name].parameters(alias_name)),
                                         lr=spec.optimizer_learning_rate(alias_name),
                                         momentum=spec.momentum(alias_name),
@@ -721,6 +748,10 @@ class Trainer(AbstractTrainer, ABC):
         :param model_name:  active model
         :param last_epoch: if it last we save a model.
         """
+
+        if self.is_hp_tunner:
+            return False
+
         # by default condition to save epoch , if save per iteration we check iteration.
         if self.trainer_spec.is_save_required() is False or step == 0 or \
                 self.trainer_spec.epochs_save() == 0:
@@ -916,7 +947,7 @@ class Trainer(AbstractTrainer, ABC):
     #         dist.all_reduce(param.grad.data, op=dist.ReduceOp.SUM)
     #         param.grad.data /= size
     #
-    def train_epoch(self, model, model_name: str, layer_name: str, optimizer, scheduler=None, save_callback=None):
+    def train_epoch(self, model, model_name: str, layer_name: str, optimizer, scheduler=None):
         """
 
         :param model:
@@ -924,7 +955,6 @@ class Trainer(AbstractTrainer, ABC):
         :param layer_name: 
         :param optimizer:
         :param scheduler:
-        :param save_callback:
         :return:
         """
         device = self.device
@@ -1143,10 +1173,11 @@ class Trainer(AbstractTrainer, ABC):
 
         return model, optimizer, scheduler, step
 
-    def sequential(self, model_name: str, layer_name: str, checkpoint_dir: str):
+    def trainer_sequential(self, model_name: str, layer_name: str, checkpoint_dir: str):
         """
         Sequential training loop.
 
+        :param checkpoint_dir:
         :param model_name:
         :param layer_name:
         :return:
@@ -1168,14 +1199,14 @@ class Trainer(AbstractTrainer, ABC):
         self.tqdm_iter.set_postfix({'step': step})
         self._callback.on_begin()
 
-        # if checkpoint_dir is None:
-        #     checkpoint_dir =
-        # checkpoint_dir = self.trainer_spec.model_files.get_model_dir()
-        if checkpoint_dir is not None:
-            model_state, optimizer_state = torch.load(os.path.join(checkpoint_dir, "checkpoint"))
-            model.load_state_dict(model_state)
-            optimizer.load_state_dict(optimizer_state)
-
+        # # if checkpoint_dir is None:
+        # #     checkpoint_dir =
+        # # checkpoint_dir = self.trainer_spec.model_files.get_model_dir()
+        # if checkpoint_dir is not None:
+        #     model_state, optimizer_state = torch.load(os.path.join(checkpoint_dir, "checkpoint"))
+        #     model.load_state_dict(model_state)
+        #     optimizer.load_state_dict(optimizer_state)
+        validation_loss = 0
         for epoch in self.tqdm_iter:
             self._callback.on_epoch_begin()
             if self.trainer_spec.is_distributed_run():
@@ -1186,12 +1217,15 @@ class Trainer(AbstractTrainer, ABC):
             self.metric.start_epoch_timer(epoch)
             step = self.train_epoch(model, model_name, layer_name, optimizer)
             self.metric.update_epoch_timer(epoch)
-            validation_loss = self.validate_epoch(model, model_name, layer_name, epoch)
+            validation_loss += self.validate_epoch(model, model_name, layer_name, epoch)
             self._callback.on_epoch_end()
-            with tune.checkpoint_dir(epoch) as checkpoint_dir:
-                path = os.path.join(checkpoint_dir, "checkpoint")
-                torch.save((model.state_dict(), optimizer.state_dict()), path)
-            tune.report(loss=validation_loss)
+            if self.is_hp_tunner:
+                break
+
+            # with tune.checkpoint_dir(epoch) as checkpoint_dir:
+            #     path = os.path.join(checkpoint_dir, "checkpoint")
+            #     torch.save((model.state_dict(), optimizer.state_dict()), path)
+            # tune.report(loss=validation_loss)
 
         self._callback.on_end()
 
@@ -1200,11 +1234,14 @@ class Trainer(AbstractTrainer, ABC):
                                                 self.trainer_spec.epochs(),
                                                 last_epoch=True):
             logger.info(f"Saving {self.trainer_spec.epochs()} last epoch.")
-        self._callback.on_epoch_end()
-        return step
 
-    def train(self, model_name=None, config=None, checkpoint_dir=None):
+        self._callback.on_epoch_end()
+        return {'step', step,
+                'validation_loss', validation_loss}
+
+    def train(self, model_name=None, config=None, checkpoint_dir=None, dataloader=None):
         """
+        :param dataloader:
         :param config:
         :param model_name:
         :param  checkpoint_dir this mainly for ray
@@ -1228,6 +1265,11 @@ class Trainer(AbstractTrainer, ABC):
                    Check file {}".format(self.trainer_spec.model_files.get_model_file_path(model_name)))
             return
 
+        if dataloader is not None:
+            self._dataloaders = dataloader
+            self._train_loader = dataloader['train_set']
+            self._validation_loader = dataloader['validation_set']
+
         # last_step = 0
         strategy = self.trainer_spec.get_training_strategy(model_name)
         if strategy == 'sequential':
@@ -1249,7 +1291,7 @@ class Trainer(AbstractTrainer, ABC):
                         for param_group in self._optimizers[model_name][layer_name].param_groups:
                             param_group['lr'] = config["lr"]
                 # run model
-                last_step = self.sequential(model_name, layer_name, checkpoint_dir=checkpoint_dir)
+                last_step = self.trainer_sequential(model_name, layer_name, checkpoint_dir=checkpoint_dir)
                 if self.rank == 0 and self.save_if_need(model_name=model_name,
                                                         layer_name=layer_name, epoch=self.trainer_spec.epochs(),
                                                         step=last_step,
@@ -1258,6 +1300,40 @@ class Trainer(AbstractTrainer, ABC):
                         fmtl_print("Saved last epoch", self.trainer_spec.epochs())
 
         self.cleanup()
+
+    def hp_trainer(self, config):
+        """
+
+        :return:
+        """
+        print("################# Started @@@")
+
+        torch.cuda.empty_cache()
+        model_name = self.trainer_spec.get_active_mode()
+        model_layers = self.trainer_spec.get_active_sub_models()
+
+        if self.is_trained(model_name):
+            print("It looks like model already trained. \
+                   Check file {}".format(self.trainer_spec.model_files.get_model_file_path(model_name)))
+            return
+
+        # last_step = 0
+        strategy = self.trainer_spec.get_training_strategy(model_name)
+        if strategy == 'sequential':
+            for layer in model_layers:
+                self.q.append(layer)
+            while len(self.q) > 0:
+                layer_name = self.q.pop()
+                # update whatever we need
+                if config is not None:
+                    if 'batch_size' in config:
+                        self._dataloaders.update(config['batch_size'])
+                    if 'lr' in config:
+                        for param_group in self._optimizers[model_name][layer_name].param_groups:
+                            param_group['lr'] = config["lr"]
+                return self.trainer_sequential(model_name, layer_name)
+
+        # self.cleanup()
 
     def is_trained(self, model_name: str) -> bool:
         """
