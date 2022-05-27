@@ -819,7 +819,7 @@ class Trainer(AbstractTrainer, ABC):
         model.eval()
         with torch.no_grad():
             total_prediction_loss = 0.0
-            for batch_idx, batch in enumerate(self.validation_loader):
+            for batch_idx, batch in enumerate(self._validation_loader):
                 x, y = take_batch(batch, self.device)
                 y_pred = model(x)
                 # our loss mel_loss + gate_loss
@@ -844,7 +844,7 @@ class Trainer(AbstractTrainer, ABC):
                                             'batch': batch_idx,
                                             'saved step': self.saved_run})
             # normalize
-            total_prediction_loss = total_prediction_loss / (len(self.validation_loader) + 1)
+            total_prediction_loss = total_prediction_loss / (len(self._validation_loader) + 1)
         self._callback.validation_end()
 
         # tune.report(loss=total_prediction_loss)
