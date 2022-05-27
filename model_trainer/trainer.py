@@ -129,7 +129,6 @@ class Trainer(AbstractTrainer, ABC):
                                       is_inference=is_inference)
 
         if config is not None:
-            print("God config")
             self.config = config
 
         self.is_hp_tunner = hp_tunner
@@ -1299,8 +1298,7 @@ class Trainer(AbstractTrainer, ABC):
                                                         layer_name=layer_name, epoch=self.trainer_spec.epochs(),
                                                         step=last_step,
                                                         last_epoch=True):
-                    if self.verbose:
-                        fmtl_print("Saved last epoch", self.trainer_spec.epochs())
+                    logger.info(f"Saved last epoch {self.trainer_spec.epochs()}")
 
         self.cleanup()
 

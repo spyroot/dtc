@@ -43,7 +43,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 os.environ["LOCAL_RANK"] = "0"
 os.environ["RANK"] = "0"
 os.environ["WORLD_SIZE"] = "2"
-os.environ["TUNE_DISABLE_AUTO_CALLBACK_SYNCER"] = 1
+os.environ["TUNE_DISABLE_AUTO_CALLBACK_SYNCER"] = "1"
 
 import warnings
 
@@ -366,6 +366,10 @@ class Trainable(tune.Trainable, Callback):
         # self.trainert.hp_trainer()
         # score = objective(self.x, self.a, self.b)
         # self.x += 1
+        result = self.trainer.hp_trainer(self.config)
+        print(result.key())
+        print(result.values())
+
         return self.trainer.hp_trainer(self.config)
 
 
