@@ -691,7 +691,7 @@ class Trainer(AbstractTrainer, ABC):
 
         :return:
         """
-        model_name = self.trainer_spec.get_active_model()
+        model_name = self.trainer_spec.get_active_model_name()
         if model_name not in self._optimizers:
             raise TrainerError(f"Model {model_name} must be created first.")
 

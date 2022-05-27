@@ -60,7 +60,6 @@ def fetch_content(url: str, filename: str, chunk_size: int = 1024 * 32) -> None:
     :param chunk_size:
     :return:
     """
-    print("Fetching")
     with urlopen(urllib.request.Request(url, headers={"User-Agent": "Python/Python"})) as resp:
         get_chunk(iter(lambda: resp.read(chunk_size), b""), filename, length=resp.length)
 
@@ -68,22 +67,24 @@ def fetch_content(url: str, filename: str, chunk_size: int = 1024 * 32) -> None:
 def download_dataset(url: str, path: str,
                      filename: Optional[str] = None,
                      checksum: Optional[str] = None,
+                     overwrite: Optional[bool] = False,
                      retry: int = 5,
                      is_strict=False) -> tuple[bool, str]:
     """
     Download a file.
 
-    :param is_strict:  if we couldn't find any raise exception otherwise it just warnings
-    :param path:
-    :param url:
-    :param filename:  Name to save the file under. If None, use the basename of the URL
-    :param checksum:  Checksum of the download. If None, do not check
+    :param overwrite: if we need overwrite, no checksum check.
+    :param is_strict:  if we couldn't find any raise exception otherwise it just warnings.
+    :param path: where want to save a file.
+    :param url: link to a file.
+    :param filename:  Name to save the file under. If None, use the basename of the URL.
+    :param checksum:  Checksum of the download. If None, do not check.
     :param retry: num retry
     :return:
     """
     root_dir = Path(path).expanduser()
     if Path(root_dir).is_dir():
-        logger.debug("Creating directory structure".format(str(root_dir)))
+        logger.debug("Creating directory structure.".format(str(root_dir)))
         os.makedirs(root_dir, exist_ok=True)
 
     if not filename:
@@ -91,20 +92,24 @@ def download_dataset(url: str, path: str,
 
     full_path = root_dir / filename
     full_path = full_path.resolve()
+
     # check if file is already present locally
-    if checksum is not None and full_path.exists():
-        if not check_integrity(str(full_path), checksum):
-            warnings.warn("Checksum mismatched.")
-            return False, ""
+    if not overwrite:
+        # we check checksum if needed.
+        if checksum is not None and full_path.exists():
+            # check integrity
+            if not check_integrity(str(full_path), checksum):
+                warnings.warn(f"Checksum mismatched for a file: {str(full_path)}")
+                return False, ""
+            else:
+                return True, str(full_path)
         else:
-            return True, str(full_path)
-    else:
-        if full_path.exists():
-            hash_checksum = md5_checksum(str(full_path))
-            warnings.warn("File already exists. hash {}".format(hash_checksum))
-            return full_path.exists(), str(full_path)
-        else:
-            logger.debug("File not not found {}".format(str(full_path)))
+            if full_path.exists():
+                hash_checksum = md5_checksum(str(full_path))
+                warnings.warn("File already exists. hash {}".format(hash_checksum))
+                return full_path.exists(), str(full_path)
+            else:
+                logger.debug("File not not found {}".format(str(full_path)))
 
     logger.debug("Making http head request {}".format(url))
     final_url = do_http_head(url, max_redirect=retry)
@@ -123,6 +128,7 @@ def download_dataset(url: str, path: str,
             warnings.warn("Checksum mismatch.")
             return False, ""
 
+    logger.info(f"Dataset exists {full_path.exists()} and path {str(full_path)}")
     return full_path.exists(), str(full_path)
 
 

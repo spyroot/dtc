@@ -78,7 +78,7 @@ class ExperimentSpecs:
         self._dataset_specs = None
 
         # active dataset
-        self.use_dataset = None
+        self._use_dataset = None
 
         # store pointer to config, after spec read serialize yaml to it.
         self.config = None
@@ -188,33 +188,50 @@ class ExperimentSpecs:
             if k.find('model') != -1:
                 models_types.append(k)
 
-    def set_active_dataset(self):
+    def set_active_dataset(self, dataset_name: Optional[str] = ""):
         """
-        Sets active dataset, me can swap during run-time.
+        Sets active dataset,  by default it reads from spec and
+        use use_dataset key.
+
+        If we need swap.
+
+        :param dataset_name: a dataset that already present in config.
         :return:
         """
+
+        if dataset_name is not None and len(dataset_name) > 0:
+            if not self.is_initialized():
+                raise TrainerSpecError("Uninitialized trainer spec. First you need create object from a spec.")
+
+            datasets_specs = self.get_datasets_specs()
+            if dataset_name in datasets_specs:
+                self.config['use_dataset'] = dataset_name
+                self._use_dataset = dataset_name
+                self.set_dataset_specs()
+            else:
+                raise TrainerSpecError(f"Dataset {dataset_name} not found in {self.config_file_name}.")
+
         if 'use_dataset' not in self.config:
             raise TrainerSpecError(f"{self.config_file_name}  must "
                                    f"contain valid 'use_dataset' settings.")
 
-        self.use_dataset = self.config['use_dataset']
+        self._use_dataset = self.config['use_dataset']
 
     def set_dataset_specs(self):
         """
         Update dataset spec, for example if we need swap dataset.
         :return:
         """
-
         if 'datasets' not in self.config:
             raise TrainerSpecError(f"{self.config_file_name} spec must contain "
-                                   f"corresponding datasets settings for {self.use_dataset}")
+                                   f"corresponding datasets settings for {self._use_dataset}")
 
         dataset_list = self.config['datasets']
-        if self.use_dataset not in dataset_list:
+        if self._use_dataset not in dataset_list:
             raise TrainerSpecError(f"{self.config_file_name}  doesn't contain "
-                                   f"{self.use_dataset} template, please check the config.")
+                                   f"{self._use_dataset} template, please check the config.")
 
-        self._dataset_specs = self.config['datasets'][self.use_dataset]
+        self._dataset_specs = self.config['datasets'][self._use_dataset]
 
     def get_dataset_names(self):
         """
@@ -349,6 +366,8 @@ class ExperimentSpecs:
             fmt_print("active setting", self.config['active_setting'])
 
         self.set_active_settings()
+        self._update_all_keys()
+        self._validate_all_mandatory()
         self._inited = True
 
     def read_from_file(self, debug=False):
@@ -649,7 +668,7 @@ class ExperimentSpecs:
 
         pt_dict = {}
         for k in ds_dict:
-            # check if  file exists
+            # check if file exists
             if ds_dict[k].exists():
                 if self._verbose:
                     logger.info("Loading tensor mel from {}".format(str(ds_dict[k])))
@@ -687,7 +706,7 @@ class ExperimentSpecs:
         :return:
         """
         if not self.is_initialized():
-            raise TrainerSpecError("Uninitialized, need read specs first.")
+            raise TrainerSpecError("Uninitialized trainer spec. First you need create object from a spec.")
 
         if 'datasets' not in self.config:
             raise TrainerSpecError(f"Current configuration in {self.config_file_name} has no dataset.")
@@ -934,7 +953,7 @@ class ExperimentSpecs:
 
         return False
 
-    def get_active_model(self) -> str:
+    def get_active_model_name(self) -> str:
         """
          Return model that indicate as current active model.
          It is important to understand, we can switch between models.
@@ -1579,3 +1598,61 @@ class ExperimentSpecs:
         :return:
         """
         return self._overfit
+
+    @staticmethod
+    def get_audio_dataset_keys() -> list[str]:
+        """
+        :return:
+        """
+        return ['train_set', 'validation_set', 'test_set']
+
+    @staticmethod
+    def get_dataset_data_key() -> str:
+        """
+        Default key for data
+        :return:
+        """
+        return "data"
+
+    def get_active_dataset_name(self) -> str:
+        print(self._dataset_specs)
+        return self._use_dataset
+
+    def _update_all_keys(self):
+        # self._config = change_keys(self.config)
+        # print(self._config)
+        pass
+
+    def _validate_all_mandatory(self):
+        pass
+
+    def get_active_dataset_spec(self):
+        """
+
+        :return:
+        """
+        if not self.is_initialized():
+            raise TrainerSpecError("Uninitialized trainer spec. First you need create object from a spec.")
+
+        return self._dataset_specs
+
+
+def remove_junk(val):
+    return val.strip().to_lower()
+
+
+def change_keys(obj, convert):
+    """
+    Recursively goes through the dictionary obj and replaces keys with the convert function.
+    """
+    if isinstance(obj, (str, int, float)):
+        return obj
+    if isinstance(obj, dict):
+        new = obj.__class__()
+        for k, v in obj.items():
+            new[convert(k)] = change_keys(v, convert)
+    elif isinstance(obj, (list, set, tuple)):
+        new = obj.__class__(change_keys(v, convert) for v in obj)
+    else:
+        return obj
+    return new

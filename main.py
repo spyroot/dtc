@@ -88,7 +88,6 @@ def convert_mel_to_data(encoder_spec: TacotronSpec,
                                    f'{len(dataset)}_filter_{encoder_spec.n_mel_channels()}.pt'
     print("Saving ", file_name)
     torch.save(meta, str(file_name))
-
     print("MD5 checksum", md5_checksum(str(file_name)))
 
     if not post_check:
@@ -199,17 +198,17 @@ def convert(trainer_spec, version=2, dataset_name=None, merge=True, verbose=True
                         target_dir=final_dir,
                         data_type="train")
 
-    # convert_mel_to_data(encoder_spec, validation_dataset,
-    #                     dataset_name=dataset_name,
-    #                     target_dir=final_dir,
-    #                     meta_file=data['validation_meta'],
-    #                     data_type="validate")
-    #
-    # convert_mel_to_data(encoder_spec, test_dataset,
-    #                     dataset_name=dataset_name,
-    #                     target_dir=final_dir,
-    #                     meta_file=data['test_meta'],
-    #                     data_type="test")
+    convert_mel_to_data(encoder_spec, validation_dataset,
+                        dataset_name=dataset_name,
+                        target_dir=final_dir,
+                        meta_file=data['validation_meta'],
+                        data_type="validate")
+
+    convert_mel_to_data(encoder_spec, test_dataset,
+                        dataset_name=dataset_name,
+                        target_dir=final_dir,
+                        meta_file=data['test_meta'],
+                        data_type="test")
 
 # def handler(a,b=None):
 #     """
@@ -316,7 +315,7 @@ def train(spec=None, cmd_args=None, device=None, cudnn_bench=False):
     :param device: device where run
     :return:
     """
-    if int(cmd_args.rank) == 0:
+    if int(cmd_args._rank) == 0:
         logger.info("Staring rank zero node.")
 
     if spec.is_distributed_run():
@@ -331,7 +330,7 @@ def train(spec=None, cmd_args=None, device=None, cudnn_bench=False):
     if cmd_args.overfit:
         spec.set_overfit()
 
-    dataloader = SFTFDataloader(spec, rank=cmd_args.rank, world_size=cmd_args.world_size, verbose=args.verbose)
+    dataloader = SFTFDataloader(spec, rank=cmd_args._rank, world_size=cmd_args._world_size, verbose=args.verbose)
     torch.backends.cudnn.enabled = True
     if cudnn_bench:
         torch.backends.cudnn.benchmark = True
@@ -363,7 +362,7 @@ def train(spec=None, cmd_args=None, device=None, cudnn_bench=False):
         trainer = Trainer(spec,
                           dataloader,
                           rank=int(args.rank),
-                          world_size=int(cmd_args.world_size),
+                          world_size=int(cmd_args._world_size),
                           verbose=args.verbose, device=device,
                           callback=[BatchTimer()])
 
@@ -414,7 +413,7 @@ def dataloader_dry(cmd_args, trainer_specs):
     """
     data_loader = SFTFDataloader(trainer_specs, verbose=cmd_args.verbose)
     if cmd_args.benchmark:
-        data_loader.create()
+        data_loader._create()
         data_loader.benchmark_read()
 
 
@@ -447,7 +446,7 @@ def inference(spec: ExperimentSpecs, cmd_args, device):
         model_path = Path(cmd_args.model_file)
         if model_path.exists() and model_path.is_file():
             trainer = Trainer(spec, rank=int(args.rank),
-                              world_size=int(cmd_args.world_size),
+                              world_size=int(cmd_args._world_size),
                               verbose=args.verbose, device=device, is_inference=True)
             trainer.load_for_inference(model_name="encoder", model_file=str(model_path.resolve()))
             logger.info("Model loaded.")

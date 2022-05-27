@@ -70,6 +70,8 @@ class ModelSpecDTC(ModelSpec, ABC):
         :param name:
         :return:
         """
+        if name not in self._sub_models:
+            raise InvalidModelSpec(f"{name} not found.")
         return self._sub_models[name]
 
     @staticmethod

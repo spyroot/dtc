@@ -34,7 +34,8 @@ class SFTF2Dataset(BaseSFTFDataset, ABC):
                  overfit: Optional[bool] = False,
                  transform: Optional[Callable] = None,
                  target_transform: Optional[Callable] = None,
-                 verbose: Optional[bool] = False) -> None:
+                 verbose: Optional[bool] = False,
+                 overwrite: Optional[bool] = False) -> None:
         """
         :param model_spec:
         :param data:  data is dict must hold key data
@@ -60,6 +61,7 @@ class SFTF2Dataset(BaseSFTFDataset, ABC):
                                            in_memory=in_memory,
                                            verbose=verbose,
                                            overfit=overfit,
+                                           overwrite=overwrite,
                                            transform=transform,
                                            target_transform=target_transform)
         # if raw we need transcode to stft's
@@ -123,6 +125,7 @@ class SFTF2Dataset(BaseSFTFDataset, ABC):
         :param is_enable:
         :return:
         """
+        BaseSFTFDataset.set_logger(is_enable)
         if is_enable:
             logger.enable(__name__)
         else:
@@ -134,29 +137,31 @@ def test_download():
     :return:
     """
     trainer_spec = ExperimentSpecs(spec_config='../config.yaml')
-    model_spec = trainer_spec.get_model_spec().get_spec('encoder')
+    model_spec = trainer_spec.get_model_spec().get_spec('spectrogram_layer')
     train_dataset = SFTF2Dataset(model_spec, download=True)
 
 
-def test_save_and_load():
+def test_save_and_load(dataset_name=""):
     """
 
     :return:
     """
     trainer_spec = ExperimentSpecs(spec_config='../config.yaml')
-    model_spec = trainer_spec.get_model_spec().get_spec('encoder')
-    pk_dataset = trainer_spec.get_audio_dataset()
+    model_spec = trainer_spec.get_model_spec().get_spec('spectrogram_layer')
+    pk_dataset = trainer_spec.get_audio_dataset(dataset_name)
+    as_list = list(pk_dataset['train_set'].values())
     train_dataset = SFTF2Dataset(model_spec,
                                  list(pk_dataset['train_set'].values()),
-                                 data_format='audio_raw')
+                                 data_format='audio_raw', in_memory=False)
 
     # Save
     train_dataset.save_as_numpy("test.npy", overwrite=True)
-    # Load
-    train_dataset.load_from_numpy("test.npy", as_torch=False)
-    # Get iterator
-    ds = train_dataset.example_from_numpy("test.npy", as_torch=False)
-    assert isinstance(next(ds), tuple)
+
+    # # Load
+    # train_dataset.load_from_numpy("test.npy", as_torch=False)
+    # # Get iterator
+    # ds = train_dataset.example_from_numpy("test.npy", as_torch=False)
+    # assert isinstance(next(ds), tuple)
 
 
 def test_create_from_numpy_in_memory():
@@ -185,7 +190,7 @@ def test_create_from_numpy_and_iterator():
     :return:
     """
     trainer_spec = ExperimentSpecs(spec_config='../config.yaml')
-    model_spec = trainer_spec.get_model_spec().get_spec('encoder')
+    model_spec = trainer_spec.get_model_spec().get_spec('spectrogram_layer')
     train_dataset = SFTF2Dataset(model_spec,
                                  'dts/subset.npy',
                                  data_format='numpy_mel',
@@ -202,5 +207,7 @@ if __name__ == '__main__':
     """
     """
     # test_download()
-    test_create_from_numpy_in_memory()
-    test_create_from_numpy_and_iterator()
+    # test_create_from_numpy_in_memory()
+    # test_create_from_numpy_and_iterator()
+    test_save_and_load('LJSpeechSmallRaw')
+

@@ -5,6 +5,7 @@
 #
 import os
 import random
+import sys
 import warnings
 from abc import abstractmethod
 from pathlib import Path
@@ -99,6 +100,7 @@ class BaseSFTFDataset(torch.utils.data.Dataset):
                  transform: Optional[Callable] = None,
                  target_transform: Optional[Callable] = None,
                  verbose: Optional[bool] = False,
+                 overwrite: Optional[bool] = False,
                  overfit=False) -> None:
         """
         Data formats
@@ -120,7 +122,7 @@ class BaseSFTFDataset(torch.utils.data.Dataset):
         :param fixed_seed: if we want shuffle dataset
         :param shuffle: shuffle or not,  in case DDP you must not shuffle
         :param in_memory: store entire dataset in memory. (expect raw audio)
-               if in_memory is false,  len can't return value, hence you need iterate manually.
+               if in_memory is false, len can't return value, hence you need iterate manually.
         """
         super(torch.utils.data.Dataset, self).__init__()
         logger.disable(__name__)
@@ -128,45 +130,72 @@ class BaseSFTFDataset(torch.utils.data.Dataset):
 
         #
         self._overfiting = overfit
-        self._mirrors = [
-            "https://www.dropbox.com/s/i2wzklf60vs5y3b/subset.npy?dl=0",
-            "http://www.dropbox.com/s/i2wzklf60vs5y3b/subset.npy?dl=0"
+
+        # numpy dataset mirror
+        self._mirrors_numpy = [
+            {'train_small': 'https://drive.google.com/u/0/uc?id=1VKqpe3RaZ4ev1RgDuUZ1vRi7iJy6KIBS&export=download'}
         ]
-        #
-        self._resources = [
-            ("subset.npy", "f526cb36b33aa0295166ba1cdc5204ee"),
+        self._resources_numpy = [
+            ("subset.npy", "f526cb36b33aa0295166ba1cdc5204ee", "train_small"),
         ]
+
+        # torch dataset mirror
+        self._mirrors__torch = [
+            {"train_small": 'https://drive.google.com/u/0/uc?id=1IgqBB6uZzXBQikvfloYMmf6jFPTy7EoY&export=download'},
+            {"val_small": 'https://drive.google.com/u/0/uc?id=1Cyn7DRvITjLdswDHNCDzYyxrHWKHNB21&export=download'},
+        ]
+
+        self._resources_torch = [
+            ("LJSpeechSmallRaw_train_num_sam_129_filter_80.pt", "d44feaa301c1a0aa51b361adc5332b1b", "train_small"),
+            ("LJSpeechSmallRaw_validate_num_sam_18_filter_80.pt", "8c4fb3dacf23f07c85f9ccda297437d3", "val_small"),
+            ("LJSpeechSmallRaw_test_num_sam_500_filter_80.pt", "f6e14f27609cd1570c2365581726a91c", "test_small"),
+        ]
+
         #
         self.target_transform = target_transform
-        #
         self.transform = transform
-        #
         self.download = download
-        #
         self.root = root
-        #
-        self.is_download = False
-        #
-        if download:
-            if not self.download_ifneed():
-                warnings.warn("Failed download.")
-                raise RuntimeError("Failed download")
-            # data is string to a file
-            self.data = self._dataset_file
-        else:
-            self.data = data
-        #
-        self._in_memory = in_memory
-        # raw folder
-        self.raw_folder = None
-        #
-        self.is_trace_time = is_trace_time
-        #
-        self._shuffle = shuffle
-        # data types
+        self.is_downloaded = False
+        self._overwrite = overwrite
+        self._data_format = data_format
         self.is_a_tensor = False
         self.is_a_numpy = False
         self.is_audio = False
+
+        # validate data format
+        if 'tensor_mel' in data_format:
+            # from file
+            logger.debug("Creating dataset for dict and torch tensors.")
+            self.is_a_tensor = True
+        elif 'numpy_mel' in data_format:
+            # from file
+            logger.debug(f"Creating dataset from numpy.")
+            self.is_a_numpy = True
+        elif 'audio_raw' in data_format:
+            logger.debug("Creating dataset for audio file list datastructure.")
+            self.is_audio = True
+        else:
+            raise ValueError("Dataset file type format is unsupported. Supported format",
+                             'tensor', 'numpy', 'audio_raw')
+
+        self._dataset_file = []
+
+        if download:
+            if self.is_audio:
+                raise DatasetError("Unsupported audio_raw for download.")
+            if not self.download_ifneed():
+                warnings.warn("Failed download.")
+                raise RuntimeError("Failed download")
+            # data is list of string to a file.
+            self.data = self._dataset_file
+        else:
+            self.data = data
+
+        self._in_memory = in_memory
+        self.raw_folder = None
+        self._is_trace_time = is_trace_time
+        self._shuffle = shuffle
         # this value used only if in_memory is False
         self._data_len = None
         # hold a model spec.
@@ -176,34 +205,18 @@ class BaseSFTFDataset(torch.utils.data.Dataset):
 
         # note if we download we need indicate.
         if data_format is None or len(data_format) == 0:
-            raise DatasetError("Dataset file type format is none or empty")
+            raise DatasetError("Dataset file type format is none or empty.")
 
-        # if data string, resolve
-        if data is not None and isinstance(data, str):
+        # if data string, resolve, we assume it path to a file.
+        if data is not None and isinstance(data, str) and download is False:
             p = Path(data).expanduser()
             resolved = Path(data).resolve()
             if not resolved.exists():
                 raise Exception("File {} not found.".format(data))
-            self._dataset_file = str(p)
-
-        # validate data format
-        if 'tensor_mel' in data_format:
-            # from file
-            logger.debug("Creating dataset for dict with torch tensors.")
-            self.is_a_tensor = True
-        elif 'numpy_mel' in data_format:
-            # from file
-            logger.debug("Creating dataset from numpy file {}.", self._dataset_file)
-            self.is_a_numpy = True
-        elif 'audio_raw' in data_format:
-            logger.debug("Creating dataset for audio file list.")
-            self.is_audio = True
-        else:
-            raise ValueError("Dataset file type format is unsupported. Supported format",
-                             'tensor', 'numpy', 'audio_raw')
+            self._dataset_file.append(str(p))
 
         # check dataset contain key
-        if self.is_audio is False and self.is_a_numpy is False:
+        if self.is_audio is False and self.is_a_numpy is False and download is False:
             if not isinstance(data, dict):
                 raise DatasetError("Dataset type torch tensor., "
                                    "must contain 'data' key', dict doesn't contain key 'data'")
@@ -213,8 +226,6 @@ class BaseSFTFDataset(torch.utils.data.Dataset):
             if len(data['data']) == 0:
                 raise DatasetError("Dataset type torch tensor: has no data.")
 
-            # print("Type", type(data['data'][0][0]))
-
         self.text_cleaners = model_spec.get_text_cleaner()
         if self.text_cleaners is None:
             raise DatasetError("Text pre processor can't be a none. check specification.")
@@ -222,7 +233,7 @@ class BaseSFTFDataset(torch.utils.data.Dataset):
         if fixed_seed:
             random.seed(model_spec.get_seed())
 
-        self.is_trace_time = False
+        self._is_trace_time = False
 
         # data pointer,  data len read from header only if we use generator
         self._data = []
@@ -231,8 +242,15 @@ class BaseSFTFDataset(torch.utils.data.Dataset):
         self._data_iterator = None
 
         if self.is_a_tensor:
-            self._data = data['data']
+            if self.is_downloaded:
+                self.load_torch_files()
+            else:
+                self._data = data['data']
         elif self.is_audio:
+            if not isinstance(data, list):
+                raise ValueError("For raw audio dataset data, please "
+                                 "provide a list. Where each entry must contain a dict "
+                                 "where path is path to a file and meta is text seq.")
             if len(data) == 0:
                 warnings.warn("Received empty data.")
             if 'path' not in data[0]:
@@ -242,13 +260,14 @@ class BaseSFTFDataset(torch.utils.data.Dataset):
             self._data = data
         elif self.is_a_numpy:
             # path to a file
-            if isinstance(data, str) and len(data) > 0 or self.is_download:
+            if isinstance(data, str) and len(data) > 0 or self.is_downloaded:
                 if self._in_memory:
-                    self._dataset_file = self.data
-                    logger.debug("Loading dataset from numpy file in memory. {}".format(self._dataset_file))
-                    self.load_from_numpy(self._dataset_file)
-                    self._data_len = len(self._data)
+                    for f in self._dataset_file:
+                        logger.debug("Loading dataset from numpy file in memory. {}".format(self._dataset_file))
+                        self.load_from_numpy(f)
+                        self._data_len = len(self._data)
                 else:
+                    # if we reading raw numpy nday
                     logger.debug("Creating dataset from numpy file. as iterator, no random access")
                     self._dataset_file = self.data
                     self._data_len, self._num_tensors = self._read_numpy_header(self._dataset_file)
@@ -367,6 +386,8 @@ class BaseSFTFDataset(torch.utils.data.Dataset):
                 assert num_tuples == len(ds_record)
                 for idx in range(0, len(ds_record)):
                     np.save(f, ds_record[idx].numpy())
+
+        print("md5 checksum", ds_util.md5_checksum(filename))
 
     def _read_numpy_header(self, filename):
         """
@@ -534,12 +555,22 @@ class BaseSFTFDataset(torch.utils.data.Dataset):
         del self._data
         self._data = []
 
-    def __getitem__(self, index: int) -> type[torch.Tensor, torch.Tensor]:
+    # def __getitem__(self, index) -> type[torch.Tensor, torch.Tensor]:
+
+    def __getitem__(self, index):
         """
         # TODO check dataloader random access
         :param index:
         :return:
         """
+        # if isinstance(index, slice):
+        #     # do your handling for a slice object:
+        #     sliced = self._data[index.start, index.stop, index.step]
+        #     print(type(sliced))
+        #     for i in range(0, sliced):
+        #         print(slice[i])
+        #     return
+
         # if not in memory no random access, fetch next
         if not self.is_in_memory():
             if self.is_a_numpy:
@@ -573,58 +604,91 @@ class BaseSFTFDataset(torch.utils.data.Dataset):
             return len(self._data)
         return self._data_len
 
-    # def _check_exists(self) -> bool:
-    #     """
-    #     No integrity check for now
-    #     """
-    #     return all(check_integrity(file) for file in (self.images_file, self.labels_file))
-
     def mirrors(self) -> tuple[str, str, str]:
         """
-        Generator emit link for each file and mirror.
+        Generator emit link for each file and mirror based on type, size etc.
         :return:
         """
-        for filename, checksum in self._resources:
-            for mirror in self._mirrors:
-                if mirror.endswith("/"):
-                    yield f"{mirror}{filename}", filename, checksum
-                else:
-                    yield mirror, filename, checksum
+        if self.is_a_numpy:
+            resource = self._resources_numpy
+            mirrors = self._mirrors_numpy
+        elif self.is_a_tensor:
+            resource = self._resources_torch
+            mirrors = self._mirrors__torch
+        else:
+            raise DatasetError(f"Can't download data format {self._data_format} it unsupported.")
+
+        for filename, checksum, ds_size in resource:
+            for mirror in mirrors:
+                if ds_size in mirror:
+                    if mirror[ds_size].endswith("/"):
+                        yield f"{mirror[ds_size]}{filename}", filename, checksum
+                    else:
+                        yield mirror[ds_size], filename, checksum
+
+    def load_torch_files(self):
+        """
+
+        :return:
+        """
+        for f in self._dataset_file:
+            logger.info(f"Attempting to read torch dataset file {f}")
+            if len(f) == 0:
+                continue
+            old_data_len = len(self._data)
+            logger.info(f"Loading torch file {f}")
+            torch_file = torch.load(f)
+            # do basic check.
+            if 'data' not in torch_file:
+                warnings.warn("Something wrong with a file it must have key data.")
+                continue
+            torch_data = torch_file['data']
+            if not isinstance(torch_data, list):
+                warnings.warn("Something wrong with a file it. A data must should contain a python list.")
+                continue
+            self._data += torch_data
+            logger.info(f"Added dataset old size {old_data_len} new size {len(self._data)}.")
 
     def download_ifneed(self) -> bool:
         """
-        Download dataset.
+        Download a dataset, either numpy or torch file.
+        if file present it will set flag is_download.
+
         :return:
         """
         # check if exists
         # if self.check_exists():
         #     return
         # make dir if needed
-        if self.is_download:
-            warnings.warn("File already downloaded.")
+        if not self._overwrite:
+            if self.is_downloaded:
+                warnings.warn("File already downloaded.")
 
+        dataset_filter = ['train_small', 'val_small']
         os.makedirs(self.root, exist_ok=True)
         # download if needed
-        self.is_download = False
+        self.is_downloaded = False
         for (mirror, filename, md5) in self.mirrors():
             try:
                 logger.debug("downloading from mirror {} file {}".format(mirror, filename))
-                self.is_download, file_path = ds_util.download_dataset(url=mirror,
-                                                                       path=self.root,
-                                                                       filename=filename,
-                                                                       checksum=md5)
-                self._dataset_file = file_path
-                if self.is_download:
+                self.is_downloaded, file_path = ds_util.download_dataset(url=mirror,
+                                                                         path=self.root,
+                                                                         filename=filename,
+                                                                         checksum=md5,
+                                                                         overwrite=self._overwrite)
+                self._dataset_file.append(file_path)
+                if self.is_downloaded and len(dataset_filter) == self._dataset_file:
+                    logger.debug(f"File in the system {file_path}.")
                     break
             except URLError as e:
                 logger.debug("Failed to download {} {}. Moving to next mirror.".format(mirror, filename))
                 logger.error(e)
                 continue
 
-        if self.is_download:
+        if self.is_downloaded:
             logger.info("File downloaded.")
 
-        return self.is_download
+        return self.is_downloaded
 
     @staticmethod
     def set_logger(is_enable: bool) -> None:
