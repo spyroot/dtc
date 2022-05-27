@@ -1,7 +1,7 @@
 train: True                 # train or not,  default is True for generation we only need load pre-trained model
 #active: 'grid_small'       # dataset set generated.
 #use_dataset: 'LJSpeechSmallPkl'     # dataset set generated.
-use_dataset: 'LJSpeechSmallRaw'     # dataset set generated.
+use_dataset: 'LJSpeechSmallPkl'     # dataset set generated.
 use_model: 'tacotron25'      # model to use , it must be defined in models section.
 draw_prediction: True       # at the of training draw.
 load_model: True            # load model or not, and what
@@ -120,17 +120,12 @@ settings:
     predict_per_iteration: True
     # when to save
     epochs_save: 5
-    # if we want save per iteration
     save_per_iteration: True
-    # fix seed
     seed: 1234
-    #
     epochs: 500
-    #
     iters_per_checkpoint: 1000
-    # fp16 or fp32
     fp16: False                      # fp16 run
-    distributed: True                # what distributed backend uses.
+    distributed: False               # what distributed backend uses.
     backend: "nccl"                  # backend: "gloo"
     url: "tcp://localhost:54321"
     master_address: localhost

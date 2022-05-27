@@ -14,6 +14,8 @@ from urllib.request import urlopen
 from loguru import logger
 from tqdm import tqdm
 
+logger.disable(__name__)
+
 
 def do_http_head(url: str, max_redirect: int = 5, max_timeout=10) -> str:
     """
@@ -32,8 +34,6 @@ def do_http_head(url: str, max_redirect: int = 5, max_timeout=10) -> str:
     else:
         raise RecursionError(f"Request to {base} "
                              f"exceeded {max_redirect} redirects.")
-
-    return
 
 
 def get_chunk(content: Iterator[bytes], destination: str, length: Optional[int] = None) -> None:
@@ -136,7 +136,7 @@ def md5_checksum(path: str, chunk_size: int = 1024 * 1024) -> str:
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(chunk_size), b""):
             computed_hash.update(chunk)
-    logger.debug("computed hash", computed_hash.hexdigest())
+    logger.debug(f"computed hash {computed_hash.hexdigest()}")
     return computed_hash.hexdigest()
 
 

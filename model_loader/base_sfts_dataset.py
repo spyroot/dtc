@@ -82,8 +82,8 @@ class BaseSFTFDataset(torch.utils.data.Dataset):
     Let say you serialized all object in batch to disk.
     The data must contain following keys.
 
-    # Data Keys dict_keys(['filter_length', 'hop_length', 'win_length', 'n_mel_channels', 'sampling_rate', 'mel_fmin', 'mel_fmax', 'data'])
-
+    # Data Keys dict_keys(['filter_length', 'hop_length', 'win_length', 'n_mel_channels',
+    'sampling_rate', 'mel_fmin', 'mel_fmax', 'data'])
     """
 
     def __init__(self,
@@ -98,7 +98,8 @@ class BaseSFTFDataset(torch.utils.data.Dataset):
                  download: Optional[bool] = False,
                  transform: Optional[Callable] = None,
                  target_transform: Optional[Callable] = None,
-                 verbose: Optional[bool] = False, overfit=False) -> None:
+                 verbose: Optional[bool] = False,
+                 overfit=False) -> None:
         """
         Data formats
            tensor_mel  Use case, entire dataset passed, batchified via data loader and saved on disk.
@@ -122,6 +123,7 @@ class BaseSFTFDataset(torch.utils.data.Dataset):
                if in_memory is false,  len can't return value, hence you need iterate manually.
         """
         super(torch.utils.data.Dataset, self).__init__()
+        logger.disable(__name__)
         self.set_logger(verbose)
 
         #
@@ -202,15 +204,20 @@ class BaseSFTFDataset(torch.utils.data.Dataset):
 
         # check dataset contain key
         if self.is_audio is False and self.is_a_numpy is False:
+            if not isinstance(data, dict):
+                raise DatasetError("Dataset type torch tensor., "
+                                   "must contain 'data' key', dict doesn't contain key 'data'")
             if 'data' not in data:
-                for i in range(0, len(data)):
-                    print(type(data[i]))
+                raise DatasetError("Dataset type torch tensor, "
+                                   "must contain 'data' key', dict doesn't contain key 'data'")
+            if len(data['data']) == 0:
+                raise DatasetError("Dataset type torch tensor: has no data.")
 
-                raise DatasetError("Dataset dict doesn't contain key 'data'")
+            # print("Type", type(data['data'][0][0]))
 
         self.text_cleaners = model_spec.get_text_cleaner()
         if self.text_cleaners is None:
-            raise DatasetError("Text pre processing can't be none")
+            raise DatasetError("Text pre processor can't be a none. check specification.")
 
         if fixed_seed:
             random.seed(model_spec.get_seed())
@@ -224,8 +231,6 @@ class BaseSFTFDataset(torch.utils.data.Dataset):
         self._data_iterator = None
 
         if self.is_a_tensor:
-            if 'data' not in data:
-                raise ValueError("For tensor data format dict must storey key data.")
             self._data = data['data']
         elif self.is_audio:
             if len(data) == 0:
@@ -613,6 +618,7 @@ class BaseSFTFDataset(torch.utils.data.Dataset):
                     break
             except URLError as e:
                 logger.debug("Failed to download {} {}. Moving to next mirror.".format(mirror, filename))
+                logger.error(e)
                 continue
 
         if self.is_download:
@@ -623,7 +629,7 @@ class BaseSFTFDataset(torch.utils.data.Dataset):
     @staticmethod
     def set_logger(is_enable: bool) -> None:
         """
-        Sets logging level.
+        Method sets logging level.
         :param is_enable:
         :return:
         """

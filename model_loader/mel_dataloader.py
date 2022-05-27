@@ -4,6 +4,7 @@
 #
 # Mustafa
 #
+import sys
 import time
 import warnings
 from logging import warn
@@ -133,9 +134,9 @@ class SFTFDataloader:
 
         # create
         self.train_dataset = SFTF2Dataset(model_spec=self.mel_model_spec, data=train_set, data_format='audio_raw',
-                                          overfit=self.trainer_spec.is_overfit())
+                                          overfit=self.trainer_spec.is_overfit(), verbose=self.verbose)
         self.validation_dataset = SFTF2Dataset(self.mel_model_spec, validation_set, data_format='audio_raw',
-                                               overfit=self.trainer_spec.is_overfit())
+                                               overfit=self.trainer_spec.is_overfit(), verbose=self.verbose)
         self.collate_fn = TextMelCollate2(nfps=self.mel_model_spec.frames_per_step(), device=None)
 
     def createv2_from_tensor(self):
@@ -144,16 +145,18 @@ class SFTFDataloader:
         """
         dataset_files = self.trainer_spec.get_audio_dataset()
 
-        train_set = dataset_files['train_set'],
-        validation_set = dataset_files['validation_set']
+        train_set = dataset_files['train_set']
+        print(type(train_set))
+        if not isinstance(train_set, dict):
+            raise ValueError("Dataset spec must be a dict.")
 
-        # print(len(train_set))
-        # print("Data Keys", train_set[0].keys())
-        # print("Data Keys", train_set[1].keys())
-        # sys.exit(1)
-        # Data Keys dict_keys(['filter_length', 'hop_length', 'win_length', 'n_mel_channels', 'sampling_rate', 'mel_fmin', 'mel_fmax', 'data'])
+        validation_set = dataset_files['validation_set']
+        if not isinstance(validation_set, dict):
+            raise ValueError("Dataset spec must be a dict.")
+
         if dataset_files['ds_type'] == 'tensor_mel':
-            self.train_dataset = SFTF2Dataset(model_spec=self.mel_model_spec, data=train_set, data_format='tensor_mel',
+            self.train_dataset = SFTF2Dataset(model_spec=self.mel_model_spec,
+                                              data=train_set, data_format='tensor_mel',
                                               overfit=self.trainer_spec.is_overfit())
             self.validation_dataset = SFTF2Dataset(self.mel_model_spec, validation_set,
                                                    data_format='tensor_mel',
@@ -178,7 +181,6 @@ class SFTFDataloader:
 
     def create_v3dataset(self, device):
         """
-
         :return:
         """
         pk_dataset = self.train_dataset.get_audio_dataset()
@@ -208,16 +210,26 @@ class SFTFDataloader:
 
         if not update:
             if pk_dataset['ds_type'] == 'tensor_mel':
-                print("data is tensor_mel")
                 self.createv2_from_tensor()
             if pk_dataset['ds_type'] == 'audio_raw':
                 self.create_v2raw()
+        else:
+            # this could happend if batch size changed.
+            # and dataloder null
+            if self.train_dataloader is None:
+                raise RuntimeError("Invalid state")
+            if self.val_loader is None:
+                raise RuntimeError("Invalid state")
 
-        # test_set
         if self.trainer_spec.is_distributed_run():
             logger.info("Creating distribute sampler rank {} , world size {}", self.rank, self.world_size)
-            train_sampler = DistributedSampler(self.train_dataset, num_replicas=self.world_size)
-            val_sampler = DistributedSampler(self.validation_dataset, num_replicas=self.world_size)
+            try:
+                train_sampler = DistributedSampler(self.train_dataset, num_replicas=self.world_size)
+                val_sampler = DistributedSampler(self.validation_dataset, num_replicas=self.world_size)
+            except RuntimeError as e:
+                logger.error(f"Dataloader in DDP mode, Make sure DDP is initialized. error {e} existing")
+                print(f"Make sure DDP is initialized. error {e}. existing")
+                sys.exit(1)
             is_shuffle = False
         else:
             # we shuffle only if on single run otherwise it false.
@@ -335,3 +347,24 @@ class SFTFDataloader:
             logger.enable(__name__)
         else:
             logger.disable(__name__)
+
+
+def test_create_data_loader_from_tensor():
+    """
+    :return:
+    """
+    trainer_spec = ExperimentSpecs(spec_config='../config.yaml')
+    data_loader = SFTFDataloader(trainer_spec, verbose=False)
+    train, val, _ = data_loader.get_loader()
+
+    for batch in train:
+        assert len(batch) == 5
+        break
+
+    data_loader.benchmark_read()
+
+
+if __name__ == '__main__':
+    """
+    """
+    test_create_data_loader_from_tensor()

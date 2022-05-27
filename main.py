@@ -14,13 +14,17 @@ import ray
 import torch
 from loguru import logger
 
+from model_loader.dataset_stft25 import SFTF2Dataset
+from model_loader.ds_util import md5_checksum
 from model_loader.mel_dataloader import SFTFDataloader
 from model_loader.dataset_stft30 import SFTF3Dataset
 from model_trainer.callbacks.time_meter import TimeMeter
 from model_trainer.callbacks.time_tracer import BatchTimer
+from model_trainer.specs.dtc_spec import TacotronSpec, ModelSpecDTC
 from model_trainer.trainer_specs import ExperimentSpecs, TrainerSpecError
 from model_trainer.trainer import Trainer, TrainerError
 import torch.distributed as dist
+from tqdm import tqdm
 
 from ray import tune
 from ray.tune import CLIReporter
@@ -40,69 +44,134 @@ import warnings
 warnings.filterwarnings("ignore")
 
 
-def convert_mel_to_data(encoder_spec, target_dir: str, dataset,
-                        dataset_name: str, data_type: str, post_check=True, verbose=True):
+class ConverterError(Exception):
+    """Base class for other exceptions"""
+    pass
+
+
+def convert_mel_to_data(encoder_spec: TacotronSpec,
+                        dataset: SFTF2Dataset,
+                        target_dir="",
+                        meta_file="",
+                        dataset_name="default",
+                        data_type="all",
+                        post_check=True,
+                        verbose=True):
     """
 
-    Args:
-        data_type:
-        verbose:
-        target_dir:
-        encoder_spec:
-        dataset:
-        dataset_name:
-        post_check:
-
-    Returns:
-
-    """
-    meta = dict(filter_length=encoder_spec.filter_length(), hop_length=encoder_spec.hop_length(),
-                win_length=encoder_spec.win_length(), n_mel_channels=encoder_spec.n_mel_channels(),
-                sampling_rate=encoder_spec.sampling_rate(), mel_fmin=encoder_spec.mel_fmin(),
-                mel_fmax=encoder_spec.mel_fmax())
-
-    data = []
-    for i in range(0, len(dataset)):
-        data.append(dataset[i])
-
-    meta['data'] = data
-    file_name = Path(target_dir) / f'{dataset_name}_{data_type}_{encoder_spec.n_mel_channels()}.pt'
-    torch.save(meta, file_name)
-    ds = torch.load(file_name)
-    if verbose:
-        logger.info("Dataset saved", file_name)
-        logger.info("Dataset filter length", ds['filter_length'])
-        logger.info("Dataset mel channels", ds['n_mel_channels'])
-        logger.info("Dataset contains records", len(ds['data']))
-
-    if post_check:
-        d = ds['data']
-        for i, (one_hot, mel) in enumerate(d):
-            txt_original, mel_from_ds = dataset[i]
-            if not torch.equal(mel, mel_from_ds):
-                raise Exception("data mismatched.")
-            if not torch.equal(one_hot, txt_original):
-                raise Exception("data mismatched.")
-
-
-def convert(trainer_spec, verbose=True):
-    """
-    Convert dataset to native torch tensor representation.
-
-    :param trainer_spec:
+    :param encoder_spec:  all parameter for SFTS encoder
+    :param dataset: list.
+    :param meta_file: a meta file used to generate a dataset.
+    :param target_dir:  where we will put our final file.
+    :param dataset_name:  a name of dataset that will be in file name.
+    :param data_type:  just a name train, validate, test , dev etc.
+    :param post_check: if we do sanity check post.
     :param verbose:
     :return:
     """
+    # all data how SFT's generated in meta
+    meta = dict(filter_length=encoder_spec.filter_length(),
+                hop_length=encoder_spec.hop_length(),
+                win_length=encoder_spec.win_length(),
+                n_mel_channels=encoder_spec.n_mel_channels(),
+                sampling_rate=encoder_spec.sampling_rate(),
+                mel_fmin=encoder_spec.mel_fmin(),
+                mel_fmax=encoder_spec.mel_fmax())
+
+    data = []
+    for i in tqdm(range(0, len(dataset)), desc="Converting"):
+        data.append(dataset[i])
+
+    meta['data'] = data
+    meta['meta_file'] = meta_file
+    file_name = Path(target_dir) / f'{dataset_name}_{data_type}_num_sam_' \
+                                   f'{len(dataset)}_filter_{encoder_spec.n_mel_channels()}.pt'
+    print("Saving ", file_name)
+    torch.save(meta, str(file_name))
+
+    print("MD5 checksum", md5_checksum(str(file_name)))
+
+    if not post_check:
+        return
+
+    ds = torch.load(file_name)
+
+    print("Loading back and checking.")
+    if verbose:
+        logger.info(f"Dataset saved to a file: {file_name}")
+        logger.info(f"Dataset filter length: {ds['filter_length']}")
+        logger.info(f"Dataset mel channels: {ds['n_mel_channels']}")
+        logger.info(f"Dataset contains records: {len(ds['data'])}")
+
+    d = ds['data']
+    for i, (one_hot, mel) in tqdm(enumerate(d), total=len(ds['data']), desc="Validating"):
+        txt_original, mel_from_ds = dataset[i]
+        if not torch.equal(mel, mel_from_ds):
+            raise ConverterError("data mismatched.")
+        if not torch.equal(one_hot, txt_original):
+            raise ConverterError("data mismatched.")
+
+    print("Done.")
+
+
+def convert(trainer_spec, version=2, dataset_name=None, merge=True, verbose=True, target_dir=None):
+    """
+    Routine convert dataset to native torch tensor representation.
+
+    :param target_dir:
+    :param version: a dataset version.  since we're serializing a tensor or numpy we need know what feature
+                    on top of MEL we extract.
+    :param trainer_spec: a trainer spec object.
+    :param verbose: verbose output
+    :param dataset_name: if empty will use current active one. whatever in config use_dataset: 'mydataset'
+    :param merge:  if true merge all datasets to single one.
+    :return:
+    """
     trainer_spec = ExperimentSpecs(verbose=verbose)
-    training_set, validation_set, test_set = trainer_spec.get_audio_ds_files()
-    model_spec = trainer_spec.get_model_spec()
+    if dataset_name is None:
+        data = trainer_spec.get_audio_dataset()
+    else:
+        dataset_names = trainer_spec.get_dataset_names()
+        ds_name = dataset_name.strip()
+        if ds_name in dataset_names:
+            data = trainer_spec.get_audio_dataset(dataset_name=ds_name)
+
+    if data is None:
+        raise ConverterError("Dataset not found.")
+
+    if 'data' in data:
+        raise ConverterError("Data has no key ds_type active dataset must be raw audio.")
+
+    # 'train_meta', 'validation_meta', ['test_meta'] ['train_set'] ['validation_set'] ['test_set']
+
+    training_set = data['train_set']
+    validation_set = data['validation_set']
+    test_set = data['test_set']
+
+    model_spec: ModelSpecDTC = trainer_spec.get_model_spec()
     encoder_spec = model_spec.get_encoder()
 
-    #
-    train_dataset = SFTFDataloader(encoder_spec, list(training_set.values()), "audio_raw")
-    validation_dataset = SFTFDataloader(encoder_spec, list(validation_set.values()), "audio_raw")
-    test_dataset = SFTFDataloader(encoder_spec, list(test_set.values()), "audio_raw")
+    train_listified = list(training_set.values())
+    val_listified = list(validation_set.values())
+    test_listified = list(test_set.values())
 
+    if merge:
+        final_list = [*train_listified, *val_listified, *test_listified]
+
+    #
+    train_dataset = SFTF2Dataset(model_spec=encoder_spec,
+                                 data=train_listified,
+                                 data_format="audio_raw",
+                                 verbose=verbose)
+    validation_dataset = SFTF2Dataset(model_spec=encoder_spec,
+                                      data=val_listified,
+                                      data_format="audio_raw",
+                                      verbose=verbose)
+    test_dataset = SFTF2Dataset(model_spec=encoder_spec,
+                                data=test_listified,
+                                data_format="audio_raw",
+                                verbose=verbose)
+    #
     if verbose:
         logging.info("filter_length", encoder_spec.filter_length())
         logging.info("hop_length", encoder_spec.hop_length())
@@ -112,13 +181,35 @@ def convert(trainer_spec, verbose=True):
         logging.info("mel_fmin", encoder_spec.mel_fmin())
         logging.info("mel_fmax", encoder_spec.mel_fmax())
 
-    convert_mel_to_data(encoder_spec, trainer_spec.get_dataset_dir(),
-                        train_dataset, trainer_spec.use_dataset, "train")
-    convert_mel_to_data(encoder_spec, trainer_spec.get_dataset_dir(),
-                        validation_dataset, trainer_spec.use_dataset, "validate")
-    convert_mel_to_data(encoder_spec, trainer_spec.get_dataset_dir(),
-                        test_dataset, trainer_spec.use_dataset, "test")
+    # by default target we read form specs
+    if target_dir is not None:
+        p = Path(target_dir)
+        expanded = p.expanduser()
+        resolved = expanded.resolve()
+        if target_dir.exists() and target_dir.is_dir():
+            final_dir = resolved
+        else:
+            raise ConverterError("can't resolve target dir.")
+    else:
+        final_dir = trainer_spec.get_dataset_dir()
 
+    convert_mel_to_data(encoder_spec, train_dataset,
+                        dataset_name=dataset_name,
+                        meta_file=data['train_meta'],
+                        target_dir=final_dir,
+                        data_type="train")
+
+    # convert_mel_to_data(encoder_spec, validation_dataset,
+    #                     dataset_name=dataset_name,
+    #                     target_dir=final_dir,
+    #                     meta_file=data['validation_meta'],
+    #                     data_type="validate")
+    #
+    # convert_mel_to_data(encoder_spec, test_dataset,
+    #                     dataset_name=dataset_name,
+    #                     target_dir=final_dir,
+    #                     meta_file=data['test_meta'],
+    #                     data_type="test")
 
 # def handler(a,b=None):
 #     """
@@ -171,11 +262,16 @@ def setup_handler(handler):
     signal.signal(signal.SIGTERM, signal_handler)
 
 
-def init_distributed(spec=None, rank=0, world_size=0):
+def init_distributed(spec=None, rank=0, world_size=0) -> None:
     """
+    Routine for distributed training.
 
+    :param spec:
+    :param rank:
+    :param world_size:
     :return:
     """
+
     if spec is None:
         print("Empty trainer spec.")
         sys.exit()
@@ -210,14 +306,14 @@ def init_distributed(spec=None, rank=0, world_size=0):
     logger.debug("Done initializing distributed")
 
 
-def train(spec=None, cmd_args=None, device=None, verbose=True, cudnn_bench=False):
+def train(spec=None, cmd_args=None, device=None, cudnn_bench=False):
     """
+    Main routine for to train a models.
 
     :param cmd_args:
     :param spec: trainer spec, a config
     :param cudnn_bench: if we need run cudnn bench
     :param device: device where run
-    :param verbose: if we need verbose output
     :return:
     """
     if int(cmd_args.rank) == 0:
@@ -310,19 +406,22 @@ def train(spec=None, cmd_args=None, device=None, verbose=True, cudnn_bench=False
         raise other
 
 
-def dataloader_dry(cmd_args, trainer_specs, verbose=False):
+def dataloader_dry(cmd_args, trainer_specs):
     """
-
+    Routine pass dry run over dataset and read time.
+    # TODO add batch size.
     :return:
     """
-    data_loader = SFTFDataloader(trainer_specs, verbose=verbose)
+    data_loader = SFTFDataloader(trainer_specs, verbose=cmd_args.verbose)
     if cmd_args.benchmark:
         data_loader.create()
         data_loader.benchmark_read()
 
 
-def set_random_seeds(random_seed=0, verbose=False):
+def set_random_seeds(random_seed=0):
     """
+    Routine called when we run in DDP mode.
+    It fixes all seed values.
 
     :param random_seed:
     :return:
@@ -337,6 +436,7 @@ def set_random_seeds(random_seed=0, verbose=False):
 
 def inference(spec: ExperimentSpecs, cmd_args, device):
     """
+    Main routine for inference.
 
     :param spec:
     :param cmd_args:
@@ -379,8 +479,8 @@ def main(cmd_args):
     else:
         _device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    trainer_spec = ExperimentSpecs(spec_config=cmd_args.config, verbose=False)
-    trainer_spec.set_logger(False)
+    trainer_spec = ExperimentSpecs(spec_config=cmd_args.config, verbose=cmd_args.verbose)
+    trainer_spec.set_logger(cmd_args.verbose)
 
     logger.add(sys.stderr, format="{time} {level} {message}", filter="my_module", level="INFO")
 
@@ -391,9 +491,14 @@ def main(cmd_args):
     if trainer_spec.is_distributed_run():
         set_random_seeds(trainer_spec.seed())
 
+    if cmd_args.convert:
+        convert(trainer_spec, dataset_name=cmd_args.dataset_name, verbose=cmd_args.verbose)
+        return
+
     trainer_spec.model_files.build_dir()
     if cmd_args.train:
         train(spec=trainer_spec, cmd_args=cmd_args, device=_device)
+        return
 
     if cmd_args.train and trainer_spec.is_distributed_run():
         logger.info("Number cuda devices {}".format(torch.cuda.device_count()))
@@ -401,6 +506,7 @@ def main(cmd_args):
 
     if args.inference:
         inference(spec=trainer_spec, cmd_args=cmd_args, device=_device)
+        return
 
 
 def set_logger(is_enable: bool) -> None:
@@ -418,6 +524,8 @@ def set_logger(is_enable: bool) -> None:
 if __name__ == '__main__':
     """
     """
+    set_logger(False)
+
     parser = argparse.ArgumentParser()
     parser.add_argument('-m', '--model_file', type=str,
                         help='Path to a pre-trained model.')
@@ -448,9 +556,11 @@ if __name__ == '__main__':
     parser.add_argument('--tune', action='store_true',
                         required=False, help='rum hyperparameter optimization.')
     parser.add_argument('--train', type=bool, default=True,
-                        required=False, help='set verbose output')
-    parser.add_argument('--convert', type=bool, default=False,
-                        required=False, help='set verbose output')
+                        required=False, help='set verbose output.')
+    parser.add_argument('--convert', action="store_true",
+                        required=False, help='convert dataset.')
+    parser.add_argument('--dataset_name', type=str,
+                        required=False, help='by default convert will take active one or we can overwrite.')
     parser.add_argument('--inference', action="store_true",
                         required=False, help='set model in inference model.')
     parser.add_argument('--benchmark', type=bool, default=False,
@@ -506,12 +616,15 @@ if __name__ == '__main__':
         is_distributed = True
 
     try:
-        # set_logger(args.verbose)
+        set_logger(args.verbose)
         main(args)
         # setup_handler(cleanup(is_distributed))
     except FileNotFoundError as file_error:
         print("File not found ", str(file_error))
         logger.error(f"File not found: {str(file_error)}")
+    except ConverterError as convert_err:
+        print("Dataset converter error ", str(convert_err))
+        logger.error(f"Dataset converter error: {str(convert_err)}")
     except TrainerSpecError as spec_error:
         print("Invalid spec", str(spec_error))
         logger.error(f"Invalid spec: {str(spec_error)}")

@@ -63,7 +63,9 @@ class SFTF2Dataset(BaseSFTFDataset, ABC):
                                            transform=transform,
                                            target_transform=target_transform)
         # if raw we need transcode to stft's
+        BaseSFTFDataset.set_logger(verbose)
         self.set_logger(verbose)
+
         if self.is_audio:
             logger.debug("Creating TacotronSTFT for raw file processing.")
             self.stft = TacotronSTFT25(

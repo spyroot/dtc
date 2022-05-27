@@ -1,7 +1,8 @@
 import os
 import sys
 from pathlib import Path
-from typing import List, Callable
+from typing import List, Callable, Optional
+from typing import Type
 
 import torch
 import yaml
@@ -55,7 +56,8 @@ class ExperimentSpecs:
             self.config_file_name = p
 
         self._setting = None
-        self._model_spec = None
+
+        self._model_spec: Type[ModelSpec]
 
         #
         self._inited: bool = False
@@ -165,15 +167,15 @@ class ExperimentSpecs:
         #     if os.path.isdir("tensorboard"):
         #         shutil.rmtree("tensorboard")
 
-       # self.writer = SummaryWriter()
+    # self.writer = SummaryWriter()
 
-        # from tensorboard.plugins.hparams import api as hp
-        # HP_OPTIMIZER = hp.HParam('optimizer', hp.Discrete(['adam', 'sgd']))
-        # METRIC_ACCURACY = 'accuracy'
+    # from tensorboard.plugins.hparams import api as hp
+    # HP_OPTIMIZER = hp.HParam('optimizer', hp.Discrete(['adam', 'sgd']))
+    # METRIC_ACCURACY = 'accuracy'
 
-        # with SummaryWriter() as w:
-        #     for i in range(5):
-        #         w.add_hparams({'lr': 0.1 * i, 'bsize': i}, {'hparam/accuracy': 10 * i, 'hparam/loss': 10 * i})
+    # with SummaryWriter() as w:
+    #     for i in range(5):
+    #         w.add_hparams({'lr': 0.1 * i, 'bsize': i}, {'hparam/accuracy': 10 * i, 'hparam/loss': 10 * i})
 
     def models_list(self):
         """
@@ -192,26 +194,25 @@ class ExperimentSpecs:
         :return:
         """
         if 'use_dataset' not in self.config:
-            raise TrainerSpecError("config.yaml must contains valid active settings.")
+            raise TrainerSpecError(f"{self.config_file_name}  must "
+                                   f"contain valid 'use_dataset' settings.")
 
         self.use_dataset = self.config['use_dataset']
 
     def set_dataset_specs(self):
         """
-        Sets dataset spec, for example if we need swap dataset.
+        Update dataset spec, for example if we need swap dataset.
         :return:
         """
+
         if 'datasets' not in self.config:
-            raise TrainerSpecError("config.yaml must contains corresponding "
-                                   "datasets settings for {}".format(self.use_dataset))
+            raise TrainerSpecError(f"{self.config_file_name} spec must contain "
+                                   f"corresponding datasets settings for {self.use_dataset}")
 
         dataset_list = self.config['datasets']
         if self.use_dataset not in dataset_list:
-            raise TrainerSpecError("config.yaml doesn't contain {} template, check config.".format(self.use_dataset))
-
-        print("active dataset", self.config['datasets'])
-        print("active dataset", self.get_dataset_names())
-        print("active dataset", self.use_dataset)
+            raise TrainerSpecError(f"{self.config_file_name}  doesn't contain "
+                                   f"{self.use_dataset} template, please check the config.")
 
         self._dataset_specs = self.config['datasets'][self.use_dataset]
 
@@ -392,11 +393,9 @@ class ExperimentSpecs:
         """
         If config.yaml contain ~ resolve home and make a path to directory
         full path.
-        Args:
-            path_dir:
 
-        Returns:
-
+        :param path_dir:
+        :return:
         """
         _dir = str(path_dir)
         if _dir.find('~') != -1:
@@ -404,8 +403,10 @@ class ExperimentSpecs:
             if len(sub_dir) > 1:
                 home = Path.home()
                 full_path = home / (Path(sub_dir[1][1:]))
-                if full_path.exists():
-                    return full_path
+                expanded = full_path.expanduser()
+                resolved = expanded.resolve()
+                if resolved.exists():
+                    return resolved
 
         return path_dir
 
@@ -438,11 +439,12 @@ class ExperimentSpecs:
 
     def get_dataset_dir(self):
         """
-
-        Returns:
+        Dataset dir are in specs. key dir
+        :return: dataset dir.
         """
+
         if 'dir' not in self._dataset_specs:
-            raise TrainerSpecError("config.yaml must contain dir entry.")
+            raise TrainerSpecError(f"{self.config_file_name} must contain dir entry.")
 
         # resolve home
         path_to_dir = self.resolve_home(self._dataset_specs['dir'])
@@ -451,13 +453,23 @@ class ExperimentSpecs:
 
         return path_to_dir
 
-    def update_meta(self, metadata_file, file_type_filter="wav"):
+    def update_meta(self, metadata_file: str, file_type_filter="wav", ds_dir=None):
         """
-        Build a dict that hold each file as key, a nested dict contains
-        full path to a file,  metadata such as label , text , translation etc.
+         Builds a dict that hold each file as key,
+         a nested dict contains full path to a file,
+         metadata such as label, text, translation etc.
+
+        :param metadata_file:
+        :param file_type_filter:
+        :param ds_dir: a dir from where we resolve path to a file.
         :return:
         """
-        path_to_dir = self.resolve_home(self.get_dataset_dir())
+        if ds_dir is not None:
+            target_dir = ds_dir
+        else:
+            target_dir = self.get_dataset_dir()
+
+        path_to_dir = self.resolve_home(target_dir)
         file_meta_kv = self.load_text_file(metadata_file)
         files = self.model_files._make_file_dict(path_to_dir,
                                                  file_type_filter,
@@ -470,58 +482,85 @@ class ExperimentSpecs:
 
         return files
 
-    def get_training_meta_file(self):
+    def get_dataset_meta_file(self, key: str, spec=None):
+        """
+        Return path to a meta file.
+        :param key:
+        :param spec:
+        :return:
+        """
+        if spec is not None and len(key) > 0:
+            if key not in spec:
+                raise TrainerSpecError(f"config.yaml must contain {key} entry.")
+            return spec[key]
+
+        if key not in self._dataset_specs:
+            raise TrainerSpecError(f"config.yaml must contain {key} entry.")
+
+        return self._dataset_specs[key]
+
+    def get_training_meta_file(self, spec=None) -> str:
+        """
+        Return path to a meta file.
+        :param spec:
+        :return:
+        """
+        return self.get_dataset_meta_file(key='training_meta', spec=spec)
+
+    def get_validation_meta_file(self, spec=None) -> str:
         """
         Returns:  Path to file contain meta information , such as file - text
         """
-        if 'training_meta' not in self._dataset_specs:
-            raise TrainerSpecError("config.yaml must contain training_meta entry.")
-        return self._dataset_specs['training_meta']
+        return self.get_dataset_meta_file(key='validation_meta', spec=spec)
 
-    def get_validation_meta_file(self):
+    def get_test_meta_file(self, spec=None) -> str:
         """
         Returns:  Path to file contain meta information , such as file - text
         """
-        if 'validation_meta' not in self._dataset_specs:
-            raise TrainerSpecError("config.yaml must contain validation_meta entry.")
-        return self._dataset_specs['validation_meta']
+        return self.get_dataset_meta_file(key='test_meta', spec=spec)
 
-    def get_test_meta_file(self):
-        """
-        Returns:  Path to file contain meta information , such as file - text
-        """
-        if 'test_meta' not in self._dataset_specs:
-            raise TrainerSpecError("config.yaml doesn't contain test_meta entry.")
-        return self._dataset_specs['test_meta']
-
-    def build_training_set(self):
+    def build_training_set(self, spec=None):
         """
         :return:
         """
+        if spec is not None:
+            if 'training_meta' in spec:
+                return self.update_meta(self.get_training_meta_file(spec=spec))
+
         if 'training_meta' in self._dataset_specs:
             return self.update_meta(self.get_training_meta_file())
 
         logger.warning("training_meta is empty dict.")
         return {}
 
-    def build_validation_set(self):
+    def build_validation_set(self, spec=None):
         """
         :return:
         """
+        if spec is not None:
+            if 'validation_meta' in spec:
+                return self.update_meta(self.get_validation_meta_file(spec=spec))
+
         if 'validation_meta' in self._dataset_specs:
-            return self.update_meta(self.get_validation_meta_file())
+            return self.update_meta(self.get_validation_meta_file(spec))
 
         logger.warning("validation_meta is empty dict.")
         return {}
 
-    def build_test_set(self):
+    def build_test_set(self, spec=None):
         """
+        Build a dictionary prepared for training.
+        :param spec:
         :return:
         """
-        if 'test_meta' in self._dataset_specs:
-            return self.update_meta(self.get_test_meta_file())
-        logger.warning("test_meta is empty dict.")
+        if spec is not None:
+            if 'test_meta' in spec:
+                return self.update_meta(self.get_test_meta_file(spec=spec))
 
+        if 'test_meta' in self._dataset_specs:
+            return self.update_meta(self.get_test_meta_file(spec))
+
+        logger.warning("test_meta is empty dict.")
         return {}
 
     def num_records_in_txt(self, file_path, target_dir=None):
@@ -547,13 +586,31 @@ class ExperimentSpecs:
 
         return 0
 
-    def get_raw_audio_ds_files(self):
+    def get_raw_audio_ds_files(self, spec, ds_dir=None, strict=False):
         """
-        :return: dict
+        Return audio files dataset.
+
+        :param strict: will validate every file exists.
+        :param spec: a spec that will use to perform lookup
+        :param ds_dir: in case we need overwrite dir where meta files are.
+        :return:
         """
-        train_set = self.build_training_set()
-        validation_set = self.build_validation_set()
-        test_set = self.build_test_set()
+        if ds_dir is not None:
+            expanded = Path(str(ds_dir)).expanduser()
+            resolved_path = expanded.resolve()
+            # print("Resolved dir ", resolved_path)
+
+            if resolved_path.is_dir() and resolved_path.is_dir():
+                target_dir = str(resolved_path)
+            else:
+                raise ValueError("invalid directory.")
+        else:
+            target_dir = self.get_dataset_dir()
+
+        logger.info(f"Building dataset from {target_dir}")
+        train_set = self.build_training_set(spec=spec)
+        validation_set = self.build_validation_set(spec=spec)
+        test_set = self.build_test_set(spec=spec)
 
         # in case we need to do sanity check how many file and meta resolved.
         if self._verbose:
@@ -561,17 +618,20 @@ class ExperimentSpecs:
             logger.info("{} rec validation set contains.".format(len(validation_set)))
             logger.info("{} rec test set contains.", format(len(test_set)))
 
-            train_record = self.num_records_in_txt(self.get_training_meta_file(), self.get_dataset_dir())
-            val_record = self.num_records_in_txt(self.get_validation_meta_file(), self.get_dataset_dir())
-            test_record = self.num_records_in_txt(self.get_test_meta_file(), self.get_dataset_dir())
-
+        if strict:
+            train_record = self.num_records_in_txt(self.get_training_meta_file(spec=spec), target_dir)
+            val_record = self.num_records_in_txt(self.get_validation_meta_file(spec=spec), target_dir)
+            test_record = self.num_records_in_txt(self.get_test_meta_file(spec=spec), target_dir)
             logger.info("Train set metadata contains {}".format(train_record))
             logger.info("Validation set metadata contains {}".format(val_record))
             logger.info("Test set metadata contains {}".format(test_record))
 
-        ds_dict = dict(train_set=self.build_training_set(),
-                       validation_set=self.build_validation_set(),
-                       test_set=self.build_test_set())
+        ds_dict = dict(train_set=self.build_training_set(spec=spec),
+                       train_meta=self.get_training_meta_file(spec=spec),
+                       validation_set=self.build_validation_set(spec=spec),
+                       validation_meta=self.get_validation_meta_file(spec=spec),
+                       test_meta=self.get_validation_meta_file(spec=spec),
+                       test_set=self.build_test_set(spec=spec))
 
         if len(ds_dict) > 0:
             ds_dict['ds_type'] = 'audio_raw'
@@ -607,32 +667,91 @@ class ExperimentSpecs:
 
         return pt_dict
 
-    def get_audio_dataset(self):
-        """Method return audio dataset spec.
+    def get_datasets_specs(self):
+        """
+        Return all datasets specs.
+
+        Example how yaml look like.
+
+        datasets:
+          LJSpeech:
+            ds_type: "audio"
+            dir: "~/Dropbox/Datasets/LJSpeech-1.1"
+            training_meta: ljs_audio_text_train_filelist.txt
+            validation_meta:  ljs_audio_text_val_filelist.txt
+            test_meta: ljs_audio_text_test_filelist.txt
+            meta: metadata.csv
+            recursive: False
+            file_type: "wav"
+
         :return:
         """
-        if 'format' not in self._dataset_specs:
-            raise TrainerSpecError("config.yaml doesn't dataset format entry.")
+        if not self.is_initialized():
+            raise TrainerSpecError("Uninitialized, need read specs first.")
+
+        if 'datasets' not in self.config:
+            raise TrainerSpecError(f"Current configuration in {self.config_file_name} has no dataset.")
+
+        return self.config['datasets']
+
+    def get_dataset_spec(self, dataset_name=""):
+        """
+         Method return dataset based on name i.e key.
+
+        :param dataset_name:
+        :return:
+        """
+        if not self.is_initialized():
+            raise TrainerSpecError("Training must be initialized first.")
+
+        dataset_specs = self.get_datasets_specs()
+        if dataset_name not in dataset_specs:
+            raise TrainerSpecError(f"Dataset not found in {self.config_file_name}.")
+
+        return dataset_specs[dataset_name]
+
+    def get_audio_dataset(self, dataset_name=None):
+        """
+        Method return audio dataset spec.
+
+        :param dataset_name:
+        :return:
+        """
+
+        if dataset_name is None or len(dataset_name) == 0:
+            dataset_spec = self._dataset_specs
+        else:
+            dataset_spec = self.get_dataset_spec(dataset_name)
+
+        if 'format' not in dataset_spec:
+            raise TrainerSpecError(f"{self.config_file_name} {dataset_name} doesn't dataset format entry.")
+
+        if 'file_type' not in dataset_spec:
+            raise TrainerSpecError(f"{self.config_file_name} {dataset_name} doesn't dataset file_type entry.")
+
+        if 'ds_type' not in dataset_spec:
+            raise TrainerSpecError(f"{self.config_file_name} {dataset_name} doesn't dataset ds_type entry.")
 
         self._verbose = True
-
-        data_format = self._dataset_specs['format']
-        file_type = self._dataset_specs['file_type']
-        ds_type = self._dataset_specs['ds_type']
+        data_format = dataset_spec['format']
+        file_type = dataset_spec['file_type']
+        ds_type = dataset_spec['ds_type']
 
         if ds_type.lower().strip() == 'audio':
             if data_format.lower().strip() == 'raw':
-                return self.get_raw_audio_ds_files()
+                return self.get_raw_audio_ds_files(spec=dataset_spec)
             elif data_format.lower().lower().strip() == 'tensor_mel':
                 logger.debug("Dataset type torch tensor mel.")
+                # todo
                 return self.get_tensor_audio_ds_files()
             elif data_format.lower().lower().strip() == 'numpy_mel':
                 logger.debug("Dataset type numpy mel.")
+                # todo
                 return self.get_tensor_audio_ds_files()
             else:
-                raise TrainerSpecError(f"Unsupported format {ds_type} error.")
+                raise TrainerSpecError(f"Unsupported format {ds_type} for audio dataset.")
         else:
-            raise TrainerSpecError(f"Active dataset type {ds_type} error.")
+            raise TrainerSpecError(f"active dataset type {ds_type} error.")
 
     def tensorboard_sample_update(self):
         """

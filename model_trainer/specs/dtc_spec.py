@@ -2,6 +2,7 @@ from abc import ABC
 from .model_spec import ModelSpec
 from .tacatron_spec import TacotronSpec
 from loguru import logger
+import attr
 
 
 class InvalidModelSpec(Exception):
@@ -9,6 +10,7 @@ class InvalidModelSpec(Exception):
     pass
 
 
+# @attr.s(frozen = True)
 class ModelSpecDTC(ModelSpec, ABC):
     """
 
