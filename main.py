@@ -367,9 +367,9 @@ class Trainable(tune.Trainable, Callback):
         # score = objective(self.x, self.a, self.b)
         # self.x += 1
         result = self.trainer.hp_trainer(self.config)
-        print(result.key())
-        print(result.values())
-
+        if isinstance(result, dist):
+            print(result.keys())
+            print(result.values())
         return self.trainer.hp_trainer(self.config)
 
 
