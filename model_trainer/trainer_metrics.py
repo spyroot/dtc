@@ -142,13 +142,23 @@ class Metrics:
         :return:
         """
         if self.metric_step_file_path is not None:
-            self.loss = np.load(str(self.metric_step_file_path.resolve()))
+            if not isinstance(self.metric_step_file_path, str):
+                self.loss = np.load(str(self.metric_step_file_path.resolve()))
+            else:
+                self.loss = np.load(self.metric_step_file_path)
 
         if self.metric_batch_file_path is not None:
-            self.total_loss = np.load(str(self.metric_batch_file_path.resolve()))
+            if not isinstance(self.metric_batch_file_path, str):
+                self.total_loss = np.load(str(self.metric_batch_file_path.resolve()))
+            else:
+
+                self.total_loss = np.load(self.metric_batch_file_path)
 
         if self.metric_perf_trace_path is not None:
-            self.epoch_timer = np.save(str(self.metric_perf_trace_path.resolve()), self.epoch_timer)
+            if not isinstance(self.metric_batch_file_path, str):
+                self.epoch_timer = np.load(str(self.metric_perf_trace_path.resolve()))
+            else:
+                self.epoch_timer = np.load(self.metric_perf_trace_path)
 
     def total_mean_loss(self):
         """Return mean loss, compute mean from entire loss history

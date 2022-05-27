@@ -348,10 +348,10 @@ class Trainable(tune.Trainable, Callback):
         self.model.load_state_dict(torch.load(checkpoint_path))
 
     def step(self):
-        self.trainert.hp_trainer()
+        # self.trainert.hp_trainer()
         # score = objective(self.x, self.a, self.b)
         # self.x += 1
-        return {"score": 1}
+        return self.trainert.hp_trainer()
 
     # def reset_config(self, new_config):
     #     self.trainer.update_optimizer(new_config)

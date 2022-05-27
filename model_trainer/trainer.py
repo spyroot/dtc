@@ -1331,6 +1331,7 @@ class Trainer(AbstractTrainer, ABC):
                     if 'lr' in config:
                         for param_group in self._optimizers[model_name][layer_name].param_groups:
                             param_group['lr'] = config["lr"]
+                # todo add aggregation
                 return self.trainer_sequential(model_name, layer_name)
 
         # self.cleanup()
