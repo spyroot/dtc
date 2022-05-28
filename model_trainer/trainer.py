@@ -58,33 +58,6 @@ import matplotlib.pylab as plt
 from text import text_to_sequence
 
 
-# try:
-#     O_BINARY = os.O_BINARY
-# except:
-#     O_BINARY = 0
-#
-# READ_FLAGS = os.O_RDONLY | O_BINARY
-# WRITE_FLAGS = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | O_BINARY
-# BUFFER_SIZE = 128 * 1024
-#
-#
-# def copyfile(src, dst):
-#     try:
-#         fin = os.open(src, READ_FLAGS)
-#         stat = os.fstat(fin)
-#         fout = os.open(dst, WRITE_FLAGS, stat.st_mode)
-#         for x in iter(lambda: os.read(fin, BUFFER_SIZE), ""):
-#             os.write(fout, x)
-#     finally:
-#         try:
-#             os.close(fin)
-#         except:
-#             pass
-#         try:
-#             os.close(fout)
-#         except:
-#             pass
-
 @AbstractTrainer.register
 class Trainer(AbstractTrainer, ABC):
     """
@@ -774,7 +747,7 @@ class Trainer(AbstractTrainer, ABC):
         # for large model it makes sense to track iteration vs epoch counter.
         model_file = self.trainer_spec.model_files.get_model_file_path(layer_name)
         save_condition = epoch if self.trainer_spec.is_save_iteration() else step
-        if save_condition == 0:
+        if save_condition == 0 or save_condition == self.saved_run:
             return False
 
         # do nothing
@@ -825,14 +798,12 @@ class Trainer(AbstractTrainer, ABC):
                                 end of epoch, we want log and track.
         :return:
         """
-
         # take a batch.
-        logger.info(f"Running validation for {model_name} {layer_name}")
         self._callback.validation_start()
         take_batch = self._batch_loader[model_name][layer_name]
         model.eval()
         self.metric.on_prediction_batch_start()
-        self.tqdm_iter.set_description("Validation")
+        self.tqdm_iter.set_description("Training in progress,")
         with torch.no_grad():
             total_prediction_loss = 0.0
             for batch_idx, batch in enumerate(self._validation_loader):

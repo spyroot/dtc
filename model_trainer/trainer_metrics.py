@@ -77,8 +77,8 @@ class Metrics:
         self.batch_grad_val_loss = np.zeros((self.num_batches, 1))
 
     def on_prediction_batch_end(self):
-        logger.info(f"val batch loss {self.batch_val_loss.sum():.5f}:{self.batch_grad_val_loss.sum():.5f}, "
-                    f"mean {self.batch_val_loss.mean():.5f}:{self.batch_grad_val_loss.mean():.5f}")
+        logger.info(f"validation batch loss {self.batch_val_loss.sum():.2f} | {self.batch_grad_val_loss.sum():.2f}, "
+                    f"mean {self.batch_val_loss.mean():.4f} | {self.batch_grad_val_loss.mean():.4f}")
         self.val_loss[self._epoc_counter] = self.batch_val_loss.mean()
         self.grad_norm_val_loss[self._epoc_counter] = self.batch_grad_val_loss.mean()
 
@@ -92,8 +92,8 @@ class Metrics:
         self.batch_grad_loss = np.zeros((self.num_batches, 1))
 
     def on_batch_end(self):
-        logger.info(f"batch loss {self.batch_loss.sum():.5f}:{self.batch_grad_loss.sum():.5f}, "
-                    f"mean {self.batch_loss.mean():.5f}:{self.batch_grad_loss.mean():.5f}")
+        logger.info(f"train batch loss {self.batch_loss.sum():.2f} | {self.batch_grad_loss.sum():.2f}, "
+                    f"mean {self.batch_loss.mean():.4f} | {self.batch_grad_loss.mean():.4f}")
 
         self.loss[self._epoc_counter] = self.batch_loss.mean()
         self.grad_norm_loss[self._epoc_counter] = self.batch_grad_loss.mean()
@@ -103,15 +103,15 @@ class Metrics:
         # logger.info(f"Epoch {self._epoc_counter}/{self.num_epochs} started.")
 
     def on_prediction_epoch_end(self):
-        logger.info(f"Total val {self._epoc_counter}/{self.num_epochs} epoch "
-                    f"{self.val_loss.sum():.5f}:{self.grad_norm_val_loss.sum():.5f}, "
-                    f"mean {self.val_loss.mean():.5f}:{self.grad_norm_val_loss.mean():.5f}")
+        logger.info(f"Epoch validation loss {self._epoc_counter}/{self.num_epochs} epoch "
+                    f"{self.val_loss.sum():.2f} | {self.grad_norm_val_loss.sum():.2f}, "
+                    f"mean {self.val_loss.mean():.4f} | {self.grad_norm_val_loss.mean():.4f}")
 
     def on_epoch_end(self):
         self.on_prediction_epoch_end()
-        logger.info(f"Total train {self._epoc_counter}/{self.num_epochs} epoch "
-                    f"{self.loss.sum():.5f}:{self.grad_norm_loss.sum():.5f}, "
-                    f"mean {self.loss.mean():.5f}:{self.grad_norm_loss.mean():.5f}")
+        logger.info(f"Epoch train loss {self._epoc_counter}/{self.num_epochs} epoch "
+                    f"{self.loss.sum():.2f} | {self.grad_norm_loss.sum():.2f}, "
+                    f"mean {self.loss.mean():.4f} | {self.grad_norm_loss.mean():.4f}")
         self._epoc_counter = self._epoc_counter + 1
 
     def on_begin(self):
