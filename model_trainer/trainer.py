@@ -20,8 +20,10 @@ from torch import nn
 from torch import optim
 from torch.nn.utils import clip_grad_norm_
 from tqdm import tqdm, tnrange
+from yaml import warnings
+#from frozendict import frozendict
 
-from model_loader.mel_dataloader import SFTFDataloader
+from model_loader.stft_dataloader import SFTFDataloader
 from model_trainer.base_trainer import TrainerError, AbstractTrainer
 from model_trainer.callbacks.base import BaseCallbacks, Callback
 from model_trainer.distributed_wrapper import DistributedDataWrapper
@@ -156,9 +158,14 @@ class Trainer(AbstractTrainer, ABC):
         if not self.is_inference:
             if data_loader is None:
                 raise TrainerError("Trainer need torch data loader.")
-            self._dataloaders, self.collate_fn = data_loader.get_all()
-            self._train_loader = self._dataloaders[self._tkey]
-            self._validation_loader = self._dataloaders[self._vkey]
+            self._data_loaders, self.collate_fn = data_loader.get_all()
+            self._train_loader = self._data_loaders[self._tkey]
+            self._validation_loader = self._data_loaders[self._vkey]
+
+            if len(self._train_loader.dataset) == 0:
+                warnings.warn("Training dataset empty")
+            if len(self._validation_loader.dataset) == 0:
+                warnings.warn("Training dataset empty")
 
         # TODO need refactor that, and move to dict and abstract,
         self.criterion = Tacotron2Loss()
@@ -181,7 +188,7 @@ class Trainer(AbstractTrainer, ABC):
         self.total_batches = 0
         if self.is_inference is False:
             # total batches
-            self.total_batches = len(self._dataloaders[self._tkey])
+            self.total_batches = len(self._data_loaders[self._tkey])
             # clip or not grad
             self.clip_grad = trainer_spec.is_grad_clipped()
 
@@ -189,10 +196,13 @@ class Trainer(AbstractTrainer, ABC):
             self.metric = Metrics(metric_step_file_path=trainer_spec.model_files.get_metric_file_path(),
                                   metric_batch_file_path=trainer_spec.model_files.get_metric_batch_file_path(),
                                   metric_perf_trace_path=trainer_spec.model_files.get_time_file_path(),
-                                  num_epochs=self.trainer_spec.epochs(), num_batches=self.total_batches,
+                                  num_epochs=self.trainer_spec.epochs(),
+                                  num_batches=self.total_batches,
+                                  batch_size=self.trainer_spec.batch_size(),
                                   verbose=False)
 
         self._callback = BaseCallbacks(callbacks=callback)
+        #self.callbacks.set
         logger.info("Device ID {}".format(self.cuda_device_id))
         # main queue note that train loop can re-add model back for training.
         self.q = deque()
@@ -764,9 +774,14 @@ class Trainer(AbstractTrainer, ABC):
         # for large model it makes sense to track iteration vs epoch counter.
         model_file = self.trainer_spec.model_files.get_model_file_path(layer_name)
         save_condition = epoch if self.trainer_spec.is_save_iteration() else step
+        if save_condition == 0:
+            return False
 
         # do nothing
         if last_epoch is True or save_condition % self.trainer_spec.epochs_save() == 0:
+            print("save epoc", self.trainer_spec.epochs_save())
+            print("Last epoch", last_epoch)
+            print("condtion cchedk ", save_condition,  epoch , step )
             if self.trainer_spec.is_train_verbose():
                 logger.info('Saving node model {}'.format(model_file))
                 self._callback.saving_start()
@@ -816,6 +831,8 @@ class Trainer(AbstractTrainer, ABC):
         self._callback.validation_start()
         take_batch = self._batch_loader[model_name][layer_name]
         model.eval()
+        self.metric.on_prediction_batch_start()
+        self.tqdm_iter.set_description("Validation")
         with torch.no_grad():
             total_prediction_loss = 0.0
             for batch_idx, batch in enumerate(self._validation_loader):
@@ -826,6 +843,11 @@ class Trainer(AbstractTrainer, ABC):
                 mel_loss = criterion_out['mel_loss']
                 gate_loss = criterion_out['gate_loss']
                 loss = criterion_out['loss']
+                if self.clip_grad:
+                    grad_norm = clip_grad_norm_(model.parameters(), self.trainer_spec.grad_clip_thresh())
+                    self.metric.update(batch_idx, step, loss.item(), grad_norm=grad_norm.item(), validation=True)
+                else:
+                    self.metric.update(batch_idx, step, loss.item(), grad_norm=None, validation=True)
 
                 if self.trainer_spec.is_distributed_run():
                     reduced_val_loss = self.split_tensor(loss.data, self.n_gpus).item()
@@ -845,6 +867,7 @@ class Trainer(AbstractTrainer, ABC):
             # normalize
             total_prediction_loss = total_prediction_loss / (len(self._validation_loader) + 1)
         self._callback.validation_end()
+        self.metric.on_prediction_batch_end()
 
         # tune.report(loss=total_prediction_loss)
         model.train()
@@ -969,6 +992,7 @@ class Trainer(AbstractTrainer, ABC):
         current_total_loss = 0
         step = self.get_last_iterator(model_name, layer_name)
         self._callback.on_loader_begin()
+        self.metric.on_batch_start()
         for batch_idx, batch in enumerate(self._train_loader):
             self._callback.on_batch_begin()
             model.zero_grad(set_to_none=True)
@@ -987,10 +1011,10 @@ class Trainer(AbstractTrainer, ABC):
             loss.backward()
             if self.clip_grad:
                 grad_norm = clip_grad_norm_(model.parameters(), self.trainer_spec.grad_clip_thresh())
-                self.metric.update(batch_idx, step, normal_loss, grad_norm=grad_norm.item())
+                self.metric.update(batch_idx, step, normal_loss, grad_norm=grad_norm.item(), validation=False)
             else:
                 grad_norm = loss
-                self.metric.update(batch_idx, step, normal_loss)
+                self.metric.update(batch_idx, step, normal_loss, grad_norm=None, validation=False)
 
             optimizer.step()
             self._callback.on_batch_begin()
@@ -1018,8 +1042,8 @@ class Trainer(AbstractTrainer, ABC):
             # save model checkpoint if needed
             if self.rank == 0 and self.save_if_need(model_name=model_name,
                                                     layer_name=layer_name,
-                                                    epoch=self.epoch, step=step):
-                print("Updating saved")
+                                                    epoch=self.epoch,
+                                                    step=step):
                 self.saved_run = step
 
             # dist.barrier()
@@ -1199,14 +1223,8 @@ class Trainer(AbstractTrainer, ABC):
         model.train()
         self.tqdm_iter.set_postfix({'step': step})
         self._callback.on_begin()
+        self.metric.on_begin()
 
-        # # if checkpoint_dir is None:
-        # #     checkpoint_dir =
-        # # checkpoint_dir = self.trainer_spec.model_files.get_model_dir()
-        # if checkpoint_dir is not None:
-        #     model_state, optimizer_state = torch.load(os.path.join(checkpoint_dir, "checkpoint"))
-        #     model.load_state_dict(model_state)
-        #     optimizer.load_state_dict(optimizer_state)
         validation_loss = 0
         for epoch in self.tqdm_iter:
             self._callback.on_epoch_begin()
@@ -1216,8 +1234,10 @@ class Trainer(AbstractTrainer, ABC):
             self.epoch = epoch
             # train epoch's batch
             self.metric.start_epoch_timer(epoch)
+            self.metric.on_epoch_begin()
             step = self.train_epoch(model, model_name, layer_name, optimizer)
             self.metric.update_epoch_timer(epoch)
+            self.metric.on_epoch_end()
             validation_loss += self.validate_epoch(model, model_name, layer_name, epoch)
             self._callback.on_epoch_end()
             if self.is_hp_tunner:
@@ -1229,6 +1249,7 @@ class Trainer(AbstractTrainer, ABC):
             # tune.report(loss=validation_loss)
 
         self._callback.on_end()
+        self.metric.on_end()
 
         # save
         if self.rank == 0 and self.save_if_need(model_name, layer_name, step,
@@ -1243,7 +1264,7 @@ class Trainer(AbstractTrainer, ABC):
                 'loss': self.metric.total_mean_loss()
         }
 
-    def train(self, model_name=None, config=None, checkpoint_dir=None, dataloader=None):
+    def train(self, model_name=None, config=None, checkpoint_dir=None):
         """
         :param dataloader:
         :param config:
@@ -1258,7 +1279,6 @@ class Trainer(AbstractTrainer, ABC):
         #     self.load_models()
         # if self.trainer_spec.is_distributed_run():
         #     #torch.cuda.set_device(self.device)
-        print("################# Started")
 
         torch.cuda.empty_cache()
         model_name = self.trainer_spec.get_active_mode()
@@ -1268,11 +1288,6 @@ class Trainer(AbstractTrainer, ABC):
             print("It looks like model already trained. \
                    Check file {}".format(self.trainer_spec.model_files.get_model_file_path(model_name)))
             return
-
-        if dataloader is not None:
-            self._dataloaders = dataloader
-            self._train_loader = dataloader['train_set']
-            self._validation_loader = dataloader['validation_set']
 
         # last_step = 0
         strategy = self.trainer_spec.get_training_strategy(model_name)
@@ -1285,7 +1300,7 @@ class Trainer(AbstractTrainer, ABC):
                 # update whatever we need
                 if config is not None:
                     if 'batch_size' in config:
-                        self._dataloaders.update(config['batch_size'])
+                        self._data_loaders.update(config['batch_size'])
                         # self.data_loader.update_batch(int(config["batch_size"]))
                         # self._train_loader[self._tkey].update_batch(config["batch_size"])
                         # self._validation_loader[self._tkey].update_batch(config["batch_size"])

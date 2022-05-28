@@ -20,7 +20,7 @@ from loguru import logger
 
 from model_loader.dataset_stft25 import SFTF2Dataset
 from model_loader.ds_util import md5_checksum
-from model_loader.mel_dataloader import SFTFDataloader
+from model_loader.stft_dataloader import SFTFDataloader
 from model_loader.dataset_stft30 import SFTF3Dataset
 from model_trainer.callbacks.base import Callback
 from model_trainer.callbacks.time_meter import TimeMeter
@@ -541,7 +541,6 @@ def train(spec=None, cmd_args=None, device=None, cudnn_bench=False):
     if cmd_args.overfit:
         spec.set_overfit()
 
-    dataloader = SFTFDataloader(spec, rank=cmd_args.rank, world_size=cmd_args.world_size, verbose=args.verbose)
     torch.backends.cudnn.enabled = True
     if cudnn_bench:
         torch.backends.cudnn.benchmark = True
@@ -552,12 +551,20 @@ def train(spec=None, cmd_args=None, device=None, cudnn_bench=False):
         logger.debug("Torch backend openmp", torch.backends.openmp)
     try:
 
-        Trainer(spec,
-                dataloader,
-                rank=int(args.rank),
-                world_size=int(cmd_args.world_size),
-                verbose=args.verbose, device=device,
-                callback=[BatchTimer()]).train()
+        dataloader = SFTFDataloader(spec, rank=cmd_args.rank,
+                                    world_size=cmd_args.world_size,
+                                    verbose=args.verbose)
+        dataloader.set_logger(is_enable=True)
+
+        trainer = Trainer(spec,
+                          dataloader,
+                          rank=int(args.rank),
+                          world_size=int(cmd_args.world_size),
+                          verbose=args.verbose, device=device,
+                          callback=[BatchTimer()])
+
+        trainer.metric.set_logger(is_enable=True)
+        trainer.train()
 
     except TrainerError as e:
         print("Error: trainer error: ", e)
@@ -644,7 +651,24 @@ def main(cmd_args):
     trainer_spec = ExperimentSpecs(spec_config=cmd_args.config, verbose=cmd_args.verbose)
     trainer_spec.set_logger(cmd_args.verbose)
 
-    logger.add(sys.stderr, format="{time} {level} {message}", filter="my_module", level="INFO")
+    print("Log file.", trainer_spec.model_files.get_model_log_file_path())
+
+    # config = {
+    #     "handlers": [
+    #         # {"sink": sys.stdout, "format": "{time} - {message}"},
+    #         {"sink": trainer_spec.model_files.get_model_log_file_path(), "serialize": True},
+    #     ],
+    #     # "extra": {"user": "someone"}
+    # }
+    # logger.configure(**config)
+    logger.add(trainer_spec.model_files.get_model_log_file_path(),
+               format="{time} {level} {message}",
+               filter="model_trainer.trainer_metrics", level="INFO")
+
+    print("loader logs", trainer_spec.model_files.get_trace_log_file("loader"))
+    logger.add(trainer_spec.model_files.get_trace_log_file("loader"),
+               format="{time} {level} {message}",
+               filter="model_loader.stft_dataloader", level="INFO")
 
     if cmd_args.mode.strip().upper().lower() == 'standalone':
         trainer_spec.set_distributed(False)
@@ -738,7 +762,7 @@ if __name__ == '__main__':
 
     # parser.add_argument('--load', type=bool, default=False,
     #                     required=False, help='set verbose output')
-    level = logger.level("ERROR")
+    # level = logger.level("ERROR")
     # logger.info(f"LOGURU_LEVEL: {os.environ['LOGURU_LEVEL']}")
     # logger.remove()
     # logger.enable("__main__")
@@ -781,7 +805,7 @@ if __name__ == '__main__':
 
     try:
         set_logger(args.verbose)
-        trainer_spec = ExperimentSpecs(spec_config=args.config, verbose=args.verbose)
+        # trainer_spec = ExperimentSpecs(spec_config=args.config, verbose=args.verbose)
         main(args)
         # setup_handler(cleanup(is_distributed))
     except FileNotFoundError as file_error:

@@ -12,7 +12,7 @@ import torch.utils.data
 from loguru import logger
 from torch import Tensor
 
-from model_loader.base_sfts_dataset import BaseSFTFDataset, DatasetError
+from model_loader.base_stft_dataset import BaseSFTFDataset, DatasetError
 from model_loader.tacotron_stft25 import TacotronSTFT25
 from model_trainer.specs.tacatron_spec import TacotronSpec
 from model_trainer.trainer_specs import ExperimentSpecs

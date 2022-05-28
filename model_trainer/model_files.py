@@ -250,6 +250,12 @@ class ModelFiles:
         """
         return str(self._dirs["logs"] / self.file_name_generator(suffix="metric", file_type=file_type))
 
+    def get_trace_log_file(self, trace_name: str, file_type="log"):
+        """Return full path for a trace log file,  trace_name a name appended to a file name.
+           used to register different log traces.
+        """
+        return str(self._dirs["logs"] / self.file_name_generator(suffix=trace_name, file_type=file_type))
+
     def get_model_log_dir(self, file_type="log"):
         """Return log dir
         """
@@ -261,15 +267,12 @@ class ModelFiles:
     def file_name_generator(self, suffix=None, file_type='dat'):
         """
         Default filename generator.
+
         :param suffix:
         :param file_type:
         :return:
         """
         batch_size = self.parent.batch_size()
-        # self.parent.batch_size = batch_size
-        # if 'batch_size' in self._setting:
-        #     batch_size = int(self._setting['batch_size'])
-
         if suffix is None:
             return f"{self.filename}_batch_{str(batch_size)}_epoch_{self.load_epoch()}.{file_type}"
 

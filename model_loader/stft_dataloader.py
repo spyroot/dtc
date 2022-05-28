@@ -1,4 +1,4 @@
-# SFTS, Mel dataset
+# STFT, Mel dataset
 #
 # It for dataset that outputs only one hot vector and mel spectrogram.
 #
@@ -14,7 +14,7 @@ import torch
 from loguru import logger
 from torch.utils.data import DataLoader, DistributedSampler
 
-from model_loader.base_sfts_dataset import DatasetError, BaseSFTFDataset
+from model_loader.base_stft_dataset import DatasetError, BaseSFTFDataset
 from model_loader.dataset_stft25 import SFTF2Dataset
 from model_loader.dataset_stft30 import SFTF3Dataset
 from model_loader.sfts2_collate import TextMelCollate2
@@ -76,19 +76,19 @@ class SFTFDataloader:
             else:
                 raise ValueError("Batch size less than zero.")
 
-        # datasets and dataloaders
+        # datasets and data loaders
         self._datasets = {}
-        self._dataloaders = {}
+        self._data_loaders = {}
         if dataset is not None:
             self.from_dataset(ds=dataset)
 
     def _initialized_before(self) -> bool:
         """
-        Dataloaders and dataset should be created if not method return false.
+        Data loaders and dataset should be created if not method return false.
         :return:
         """
-        return self._dataloaders is not None and len(self._dataloaders) > 0 \
-               and self._datasets is not None and len(self._datasets) > 0
+        return self._data_loaders is not None and \
+               len(self._data_loaders) > 0 and self._datasets is not None and len(self._datasets) > 0
 
     def update_batch(self, new_batch: int) -> tuple[list[DataLoader], Callable]:
         """
@@ -99,14 +99,13 @@ class SFTFDataloader:
         """
         # main point update batch size without entire dataset.
         if not self._initialized_before():
-            logger.debug("Updating dataset.")
-            print("Updating batch ", new_batch)
+            logger.debug(f"Updating dataset batch size, old {self._batch_size} new {new_batch}")
             self._batch_size = new_batch
-            del self._dataloaders
-            self._dataloaders = {}
+            del self._data_loaders
+            self._data_loaders = {}
             self._create(update=True)
 
-        return list(self._dataloaders.values()), self.collate_fn
+        return list(self._data_loaders.values()), self.collate_fn
 
     def get_all(self) -> tuple[dict[str, DataLoader], Callable]:
         """
@@ -115,9 +114,10 @@ class SFTFDataloader:
         :return:
         """
         if not self._initialized_before():
+            logger.info("Creating a new instance of data loaders.")
             self._create()
 
-        return self._dataloaders, self.collate_fn
+        return self._data_loaders, self.collate_fn
 
     def get_loader(self) -> tuple[list[DataLoader], Callable]:
         """
@@ -129,7 +129,7 @@ class SFTFDataloader:
         if not self._initialized_before():
             self._create()
 
-        return list(self._dataloaders.values()), self.collate_fn
+        return list(self._data_loaders.values()), self.collate_fn
 
     def _validate_v2(self, raw_dataset, strict: Optional[bool] = True):
         """
@@ -312,7 +312,7 @@ class SFTFDataloader:
         samplers = {}
 
         if self._trainer_spec.is_distributed_run():
-            logger.info("Creating distribute sampler rank {} , world size {}", self._rank, self._world_size)
+            logger.debug("Creating distribute sampler rank {} , world size {}", self._rank, self._world_size)
             try:
                 # create k num samplers.
                 for _, k in enumerate(self._datasets):
@@ -333,8 +333,9 @@ class SFTFDataloader:
         for _, k in enumerate(self._datasets):
             # print("type ", self._datasets)
             if len(self._datasets) == 0:
+                logger.error(f"Dataloader for key {k} is empty.")
                 raise ValueError(f"Dataloader for key {k} is empty.")
-            logger.info(f"Dataloader train set contains {len(self._datasets[k])} entries.")
+            logger.debug(f"Dataloader train set contains {len(self._datasets[k])} entries.")
 
         if self._batch_size == 0:
             raise ValueError("Dataloader batch size == 0.")
@@ -344,21 +345,23 @@ class SFTFDataloader:
             self._batch_size = int(self._trainer_spec.batch_size() / float(self._world_size))
 
         if self._trainer_spec.is_overfit():
-            warnings.warn("You are running in overfitting settings.")
+            warnings.warn("You are running in overfiting settings.")
 
         # each data loader has same key.
         for _, k in enumerate(self._datasets):
             sampler = None
             if samplers is not None and len(samplers) > 0:
                 sampler = samplers[k]
-            self._dataloaders[k] = DataLoader(self._datasets[k],
-                                              num_workers=self._num_worker,
-                                              shuffle=is_shuffle,
-                                              sampler=sampler,
-                                              batch_size=self._batch_size,
-                                              pin_memory=True,
-                                              drop_last=True,
-                                              collate_fn=self.collate_fn)
+            logger.info(f"Creating dataloader {k} dataset contains "
+                        f"{len(self._datasets[k])} batch size {self._batch_size}")
+            self._data_loaders[k] = DataLoader(self._datasets[k],
+                                               num_workers=self._num_worker,
+                                               shuffle=is_shuffle,
+                                               sampler=sampler,
+                                               batch_size=self._batch_size,
+                                               pin_memory=True,
+                                               drop_last=True,
+                                               collate_fn=self.collate_fn)
 
     def from_dataset(self, ds: BaseSFTFDataset):
         """
@@ -371,6 +374,7 @@ class SFTFDataloader:
 
         last_index = max(1, round(len(ds) * (30 / 100)))
         train_len = len(ds) - last_index
+        logger.debug(f"Creating dataloader from a existing dataset partition {train_len} {last_index}")
         generator = torch.Generator().manual_seed(1234)
         dataset = torch.utils.data.random_split(ds, [train_len, last_index], generator=generator)
         if len(dataset) > 1:
@@ -386,6 +390,7 @@ class SFTFDataloader:
          :return:
         """
         pk_dataset = self._trainer_spec.get_audio_dataset()
+
         mandatory_keys = ['train_set', 'validation_set', 'test_set', 'ds_type']
         for k in mandatory_keys:
             if k not in pk_dataset:
@@ -398,11 +403,12 @@ class SFTFDataloader:
                 self._create_v2raw()
         else:
             # this might happen if batch size changed and data loader is null
-            if self._dataloaders is None:
+            if self._data_loaders is None:
                 raise RuntimeError("Invalid state.")
 
         self._create_loaders()
 
+    @staticmethod
     def to_gpu(x):
         """
         Returns:
@@ -438,7 +444,7 @@ class SFTFDataloader:
         if not self._initialized_before():
             self._create()
 
-        for _, dataloader in enumerate(self._dataloaders):
+        for _, dataloader in enumerate(self._data_loaders):
             for _, batch in enumerate(dataloader):
                 x, y = self.get_batch(batch)
                 for j in range(len(batch)):
@@ -467,7 +473,7 @@ class SFTFDataloader:
         aggregate = 0
         num_batched = 0
         # do full pass over train batch and count time
-        for _, dataloader in enumerate(self._dataloaders):
+        for _, dataloader in enumerate(self._data_loaders):
             print(f"data loader: dataset {dataloader}, contains entries {len(dataloader)}")
             total_batches = 0
             for i, batch in enumerate(dataloader):

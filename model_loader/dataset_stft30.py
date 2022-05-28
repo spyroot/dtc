@@ -6,7 +6,7 @@ import torch
 import torch.utils.data
 from loguru import logger
 
-from .base_sfts_dataset import BaseSFTFDataset
+from .base_stft_dataset import BaseSFTFDataset
 from model_trainer.specs.tacatron_spec import TacotronSpec
 from model_trainer.utils import load_wav_to_torch
 from text import text_to_sequence

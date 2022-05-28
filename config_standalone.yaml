@@ -101,7 +101,7 @@ settings:
     cudnn_benchmark: False
   small:
     epochs: 500
-    batch_size: 64
+    batch_size: 4
     grad_clipping: True
     grad_clip_thresh: 1.0              # grad_clip_thresh rate
     tensorboard_update: 20             # tensorboard_update update rate iter
@@ -109,7 +109,7 @@ settings:
     console_log_rate: 5                # when to log to console
     start_test: 20                     # when to start run a test
     predict: 10                        # predict to start predict , validate
-    predict_per_iteration: True        # use epoch or iteration counter, in large batch size we might want to see progress.
+    predict_per_iteration: False       # use epoch or iteration counter, in large batch size we might want to see progress.
     epochs_save: 5                     # when to save
     save_per_iteration: True           # if we want save per iteration
     seed: 1234                         # fix seed

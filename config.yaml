@@ -120,7 +120,7 @@ settings:
     predict_per_iteration: True
     # when to save
     epochs_save: 5
-    save_per_iteration: True
+    save_per_iteration: False
     seed: 1234
     epochs: 500
     iters_per_checkpoint: 1000

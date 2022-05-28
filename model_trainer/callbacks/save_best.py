@@ -1,3 +1,17 @@
+import os
+from enum import Enum
+
+import numpy as np
+from loguru import logger
+from .base import Callback
+import torch
+
+
+class ReduceMode(Enum):
+    MIN = "min"
+    MAX = "max"
+
+
 class CheckpointSaver(Callback):
     """
     Save best model every epoch based on loss

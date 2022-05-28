@@ -54,6 +54,7 @@ class BaseCallbacks(Callback):
     def __init__(self, callbacks):
         super().__init__()
         self.callbacks = listify(callbacks)
+        # self.state
 
     def set_state(self, state):
         for callback in self.callbacks:
