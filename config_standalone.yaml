@@ -44,7 +44,7 @@ datasets:
     file_type: "wav"
   LJSpeechSmallRaw:
     ds_type: "audio"
-    dir: "~/Dropbox/Datasets/LJSpeechSmall"
+    dir: "~/Dropbox/Datasets/LJSpeech-1.1"
     #    dir: "~/Dropbox/Datasets/LJSpeechSmall"
     format: raw
     training_meta: ljs_audio_text_train_filelist_1000.txt
