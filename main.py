@@ -353,24 +353,25 @@ class Trainable(tune.Trainable, Callback):
 
     def save_checkpoint(self, tmp_checkpoint_dir):
         print("called save_checkpoint with tmp dir ", tmp_checkpoint_dir)
-        checkpoint_path = os.path.join(tmp_checkpoint_dir, "model.pth")
-        torch.save(self.model.state_dict(), checkpoint_path)
+        for model in self._models:
+            for model_layer in self._models[model]:
+                checkpoint_path = os.path.join(tmp_checkpoint_dir, f"{model}{model_layer}.pth")
+                torch.save(self.model.state_dict(), checkpoint_path)
         return tmp_checkpoint_dir
 
     def load_checkpoint(self, tmp_checkpoint_dir):
-        print("load_checkpoint with tmp dir ", tmp_checkpoint_dir)
-        checkpoint_path = os.path.join(tmp_checkpoint_dir, "model.pth")
-        self.model.load_state_dict(torch.load(checkpoint_path))
+
+        print("called save_checkpoint with tmp dir ", tmp_checkpoint_dir)
+        for model in self._models:
+            for model_layer in self._models[model]:
+                checkpoint_path = os.path.join(tmp_checkpoint_dir, f"{model}{model_layer}.pth")
+                self.model.load_state_dict(torch.load(checkpoint_path))
 
     def step(self):
-        # self.trainert.hp_trainer()
-        # score = objective(self.x, self.a, self.b)
-        # self.x += 1
-        step_seq = self.trainer.hp_trainer(self.config)
-        if isinstance(step_seq, dist):
-            print(step_seq.keys())
-            print(step_seq.values())
-        return self.trainer.hp_trainer(self.config)
+        self.trainer.train_optimizer(self.config)
+        self.trainer.metric.batch_val_loss.mean()
+        print(f"###### returned {self.trainer.metric.val_loss.mean()}")
+        return {"mean_val_loss": self.trainer.metric.val_loss.mean()}
 
     # def reset_config(self, new_config):
     #     self.trainer.update_optimizer(new_config)
@@ -386,6 +387,14 @@ class Trainable(tune.Trainable, Callback):
 
 
 def tune_hyperparam(spec=None, cmd_args=None, device=None, cudnn_bench=False):
+    """
+
+    :param spec:
+    :param cmd_args:
+    :param device:
+    :param cudnn_bench:
+    :return:
+    """
     spec.set_logger(False)
     if int(cmd_args.rank) == 0:
         logger.info("Staring rank zero node.")
@@ -412,9 +421,10 @@ def tune_hyperparam(spec=None, cmd_args=None, device=None, cudnn_bench=False):
         logger.debug("Torch backend openmp", torch.backends.openmp)
 
     try:
+        metric = 'mean_val_loss'
 
         scheduler = ASHAScheduler(
-                metric="loss",
+                metric=metric,
                 mode="min",
                 max_t=spec.epochs(),
                 grace_period=1,
@@ -422,7 +432,7 @@ def tune_hyperparam(spec=None, cmd_args=None, device=None, cudnn_bench=False):
 
         reporter = CLIReporter(
                 # parameter_columns=["l1", "l2", "lr", "batch_size"],
-                metric_columns=["loss", "accuracy", "training_iteration"])
+                metric_columns=[metric, "training_iteration"])
 
         config = {
             # "l1": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
@@ -434,56 +444,25 @@ def tune_hyperparam(spec=None, cmd_args=None, device=None, cudnn_bench=False):
             "batch_size": ray.tune.choice([2, 4, 8, 16, 32, 64])
         }
 
-        print("all metric paths before")
-        print(spec.model_files.get_metric_dir())
-        print(spec.model_files.get_metric_file_path())
-        print(spec.model_files.get_metric_batch_file_path())
-        print(spec.model_files.get_time_file_path())
-        spec.set_batch_size(10)
-        print("all metric paths and after")
-        print(spec.model_files.get_metric_dir())
-        print(spec.model_files.get_time_file_path())
-        print(spec.model_files.get_metric_batch_file_path())
-        print(spec.model_files.get_metric_file_path())
-
-        print("all tuner related dirs and files")
-        print(spec.model_files.get_tuner_dir())
-        print(spec.model_files.get_tuner_log_dir())
-        print(spec.model_files.get_tuner_safe_dir())
-
-        # print(spec.model_files.get_tuner_checkpointer())
-        print("--------")
-
-        print("--------")
-        print("all files")
-        print(spec.model_files.get_all_model_filenames())
-        print("--------")
-
-        print(spec.model_files.get_model_log_file_path())
-        print(spec.model_files.get_model_file_path())
-        print(spec.model_files.get_model_log_file_path())
-        print(spec.batch_size())
-        print(spec.model_files.get_metric_file_path())
-        print(spec.model_files.get_tuner_dir())
-
         tuner_result = ray.tune.run(Trainable,
-                                    resources_per_trial={"gpu": 1},
+                                    resources_per_trial={"cpu": 4, "gpu": 1},
                                     config=config,
                                     num_samples=10,
                                     scheduler=scheduler,
                                     checkpoint_freq=2,
                                     local_dir=spec.model_files.get_tuner_log_dir(),
-                                    stop={"training_iteration": 5},
+                                    stop={
+                                        # "mean_accuracy": 0.95,
+                                        "training_iteration": 3 if cmd_args.smoke_test else 20,
+                                    },
                                     max_concurrent_trials=1,
                                     progress_reporter=reporter)
 
-        best_trial = tuner_result.get_best_trial("loss", "min", "last")
+        best_trial = tuner_result.get_best_trial(metric, "min", "last")
         print("Best trial config: {}".format(best_trial.config))
-        print("Best trial final validation loss: {}".format(best_trial.last_result["loss"]))
+        print("Best trial final validation loss: {}".format(best_trial.last_result[metric]))
         # print("Best trial final validation accuracy: {}".format(best_trial.last_result["accuracy"]))
-
         # print('best config: ', analysis.get_best_config(metric="score", mode="max"))
-
         # tuner_result = ray.tune.run(
         #         tune.with_parameters(
         #                 Trainer(spec,
@@ -651,21 +630,10 @@ def main(cmd_args):
     trainer_spec = ExperimentSpecs(spec_config=cmd_args.config, verbose=cmd_args.verbose)
     trainer_spec.set_logger(cmd_args.verbose)
 
-    print("Log file.", trainer_spec.model_files.get_model_log_file_path())
-
-    # config = {
-    #     "handlers": [
-    #         # {"sink": sys.stdout, "format": "{time} - {message}"},
-    #         {"sink": trainer_spec.model_files.get_model_log_file_path(), "serialize": True},
-    #     ],
-    #     # "extra": {"user": "someone"}
-    # }
-    # logger.configure(**config)
     logger.add(trainer_spec.model_files.get_model_log_file_path(),
                format="{time} {level} {message}",
                filter="model_trainer.trainer_metrics", level="INFO")
 
-    print("loader logs", trainer_spec.model_files.get_trace_log_file("loader"))
     logger.add(trainer_spec.model_files.get_trace_log_file("loader"),
                format="{time} {level} {message}",
                filter="model_loader.stft_dataloader", level="INFO")
@@ -742,7 +710,9 @@ if __name__ == '__main__':
     parser.add_argument('--overfit', action='store_true',
                         required=False, help='if set will reduce dataset and set batch 1 and overfit.')
     parser.add_argument('--tune', action='store_true',
-                        required=False, help='rum hyperparameter optimization.')
+                        required=False, help='run ray hyperparameter optimization.')
+    parser.add_argument('--smoke_test', action='store_true',
+                        required=False, help='run ray hyperparameter optimization in smoke test.')
     parser.add_argument('--train', type=bool, default=True,
                         required=False, help='set verbose output.')
     parser.add_argument('--convert', action="store_true",

@@ -194,6 +194,9 @@ class Trainer(AbstractTrainer, ABC):
     #     print("Got checkpoint dir")
     #     return self.train()
 
+    def get_models(self):
+        return self._models
+
     def create_model_dispatch(self) -> tuple[dict[str, dict[str: Callable]],
                                              dict[str, Callable],
                                              dict[str, dict[str: Callable]]]:
@@ -717,7 +720,6 @@ class Trainer(AbstractTrainer, ABC):
         #     self.create_lr_scheduler(model_name, layer, opt)
 
     def save_if_need(self, model_name: str, layer_name: str,
-                     epoch: int,
                      step: Optional[int] = 0,
                      last_epoch=False) -> bool:
         """
@@ -725,12 +727,10 @@ class Trainer(AbstractTrainer, ABC):
         or model layer need to save or not.
         
         :param layer_name:
-        :param epoch: current epoch
         :param step: Current step in iteration , monotonic counter.
         :param model_name:  active model
         :param last_epoch: if it last we save a model.
         """
-
         if self.is_hp_tunner:
             return False
 
@@ -746,26 +746,22 @@ class Trainer(AbstractTrainer, ABC):
         # model save predicate condition, either iteration or epoch counter.
         # for large model it makes sense to track iteration vs epoch counter.
         model_file = self.trainer_spec.model_files.get_model_file_path(layer_name)
-        save_condition = epoch if self.trainer_spec.is_save_iteration() else step
+        save_condition = self.epoch if self.trainer_spec.is_save_iteration() else step
         if save_condition == 0 or save_condition == self.saved_run:
             return False
 
         # do nothing
         if last_epoch is True or save_condition % self.trainer_spec.epochs_save() == 0:
-            print("save epoc", self.trainer_spec.epochs_save())
-            print("Last epoch", last_epoch)
-            print("condtion cchedk ", save_condition,  epoch , step )
             if self.trainer_spec.is_train_verbose():
                 logger.info('Saving node model {}'.format(model_file))
                 self._callback.saving_start()
                 # backup before safe.
                 # if self.trainer_spec.is_backup_before_save():
                 #     self.backup_model(model_file)
-
             if model_name in self._schedulers:
                 logger.info("Model saving with optimizer and scheduler state.")
                 torch.save({
-                    'epoch': epoch, 'it': step,
+                    'epoch': self.epoch, 'it': step,
                     'model_state_dict': self._models[model_name][layer_name].state_dict(),
                     'optimizer_state_dict': self._optimizers[model_name][layer_name].state_dict(),
                     'scheduler_state_dict': self._schedulers[model_name].state_dict()
@@ -773,13 +769,14 @@ class Trainer(AbstractTrainer, ABC):
             else:
                 logger.info("Model saving with optimizer without a scheduler state.")
                 torch.save({
-                    'epoch': epoch,
+                    'epoch': self.epoch,
                     'it': step,
                     'model_state_dict': self._models[model_name][layer_name].state_dict(),
                     'optimizer_state_dict': self._optimizers[model_name][layer_name].state_dict(),
                     #    'scheduler_state_dict': self.schedulers[model_name].state_dict()
                 }, model_file)
 
+            self.saved_run = save_condition
             self._callback.saved()
             # save metrics
             self.metric.save()
@@ -803,7 +800,7 @@ class Trainer(AbstractTrainer, ABC):
         take_batch = self._batch_loader[model_name][layer_name]
         model.eval()
         self.metric.on_prediction_batch_start()
-        self.tqdm_iter.set_description("Training in progress,")
+        self.tqdm_iter.set_description("Validation in progress,")
         with torch.no_grad():
             total_prediction_loss = 0.0
             for batch_idx, batch in enumerate(self._validation_loader):
@@ -1009,13 +1006,9 @@ class Trainer(AbstractTrainer, ABC):
             # if step != 0 and step % self.trainer_spec.predict() == 0:
             #     prediction_accuracy = self.validate(model, model_name, step)
             #     total_accuracy += prediction_accuracy
-
             # save model checkpoint if needed
-            if self.rank == 0 and self.save_if_need(model_name=model_name,
-                                                    layer_name=layer_name,
-                                                    epoch=self.epoch,
-                                                    step=step):
-                self.saved_run = step
+            if self.rank == 0:
+                self.save_if_need(model_name=model_name, layer_name=layer_name, step=step)
 
             # dist.barrier()
             # hparam we want track.
@@ -1169,11 +1162,10 @@ class Trainer(AbstractTrainer, ABC):
 
         return model, optimizer, scheduler, step
 
-    def trainer_sequential(self, model_name: str, layer_name: str):
+    def trainer_sequential(self, model_name: str, layer_name: str) -> None:
         """
         Sequential training loop.
 
-        :param checkpoint_dir:
         :param model_name:
         :param layer_name:
         :return:
@@ -1206,10 +1198,12 @@ class Trainer(AbstractTrainer, ABC):
             # train epoch's batch
             self.metric.start_epoch_timer(epoch)
             self.metric.on_epoch_begin()
-            step = self.train_epoch(model, model_name, layer_name, optimizer)
+            self.train_epoch(model, model_name, layer_name, optimizer)
             self.metric.update_epoch_timer(epoch)
             self.metric.on_epoch_end()
             validation_loss += self.validate_epoch(model, model_name, layer_name, epoch)
+            # if self.is_hp_tunner:
+            #     return
             self._callback.on_epoch_end()
             if self.is_hp_tunner:
                 break
@@ -1223,23 +1217,17 @@ class Trainer(AbstractTrainer, ABC):
         self.metric.on_end()
 
         # save
-        if self.rank == 0 and self.save_if_need(model_name, layer_name, step,
-                                                self.trainer_spec.epochs(),
-                                                last_epoch=True):
+        if self.rank == 0 and self.save_if_need(model_name, layer_name, step=self._steps[layer_name], last_epoch=True):
             logger.info(f"Saving {self.trainer_spec.epochs()} last epoch.")
 
         self._callback.on_epoch_end()
         self.metric.total_mean_loss()
-        return {'step': step,
-                'validation_loss': validation_loss,
-                'loss': self.metric.total_mean_loss()
-        }
+        return
 
     def train(self, model_name=None, config=None, checkpoint_dir=None):
         """
-        :param dataloader:
-        :param config:
-        :param model_name:
+        :param  config:
+        :param  model_name:
         :param  checkpoint_dir this mainly for ray
         :return:
         """
@@ -1281,30 +1269,23 @@ class Trainer(AbstractTrainer, ABC):
                         for param_group in self._optimizers[model_name][layer_name].param_groups:
                             param_group['lr'] = config["lr"]
                 # run model
-                last_step = self.trainer_sequential(model_name, layer_name)
+                self.trainer_sequential(model_name, layer_name)
                 if self.rank == 0 and self.save_if_need(model_name=model_name,
-                                                        layer_name=layer_name, epoch=self.trainer_spec.epochs(),
-                                                        step=last_step,
+                                                        layer_name=layer_name,
                                                         last_epoch=True):
                     logger.info(f"Saved last epoch {self.trainer_spec.epochs()}")
 
         self.cleanup()
 
-    def hp_trainer(self, config):
+    def train_optimizer(self, config):
         """
 
         :return:
         """
-        print("################# Started @@@")
-
+        logger.info("Hyper parameters tunner")
         torch.cuda.empty_cache()
         model_name = self.trainer_spec.get_active_mode()
         model_layers = self.trainer_spec.get_active_sub_models()
-
-        if self.is_trained(model_name):
-            print("It looks like model already trained. \
-                   Check file {}".format(self.trainer_spec.model_files.get_model_file_path(model_name)))
-            return
 
         # last_step = 0
         strategy = self.trainer_spec.get_training_strategy(model_name)
@@ -1320,8 +1301,6 @@ class Trainer(AbstractTrainer, ABC):
                             param_group['lr'] = config["lr"]
                 # todo add aggregation
                 return self.trainer_sequential(model_name, layer_name)
-
-        # self.cleanup()
 
     def is_trained(self, model_name: str) -> bool:
         """

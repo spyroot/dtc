@@ -1,7 +1,7 @@
 train: True                 # train or not,  default is True for generation we only need load pre-trained model
 #active: 'grid_small'       # dataset set generated.
 #use_dataset: 'LJSpeechSmallPkl'     # dataset set generated.
-use_dataset: 'LJSpeechSmallPkl'     # dataset set generated.
+use_dataset: 'LJSpeech'     # dataset set generated.
 use_model: 'tacotron25'            # model to use , it must be defined in models section.
 draw_prediction: True       # at the of training draw.
 load_model: True            # load model or not, and what
@@ -31,12 +31,23 @@ datasets:
     meta: metadata.csv
     recursive: False
     file_type: "wav"
-  LJSpeechSmallRaw:
+  LJSpeechMiniRaw:
     ds_type: "audio"
     dir: "~/Dropbox/Datasets/LJSpeechSmall"
 #    dir: "~/Dropbox/Datasets/LJSpeechSmall"
     format: raw
     training_meta: ljs_audio_text_train_filelist.txt
+    validation_meta: ljs_audio_text_val_filelist.txt
+    test_meta: ljs_audio_text_test_filelist.txt
+    meta: metadata.csv
+    recursive: False
+    file_type: "wav"
+  LJSpeechSmallRaw:
+    ds_type: "audio"
+    dir: "~/Dropbox/Datasets/LJSpeechSmall"
+    #    dir: "~/Dropbox/Datasets/LJSpeechSmall"
+    format: raw
+    training_meta: ljs_audio_text_train_filelist_1000.txt
     validation_meta: ljs_audio_text_val_filelist.txt
     test_meta: ljs_audio_text_test_filelist.txt
     meta: metadata.csv

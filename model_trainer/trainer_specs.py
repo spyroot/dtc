@@ -709,7 +709,7 @@ class ExperimentSpecs:
 
         return self.config['datasets']
 
-    def get_dataset_spec(self, dataset_name=""):
+    def get_dataset_spec(self, dataset_name="") -> dict:
         """
          Method return dataset based on name i.e key.
 

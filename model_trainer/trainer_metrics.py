@@ -260,10 +260,8 @@ class Metrics:
         :return:
         """
         if is_enable:
-            print(f"Logging {__name__} enabled.")
             logger.enable(__name__)
         else:
-            print(f"Logging {__name__} disabled.")
             logger.disable(__name__)
 
     @staticmethod
