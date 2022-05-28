@@ -4,7 +4,7 @@ from loguru import logger
 
 class ModelSpec(ABC, metaclass=ABCMeta):
     @abstractmethod
-    def __init__(self, verbose=False):
+    def __init__(self, verbose=False) -> None:
         self.verbose = verbose
         self.set_logger(verbose)
 

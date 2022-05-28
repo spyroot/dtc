@@ -3,7 +3,6 @@
 #  TODO Metric plot
 #  TODO Loss plot.
 # import torch.distributed as dist
-import os
 # import queue
 import random
 from abc import ABC
@@ -21,13 +20,13 @@ from torch import optim
 from torch.nn.utils import clip_grad_norm_
 from tqdm import tqdm, tnrange
 from yaml import warnings
-#from frozendict import frozendict
+# from frozendict import frozendict
 
 from model_loader.stft_dataloader import SFTFDataloader
-from model_trainer.base_trainer import TrainerError, AbstractTrainer
-from model_trainer.callbacks.base import BaseCallbacks, Callback
+from model_trainer.internal.abstract_trainer import TrainerError, AbstractTrainer
 from model_trainer.distributed_wrapper import DistributedDataWrapper
 # from model_trainer.trainer_logger import TensorboardTrainerLogger
+from model_trainer.internal.call_interface import BaseCallbacks
 from model_trainer.trainer_metrics import Metrics
 from model_trainer.trainer_specs import ExperimentSpecs
 # from distributed import apply_gradient_allreduce
@@ -39,12 +38,13 @@ from model_trainer.utils import fmtl_print, to_gpu
 
 # from multiprocessing import Queue
 from collections import deque
+import matplotlib.pylab as plt
+from text import text_to_sequence
+
 
 # from torch.nn.parallel import DistributedDataParallel
 # from torch.autograd import Variable
 # import numpy as np
-import ray
-from ray import tune
 
 # try:
 #     import ray
@@ -53,9 +53,6 @@ from ray import tune
 # except ImportError:
 #     logger.info("ray not found")
 #     pass
-
-import matplotlib.pylab as plt
-from text import text_to_sequence
 
 
 @AbstractTrainer.register
@@ -76,7 +73,7 @@ class Trainer(AbstractTrainer, ABC):
                  device: Optional[int] = torch.device,
                  cuda_device_id: Optional[int] = 0,
                  is_inference: Optional[bool] = False,
-                 callback: Optional[list[Callback]] = None,
+                 callback: Optional[list[Callable]] = None,
                  hp_tunner=False,
                  config=None,
                  checkpoint_dir=None) -> None:
@@ -107,12 +104,9 @@ class Trainer(AbstractTrainer, ABC):
             self.config = config
 
         self.is_hp_tunner = hp_tunner
-
         self.checkpoint_dir = checkpoint_dir
-
         self.set_logger(verbose)
-        #
-        self.device = device
+
         # dict that hold all schedulers that trainer need to use. TODO This will be moved.
         self._schedulers = {}
         # dict hold all optimizers. ( note trainer can train 2 model like in gan settings)
@@ -122,13 +116,13 @@ class Trainer(AbstractTrainer, ABC):
             if not trainer_spec.is_initialized():
                 raise TrainerError("you need initialize trainer specs first.")
 
-        # if self.trainer_spec.is_distributed_run():
+        # if self.state.trainer_spec.is_distributed_run():
         #     self.init_distributed()
 
-        self._tkey = self.trainer_spec.get_default_train_set_key()
-        self._vkey = self.trainer_spec.get_default_val_set_key()
+        self._tkey = self.state.trainer_spec.get_default_train_set_key()
+        self._vkey = self.state.trainer_spec.get_default_val_set_key()
 
-        if not self.is_inference:
+        if not self.state.is_inference:
             if data_loader is None:
                 raise TrainerError("Trainer need torch data loader.")
             self._data_loaders, self.collate_fn = data_loader.get_all()
@@ -159,7 +153,7 @@ class Trainer(AbstractTrainer, ABC):
 
         self.clip_grad = False
         self.total_batches = 0
-        if self.is_inference is False:
+        if self.state.is_inference is False:
             # total batches
             self.total_batches = len(self._data_loaders[self._tkey])
             # clip or not grad
@@ -169,14 +163,14 @@ class Trainer(AbstractTrainer, ABC):
             self.metric = Metrics(metric_step_file_path=trainer_spec.model_files.get_metric_file_path(),
                                   metric_batch_file_path=trainer_spec.model_files.get_metric_batch_file_path(),
                                   metric_perf_trace_path=trainer_spec.model_files.get_time_file_path(),
-                                  num_epochs=self.trainer_spec.epochs(),
+                                  num_epochs=self.state.trainer_spec.epochs(),
                                   num_batches=self.total_batches,
-                                  batch_size=self.trainer_spec.batch_size(),
+                                  batch_size=self.state.trainer_spec.batch_size(),
                                   verbose=False)
 
         self._callback = BaseCallbacks(callbacks=callback)
-        #self.callbacks.set
-        logger.info("Device ID {}".format(self.cuda_device_id))
+        # self.callbacks.set
+        logger.info("Device ID {}".format(self.state.cuda_device_id))
         # main queue note that train loop can re-add model back for training.
         self.q = deque()
         # late we will move this to factory
@@ -242,16 +236,16 @@ class Trainer(AbstractTrainer, ABC):
         """
         :return:
         """
-        if self.is_inference:
+        if self.state.is_inference:
             return
 
-        if self.trainer_spec.is_distributed_run():
-            torch.manual_seed(self.trainer_spec.seed())
-            torch.cuda.manual_seed(self.trainer_spec.seed())
+        if self.state.trainer_spec.is_distributed_run():
+            torch.manual_seed(self.state.trainer_spec.seed())
+            torch.cuda.manual_seed(self.state.trainer_spec.seed())
             torch.backends.cudnn.deterministic = True
             torch.backends.cudnn.benchmark = False
-            np.random.seed(self.trainer_spec.seed())
-            random.seed(self.trainer_spec.seed())
+            np.random.seed(self.state.trainer_spec.seed())
+            random.seed(self.state.trainer_spec.seed())
 
             logger.info("Starting distributed DDP training.")
             # self.init_distributed()
@@ -261,7 +255,7 @@ class Trainer(AbstractTrainer, ABC):
         self.create_optimizers()
         self.create_lr_schedulers()
 
-        if self.trainer_spec.fp16_run():
+        if self.state.trainer_spec.fp16_run():
             self.scaler = torch.cuda.amp.GradScaler()
 
     def create_tacotron25(self, is_set_cuda=False) -> nn.Module:
@@ -270,22 +264,22 @@ class Trainer(AbstractTrainer, ABC):
         :return:
         """
         logger.debug("Creating tacotron25 model.")
-        if self.is_inference:
-            model = Tacotron25(self.trainer_spec, self.device).to(self.device)
-        elif self.trainer_spec.is_distributed_run():
+        if self.state.is_inference:
+            model = Tacotron25(self.state.trainer_spec, self.state.device).to(self.state.device)
+        elif self.state.trainer_spec.is_distributed_run():
             # device = torch.device(f"cuda:{dist.get_rank()}")
             device = self._loop_up_device(is_set_cuda)
             logger.info("Creating DDP on cuda device "
-                        "{} torch device {} device received {}".format(self.cuda_device_id, device, self.device))
-            model = Tacotron3(self.trainer_spec, device).cuda()
+                        "{} torch device {} device received {}".format(self.cuda_device_id, device, self.state.device))
+            model = Tacotron3(self.state.trainer_spec, device).cuda()
             model = DistributedDataWrapper(model,
                                            device_ids=[self.cuda_device_id],
                                            output_device=self.cuda_device_id).cuda()
 
         else:
-            model = Tacotron25(self.trainer_spec, self.device).to(self.device)
+            model = Tacotron25(self.state.trainer_spec, self.state.device).to(self.state.device)
 
-        if self.trainer_spec.is_fp16_run():
+        if self.state.trainer_spec.is_fp16_run():
             model.decoder.attention_layer.score_mask_value = finfo('float16').min
 
         return model
@@ -296,21 +290,21 @@ class Trainer(AbstractTrainer, ABC):
         :return:
         """
         if self.is_inference:
-            model = Tacotron3(self.trainer_spec, self.device).to(self.device)
-        elif self.trainer_spec.is_distributed_run():
+            model = Tacotron3(self.state.trainer_spec, self.state.device).to(self.state.device)
+        elif self.state.trainer_spec.is_distributed_run():
             device = self._loop_up_device(is_set_cuda)
             logger.info("Creating DDP on cuda device "
                         "{} torch device {} device received {}".format(self.cuda_device_id,
-                                                                       device, self.device))
-            model = Tacotron3(self.trainer_spec, device).cuda()
+                                                                       device, self.state.device))
+            model = Tacotron3(self.state.trainer_spec, device).cuda()
             model = DistributedDataWrapper(model,
                                            device_ids=[self.cuda_device_id],
                                            output_device=self.cuda_device_id).cuda()
 
         else:
-            model = Tacotron3(self.trainer_spec, self.device).to(self.device)
+            model = Tacotron3(self.state.trainer_spec, self.state.device).to(self.state.device)
 
-        if self.trainer_spec.is_fp16_run():
+        if self.state.trainer_spec.state.is_fp16_run():
             model.decoder.attention_layer.score_mask_value = finfo('float16').min
 
         return model
@@ -353,8 +347,8 @@ class Trainer(AbstractTrainer, ABC):
         we create a target model
         :return: nothing, create_model will add each model to a dict[model_name] = model
         """
-        active_model = self.trainer_spec.get_active_mode()
-        _models = self.trainer_spec.get_active_sub_models()
+        active_model = self.state.trainer_spec.get_active_model()
+        _models = self.state.trainer_spec.get_active_sub_models()
         for m in _models:
             self._create_model_layers(active_model, m)
 
@@ -371,28 +365,28 @@ class Trainer(AbstractTrainer, ABC):
         :return: epoch, step
         """
         # setting in config, if set don't load trainer won't load model
-        if not self.trainer_spec.is_load_model():
+        if not self.state.trainer_spec.is_load_model():
             return 0
 
         if self.is_hp_tunner:
             return 0
 
         if model_file is None:
-            model_file = self.trainer_spec.model_files.get_model_file_path(model_name)
+            model_file = self.state.trainer_spec.model_files.get_model_file_path(model_name)
         else:
-            model_file = self.trainer_spec.model_files.get_model_file_path(model_name)
+            model_file = self.state.trainer_spec.model_files.get_model_file_path(model_name)
 
         logger.info("Loading model '{}' model file name {}".format(model_name, model_file))
         # load trained optimizer state_dict
         try:
             if to_device:
-                if self.trainer_spec.is_distributed_run():
+                if self.state.trainer_spec.is_distributed_run():
                     self._models[model_name].to(self.rank)
                 else:
-                    self._models[model_name].to(self.device)
+                    self._models[model_name].to(self.state.device)
 
             if to_device:
-                checkpoint = torch.load(model_file, map_location=self.device)
+                checkpoint = torch.load(model_file, map_location=self.state.device)
             else:
                 checkpoint = torch.load(model_file)
 
@@ -421,7 +415,7 @@ class Trainer(AbstractTrainer, ABC):
                 new_state.update(model_dict)
                 self._models[model_name] = new_state
 
-            # self.trainer_spec.set_lr(0.00001)
+            # self.state.trainer_spec.set_lr(0.00001)
             if 'epoch' not in checkpoint:
                 raise TrainerError("saved checkpoint has no epoch key")
             self._last_ckt_epochs[model_name][layer_name] = checkpoint['epoch']
@@ -456,10 +450,10 @@ class Trainer(AbstractTrainer, ABC):
         """
 
         logger.info("Loading model '{}' "
-                    "model file name {} to device {}".format(model_name, model_file, self.device))
+                    "model file name {} to device {}".format(model_name, model_file, self.state.device))
 
         try:
-            checkpoint = torch.load(model_file, map_location=self.device)
+            checkpoint = torch.load(model_file, map_location=self.state.device)
             if 'model_state_dict' not in checkpoint:
                 raise TrainerError("model has no state dict")
 
@@ -503,7 +497,7 @@ class Trainer(AbstractTrainer, ABC):
         :return:
         """
         # for notebook, we need a bit of hack for tqdm_iter.
-        if self.is_notebook:
+        if self.state.is_notebook:
             tqdm_iter = tnrange(last_epoch, max_epochs)
             return tqdm_iter
 
@@ -512,16 +506,16 @@ class Trainer(AbstractTrainer, ABC):
         # early stopping
         early_stopping = None
 
-        max_epochs = self.trainer_spec.epochs()
+        max_epochs = self.state.trainer_spec.epochs()
         # what tqdm to use notebook for colab or normal one.
         logger.info(f"Creating tqdm last epoch {last_epoch} max epoch {max_epochs}")
 
-        if self.is_notebook:
+        if self.state.is_notebook:
             tqdm_iter = tnrange(last_epoch, max_epochs)
         else:
             tqdm_iter = tqdm(range(last_epoch, max_epochs),
-                             desc=f"Training in progress, device {self.device} total batches {self.total_batches}",
-                             disable=self.disable_pbar)
+                             desc=f"Training in progress, device {self.state.device} total batches {self.total_batches}",
+                             disable=self.state.disable_pbar)
             # total=self.get_last_iterator(model_name) * self.total_batches,
             # desc="training")
 
@@ -538,7 +532,7 @@ class Trainer(AbstractTrainer, ABC):
     #     For each active model, which might consist of more than one model.
     #     :return:
     #     """
-    #     models = self.trainer_spec.get_active_sub_models()
+    #     models = self.state.trainer_spec.get_active_sub_models()
     #     for m in models:
     #         self.load(m)
 
@@ -548,7 +542,7 @@ class Trainer(AbstractTrainer, ABC):
         :param loss:
         :return:
         """
-        if self.trainer_spec.is_fp16_run():
+        if self.state.trainer_spec.is_fp16_run():
             reduced_loss = self.split_tensor(loss.data).item()
         else:
             reduced_loss = loss.item()
@@ -583,17 +577,17 @@ class Trainer(AbstractTrainer, ABC):
             raise TrainerError(f"Can't create optimizer, {model_name} not found in model list.")
 
         if layer_name not in self._models[model_name]:
-            raise TrainerError(f"{str(self.trainer_spec.config_file_name)} "
+            raise TrainerError(f"{str(self.state.trainer_spec.config_file_name)} "
                                f"must contains valid binding for optimizer. "
                                f"Failed create '{model_name}' model")
 
         logger.info(f"Creating optimizer for {model_name} layer {layer_name} "
-                    f"and optimizer type {self.trainer_spec.optimizer_type(alias_name)}")
+                    f"and optimizer type {self.state.trainer_spec.optimizer_type(alias_name)}")
 
         model_layer = self._models[model_name][layer_name]
 
-        optimizer_type = self.trainer_spec.optimizer_type(alias_name)
-        spec = self.trainer_spec
+        optimizer_type = self.state.trainer_spec.optimizer_type(alias_name)
+        spec = self.state.trainer_spec
 
         if optimizer_type == 'Adam':
             logger.debug(f"Adam {alias_name} "
@@ -623,7 +617,7 @@ class Trainer(AbstractTrainer, ABC):
                                         dampening=spec.dampening(alias_name),
                                         weight_decay=spec.weight_decay(alias_name),
                                         nesterov=spec.nesterov(alias_name))
-        elif self.trainer_spec.optimizer_type == 'none':
+        elif self.state.trainer_spec.optimizer_type == 'none':
             opt = None
         else:
             raise TrainerError("Unknown optimizer: {}".format(optimizer_type))
@@ -643,14 +637,14 @@ class Trainer(AbstractTrainer, ABC):
 
         :return:
         """
-        model_name = self.trainer_spec.get_active_mode()
-        model_layers = self.trainer_spec.get_active_sub_models()
+        model_name = self.state.trainer_spec.get_active_model()
+        model_layers = self.state.trainer_spec.get_active_sub_models()
         if len(model_layers) == 0:
             logger.warning("Trainer spec has no model layer defined..")
 
         for model_layer_name in model_layers:
             logger.debug(f"Loading {model_layer_name} optimizer settings.")
-            opt_spec_alias = self.trainer_spec.get_sub_model_optimizer(model_layer_name)
+            opt_spec_alias = self.state.trainer_spec.get_sub_model_optimizer(model_layer_name)
             self._create_optimizer(model_name, model_layer_name, opt_spec_alias)
 
     def create_lr_scheduler(self, model_name: str, model_layer: str, optimizer: torch.optim.Optimizer) -> None:
@@ -664,7 +658,7 @@ class Trainer(AbstractTrainer, ABC):
         :return:
         """
         # scheduler is optional
-        alias_name = self.trainer_spec.get_sub_model_lr_scheduler(model_layer)
+        alias_name = self.state.trainer_spec.get_sub_model_lr_scheduler(model_layer)
         if len(alias_name) == 0:
             logger.info(f"Model {model_layer} layer {model_layer} no scheduler attached.")
             return
@@ -672,23 +666,23 @@ class Trainer(AbstractTrainer, ABC):
         if optimizer is None:
             raise TrainerError("Can't create lr scheduler. Optimizer is None.")
 
-        lr_scheduler_type = self.trainer_spec.lr_scheduler_type(alias_name)
+        lr_scheduler_type = self.state.trainer_spec.lr_scheduler_type(alias_name)
         if lr_scheduler_type == 'cos':
             logger.info(f"Creating cos lr scheduler. model: {model_name} layer: {model_layer} spec: {alias_name}")
             scheduler = lr_scheduler.CosineAnnealingLR(optimizer,
-                                                       T_max=self.trainer_spec.t_max(alias_name),
-                                                       eta_min=self.trainer_spec.eta_min(alias_name))
+                                                       T_max=self.state.trainer_spec.t_max(alias_name),
+                                                       eta_min=self.state.trainer_spec.eta_min(alias_name))
         elif lr_scheduler_type == 'multistep':
             logger.info(f"Creating multistep lr scheduler. model: {model_name} "
                         f"layer: {model_layer} spec: {alias_name}")
-            logger.info(f"Creating {self.trainer_spec.milestones(alias_name)} milestone.")
+            logger.info(f"Creating {self.state.trainer_spec.milestones(alias_name)} milestone.")
             scheduler = lr_scheduler.MultiStepLR(optimizer,
-                                                 milestones=self.trainer_spec.milestones(alias_name),
-                                                 gamma=self.trainer_spec.gamma(alias_name))
+                                                 milestones=self.state.trainer_spec.milestones(alias_name),
+                                                 gamma=self.state.trainer_spec.gamma(alias_name))
         elif lr_scheduler_type == 'exp-warmup':
             logger.info(f"Creating exp-warmup lr scheduler. model: {model_name} "
                         f"layer: {model_layer} spec: {alias_name}")
-            lr_lambdas = self.trainer_spec.lr_lambdas(alias_name)
+            lr_lambdas = self.state.trainer_spec.lr_lambdas(alias_name)
             scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambdas)
         elif lr_scheduler_type == 'none' or lr_scheduler is None:
             if self.verbose:
@@ -707,11 +701,11 @@ class Trainer(AbstractTrainer, ABC):
 
         :return:
         """
-        model_name = self.trainer_spec.get_active_model_name()
+        model_name = self.state.trainer_spec.get_active_model_name()
         if model_name not in self._optimizers:
             raise TrainerError(f"Model {model_name} must be created first.")
 
-        # model_layers = self.trainer_spec.get_active_sub_models()
+        # model_layers = self.state.trainer_spec.get_active_sub_models()
         # for layer in model_layers:
         #     if layer not in self._optimizers[model_name]:
         #         raise TrainerError(f"Model {model_name}, model layer {layer} must contain attached optimizer.")
@@ -735,28 +729,28 @@ class Trainer(AbstractTrainer, ABC):
             return False
 
         # by default condition to save epoch , if save per iteration we check iteration.
-        if self.trainer_spec.is_save_required() is False or step == 0 or \
-                self.trainer_spec.epochs_save() == 0:
+        if self.state.trainer_spec.is_save_required() is False or step == 0 or \
+                self.state.trainer_spec.epochs_save() == 0:
             return False
 
         # in case we run distributed no need save.
-        if self.trainer_spec.is_distributed_run() and self.rank > 0:
+        if self.state.trainer_spec.is_distributed_run() and self.rank > 0:
             return False
 
         # model save predicate condition, either iteration or epoch counter.
         # for large model it makes sense to track iteration vs epoch counter.
-        model_file = self.trainer_spec.model_files.get_model_file_path(layer_name)
-        save_condition = self.epoch if self.trainer_spec.is_save_iteration() else step
+        model_file = self.state.trainer_spec.model_files.get_model_file_path(layer_name)
+        save_condition = self.epoch if self.state.trainer_spec.is_save_iteration() else step
         if save_condition == 0 or save_condition == self.saved_run:
             return False
 
         # do nothing
-        if last_epoch is True or save_condition % self.trainer_spec.epochs_save() == 0:
-            if self.trainer_spec.is_train_verbose():
+        if last_epoch is True or save_condition % self.state.trainer_spec.epochs_save() == 0:
+            if self.state.trainer_spec.is_train_verbose():
                 logger.info('Saving node model {}'.format(model_file))
                 self._callback.saving_start()
                 # backup before safe.
-                # if self.trainer_spec.is_backup_before_save():
+                # if self.state.trainer_spec.is_backup_before_save():
                 #     self.backup_model(model_file)
             if model_name in self._schedulers:
                 logger.info("Model saving with optimizer and scheduler state.")
@@ -804,7 +798,7 @@ class Trainer(AbstractTrainer, ABC):
         with torch.no_grad():
             total_prediction_loss = 0.0
             for batch_idx, batch in enumerate(self._validation_loader):
-                x, y = take_batch(batch, self.device)
+                x, y = take_batch(batch, self.state.device)
                 y_pred = model(x)
                 # our loss mel_loss + gate_loss
                 criterion_out = self.criterion(y_pred, y)
@@ -812,13 +806,13 @@ class Trainer(AbstractTrainer, ABC):
                 gate_loss = criterion_out['gate_loss']
                 loss = criterion_out['loss']
                 if self.clip_grad:
-                    grad_norm = clip_grad_norm_(model.parameters(), self.trainer_spec.grad_clip_thresh())
+                    grad_norm = clip_grad_norm_(model.parameters(), self.state.trainer_spec.grad_clip_thresh())
                     self.metric.update(batch_idx, step, loss.item(), grad_norm=grad_norm.item(), validation=True)
                 else:
                     self.metric.update(batch_idx, step, loss.item(), grad_norm=None, validation=True)
 
-                if self.trainer_spec.is_distributed_run():
-                    reduced_val_loss = self.split_tensor(loss.data, self.n_gpus).item()
+                if self.state.trainer_spec.is_distributed_run():
+                    reduced_val_loss = self.split_tensor(loss.data, self.state.n_gpus).item()
                 else:
                     reduced_val_loss = loss.item()
                 total_prediction_loss += reduced_val_loss
@@ -830,7 +824,7 @@ class Trainer(AbstractTrainer, ABC):
                                             'mel_loss': mel_loss.item(),
                                             'gate_loss': gate_loss.item(),
                                             'clip_loss': loss.item(),
-                                            'batch': batch_idx,
+                                            'batch': f"{batch_idx}/{self.state.batch_size}",
                                             'saved step': self.saved_run})
             # normalize
             total_prediction_loss = total_prediction_loss / (len(self._validation_loader) + 1)
@@ -910,7 +904,7 @@ class Trainer(AbstractTrainer, ABC):
             # print(input_seq.shape)
             sequence = np.array(text_to_sequence(input_seq, ['english_cleaners']))[None, :]
             sequence = torch.autograd.Variable(
-                    torch.from_numpy(sequence)).to(self.device).long()
+                    torch.from_numpy(sequence)).to(self.state.device).long()
 
         # sequence = torch.autograd.Variable(torch.from_numpy(sequence)).cuda().long()
 
@@ -947,14 +941,14 @@ class Trainer(AbstractTrainer, ABC):
         :param scheduler:
         :return:
         """
-        device = self.device
+        device = self.state.device
         take_batch = self._batch_loader[model_name][layer_name]
-        tbar_update_rate = self.trainer_spec.console_log_rate()
+        tbar_update_rate = self.state.trainer_spec.console_log_rate()
 
-        # if self.trainer_spec.is_distributed_run():
+        # if self.state.trainer_spec.is_distributed_run():
         #     device = torch.device(f"cuda:{dist.get_rank()}")
         # else:
-        #     device = self.device
+        #     device = self.state.device
 
         total_accuracy = 0
         current_total_loss = 0
@@ -966,7 +960,7 @@ class Trainer(AbstractTrainer, ABC):
             model.zero_grad(set_to_none=True)
             x, y = take_batch(batch, device)
             y_pred = model(x)
-            # if self.trainer_spec.is_distributed_run():
+            # if self.state.trainer_spec.is_distributed_run():
             #     reduced_loss = dist.reduce_tensor(loss.data, n_gpus).item()
             criterion_out = self.criterion(y_pred, y)
             mel_loss = criterion_out['mel_loss']
@@ -978,7 +972,7 @@ class Trainer(AbstractTrainer, ABC):
 
             loss.backward()
             if self.clip_grad:
-                grad_norm = clip_grad_norm_(model.parameters(), self.trainer_spec.grad_clip_thresh())
+                grad_norm = clip_grad_norm_(model.parameters(), self.state.trainer_spec.grad_clip_thresh())
                 self.metric.update(batch_idx, step, normal_loss, grad_norm=grad_norm.item(), validation=False)
             else:
                 grad_norm = loss
@@ -991,7 +985,7 @@ class Trainer(AbstractTrainer, ABC):
                 scheduler.step()
 
             # self.log_if_needed(it, loss, grad_norm, duration)
-            if self.rank == 0 and step != 0 and step % tbar_update_rate == 0:
+            if self.state.rank == 0 and step != 0 and step % tbar_update_rate == 0:
                 self.tqdm_iter.set_postfix({'step': step,
                                             'loss': normal_loss,
                                             'batch_loss': current_total_loss // max(1, batch_idx + 1),
@@ -999,22 +993,22 @@ class Trainer(AbstractTrainer, ABC):
                                             'mel_loss': mel_loss.item(),
                                             'gate_loss': gate_loss.item(),
                                             'clip_loss': grad_norm.item(),
-                                            'batch': batch_idx,
+                                            'batch': f"{batch_idx}/{self.batch_size}",
                                             'lr': optimizer.param_groups[0]['lr'],
                                             'saved step': self.saved_run})
             # # run prediction if_needed
-            # if step != 0 and step % self.trainer_spec.predict() == 0:
+            # if step != 0 and step % self.state.trainer_spec.predict() == 0:
             #     prediction_accuracy = self.validate(model, model_name, step)
             #     total_accuracy += prediction_accuracy
             # save model checkpoint if needed
-            if self.rank == 0:
+            if self.state.rank == 0:
                 self.save_if_need(model_name=model_name, layer_name=layer_name, step=step)
 
             # dist.barrier()
             # hparam we want track.
             hparams = {
                 'lr': optimizer.param_groups[0]['lr'],
-                'batch_size': self.trainer_spec.batch_size,
+                'batch_size': self.state.trainer_spec.batch_size,
             }
 
             metrics = {
@@ -1098,7 +1092,7 @@ class Trainer(AbstractTrainer, ABC):
         :return:
         """
         dist.destroy_process_group()
-        logger.info(f"Rank {self.rank} is done.")
+        logger.info(f"Rank {self.state.rank} is done.")
 
     @staticmethod
     def reduce_tensor(tensor: Tensor, n_gpus) -> Tensor:
@@ -1126,10 +1120,10 @@ class Trainer(AbstractTrainer, ABC):
         assert model_name in self._models
         assert layer_name in self._models[model_name]
         model = self._models[model_name][layer_name]
-        if self.trainer_spec.is_distributed_run():
-            device = self.device
+        if self.state.trainer_spec.is_distributed_run():
+            device = self.state.device
         else:
-            device = self.device
+            device = self.state.device
 
         assert self.criterion is not None
         self.criterion.to(device)
@@ -1145,20 +1139,20 @@ class Trainer(AbstractTrainer, ABC):
             logger.info("Model {} contains a scheduler".format(model_name))
             scheduler = self._schedulers[model_name]
 
-        # if self.trainer_spec.is_distributed_run():
+        # if self.state.trainer_spec.is_distributed_run():
         #     logger.info("Running in distributed model. applying gradient reduce.".format(model_name))
         #     model = apply_gradient_allreduce(model)
 
         step = self.get_last_iterator(model_name, layer_name)
-        if self._last_ckt_epochs[model_name][layer_name] == self.trainer_spec.epochs():
+        if self._last_ckt_epochs[model_name][layer_name] == self.state.trainer_spec.epochs():
             prediction_accuracy = self.validate_epoch(model, model_name, layer_name, step)
 
         # TODO add option if epoch changed after save
-        self.metric.set_num_iteration(self.trainer_spec.epochs() * self.total_batches)
+        self.metric.set_num_iteration(self.state.trainer_spec.epochs() * self.total_batches)
         self.metric.init()
         logger.info("Staring training num epochs {}, epoch trained {} num batches {} expected total iteration {}",
-                    self.trainer_spec.epochs(), self._last_ckt_epochs, len(self._train_loader),
-                    self.trainer_spec.epochs() * len(self._train_loader))
+                    self.state.trainer_spec.epochs(), self._last_ckt_epochs, len(self._train_loader),
+                    self.state.trainer_spec.epochs() * len(self._train_loader))
 
         return model, optimizer, scheduler, step
 
@@ -1178,10 +1172,10 @@ class Trainer(AbstractTrainer, ABC):
         if layer_name in self._steps:
             logger.info(f"Epoch saved out of",
                         {self._last_ckt_epochs[model_name][layer_name]},
-                        {self.trainer_spec.epochs()})
+                        {self.state.trainer_spec.epochs()})
             logger.info(f"Last iteration saved {self._steps[layer_name]}")
 
-        # if self.trainer_spec.is_distributed_run():
+        # if self.state.trainer_spec.is_distributed_run():
         #     model = dist
         model.train()
         self.tqdm_iter.set_postfix({'step': step})
@@ -1191,7 +1185,7 @@ class Trainer(AbstractTrainer, ABC):
         validation_loss = 0
         for epoch in self.tqdm_iter:
             self._callback.on_epoch_begin()
-            if self.trainer_spec.is_distributed_run():
+            if self.state.trainer_spec.is_distributed_run():
                 dist.barrier()
             # update epoch
             self.epoch = epoch
@@ -1217,8 +1211,9 @@ class Trainer(AbstractTrainer, ABC):
         self.metric.on_end()
 
         # save
-        if self.rank == 0 and self.save_if_need(model_name, layer_name, step=self._steps[layer_name], last_epoch=True):
-            logger.info(f"Saving {self.trainer_spec.epochs()} last epoch.")
+        if self.state.rank == 0 and self.save_if_need(model_name, layer_name, step=self._steps[layer_name],
+                                                      last_epoch=True):
+            logger.info(f"Saving {self.state.rank.trainer_spec.epochs()} last epoch.")
 
         self._callback.on_epoch_end()
         self.metric.total_mean_loss()
@@ -1236,20 +1231,20 @@ class Trainer(AbstractTrainer, ABC):
         #
         # if self.rank == 0:
         #     self.load_models()
-        # if self.trainer_spec.is_distributed_run():
-        #     #torch.cuda.set_device(self.device)
+        # if self.state.trainer_spec.is_distributed_run():
+        #     #torch.cuda.set_device(self.state.device)
 
         torch.cuda.empty_cache()
-        model_name = self.trainer_spec.get_active_mode()
-        model_layers = self.trainer_spec.get_active_sub_models()
+        model_name = self.state.trainer_spec.get_active_model()
+        model_layers = self.state.trainer_spec.get_active_sub_models()
 
         if self.is_trained(model_name):
             print("It looks like model already trained. \
-                   Check file {}".format(self.trainer_spec.model_files.get_model_file_path(model_name)))
+                   Check file {}".format(self.state.trainer_spec.model_files.get_model_file_path(model_name)))
             return
 
         # last_step = 0
-        strategy = self.trainer_spec.get_training_strategy(model_name)
+        strategy = self.state.trainer_spec.get_training_strategy(model_name)
         if strategy == 'sequential':
             for layer in model_layers:
                 self.q.append(layer)
@@ -1270,10 +1265,10 @@ class Trainer(AbstractTrainer, ABC):
                             param_group['lr'] = config["lr"]
                 # run model
                 self.trainer_sequential(model_name, layer_name)
-                if self.rank == 0 and self.save_if_need(model_name=model_name,
-                                                        layer_name=layer_name,
-                                                        last_epoch=True):
-                    logger.info(f"Saved last epoch {self.trainer_spec.epochs()}")
+                if self.state.rank == 0 and self.save_if_need(model_name=model_name,
+                                                              layer_name=layer_name,
+                                                              last_epoch=True):
+                    logger.info(f"Saved last epoch {self.state.trainer_spec.epochs()}")
 
         self.cleanup()
 
@@ -1282,13 +1277,13 @@ class Trainer(AbstractTrainer, ABC):
 
         :return:
         """
-        logger.info("Hyper parameters tunner")
+        logger.info("Hyper parameters tunner invoked.")
         torch.cuda.empty_cache()
-        model_name = self.trainer_spec.get_active_mode()
-        model_layers = self.trainer_spec.get_active_sub_models()
+        model_name = self.state.trainer_spec.get_active_model()
+        model_layers = self.state.trainer_spec.get_active_sub_models()
 
         # last_step = 0
-        strategy = self.trainer_spec.get_training_strategy(model_name)
+        strategy = self.state.trainer_spec.get_training_strategy(model_name)
         if strategy == 'sequential':
             for layer in model_layers:
                 self.q.append(layer)
@@ -1313,11 +1308,11 @@ class Trainer(AbstractTrainer, ABC):
         if model_name not in self._last_ckt_epochs:
             return False
 
-        layers = self.trainer_spec.get_active_sub_models()
+        layers = self.state.trainer_spec.get_active_sub_models()
         for layer in layers:
             if layer in self._last_ckt_epochs[model_name]:
                 last = self._last_ckt_epochs[model_name][layer]
-                if int(last) >= int(self.trainer_spec.epochs()):
+                if int(last) >= int(self.state.trainer_spec.epochs()):
                     num_finished += 1
 
         if num_finished == len(layers):

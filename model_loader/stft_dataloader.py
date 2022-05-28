@@ -12,7 +12,7 @@ from typing import Optional, Callable
 
 import torch
 from loguru import logger
-from torch.utils.data import DataLoader, DistributedSampler
+from torch.utils.data import DataLoader, DistributedSampler, RandomSampler, SequentialSampler
 
 from model_loader.base_stft_dataset import DatasetError, BaseSFTFDataset
 from model_loader.dataset_stft25 import SFTF2Dataset
@@ -59,7 +59,9 @@ class SFTFDataloader:
         self._rank = rank
         self._world_size = world_size
         self._trainer_spec: ExperimentSpecs = experiment_specs
-        self._model_spec: ModelSpecDTC = experiment_specs.get_model_spec()
+        model_spec = experiment_specs.get_model_spec()
+        if isinstance(model_spec, ModelSpecDTC):
+            self._model_spec: ModelSpecDTC = experiment_specs.get_model_spec()
         self._encoder_spec = self._model_spec.get_encoder()
 
         self.verbose = verbose
@@ -123,7 +125,7 @@ class SFTFDataloader:
         """
         Method return all data loaders and collate callback.
         it will call factor method and create datasets
-        and dataloaders and sampler for DDP case.
+        and data loaders and sampler for DDP case.
         :return:
         """
         if not self._initialized_before():
@@ -159,7 +161,7 @@ class SFTFDataloader:
 
     def _create_v2raw(self, version=2, strict=True):
         """
-        Create dataset for v25 model
+        Create dataset for v25 model from raw files.
         :param version:
         :param strict:
         :return:
@@ -310,6 +312,7 @@ class SFTFDataloader:
         :return:
         """
         samplers = {}
+        is_shuffle = False
 
         if self._trainer_spec.is_distributed_run():
             logger.debug("Creating distribute sampler rank {} , world size {}", self._rank, self._world_size)
@@ -325,10 +328,14 @@ class SFTFDataloader:
                 sys.exit(1)
             is_shuffle = False
         else:
-            # we shuffle only if on single run otherwise it false.
-            train_sampler = None
-            val_sampler = None
-            is_shuffle = True
+            for _, k in enumerate(self._datasets):
+                # w
+                if self._trainer_spec.is_random_sample():
+                    samplers[k] = RandomSampler(self._datasets[k])
+                elif self._trainer_spec.is_sequential():
+                    samplers[k] = SequentialSampler(self._datasets[k])
+                else:
+                    is_shuffle = True
 
         for _, k in enumerate(self._datasets):
             # print("type ", self._datasets)
@@ -345,7 +352,7 @@ class SFTFDataloader:
             self._batch_size = int(self._trainer_spec.batch_size() / float(self._world_size))
 
         if self._trainer_spec.is_overfit():
-            warnings.warn("You are running in overfiting settings.")
+            warnings.warn("You are running in overfitting settings.")
 
         # each data loader has same key.
         for _, k in enumerate(self._datasets):
@@ -457,7 +464,7 @@ class SFTFDataloader:
 
     def benchmark_read(self):
         """
-        Benchmark read all dataloaders.
+        Benchmark read all data loaders.
 
         :return:
         """

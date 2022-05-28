@@ -1,10 +1,4 @@
-import os
 import time
-import torch
-import collections
-import numpy as np
-import torch.distributed as dist
-from typing import Any
 
 
 class AverageMeter:

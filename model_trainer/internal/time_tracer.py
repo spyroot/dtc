@@ -1,4 +1,4 @@
-from .base import Callback
+from .call_interface import Callback
 from .time_meter import TimeMeter
 from loguru import logger
 

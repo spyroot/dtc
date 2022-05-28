@@ -1,10 +1,17 @@
 import collections
-from typing import Any
+from typing import Any, Optional
+
+from model_trainer.internal.abstract_trainer import AbstractTrainer
+from model_trainer.trainer_metrics import Metrics
 
 
 class Callback(object):
+    """
+    Metric Concrete type , late maybe to abstract
+    """
     def __init__(self, *args, **kwargs):
-        pass
+        self.trainer_state: Metrics = Optional[None]
+        self.metric_state: AbstractTrainer = Optional[None]
 
     def set_state(self, state):
         pass
@@ -37,7 +44,6 @@ class Callback(object):
         pass
 
     def on_after_backward(self):
-        """Called after ``loss.backward()`` but before optimizer does anything."""
         pass
 
     def validation_start(self):
@@ -51,10 +57,10 @@ class BaseCallbacks(Callback):
     """
 
     """
+
     def __init__(self, callbacks):
         super().__init__()
         self.callbacks = listify(callbacks)
-        # self.state
 
     def set_state(self, state):
         for callback in self.callbacks:
@@ -120,4 +126,3 @@ def listify(p: Any) -> collections.Iterable:
     elif not isinstance(p, collections.Iterable):
         p = [p]
     return p
-

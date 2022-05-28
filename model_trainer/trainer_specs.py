@@ -8,11 +8,13 @@ import torch
 import yaml
 from loguru import logger
 
+import model_loader
 from model_trainer.utils import fmt_print
 from text.symbols import symbols
 from .model_files import ModelFiles
 from .specs.dtc_spec import ModelSpecDTC
 from .specs.model_spec import ModelSpec
+from model_loader.ds_util import check_integrity
 
 # from torch.utils.tensorboard import SummaryWriter
 
@@ -185,12 +187,11 @@ class ExperimentSpecs:
             if k.find('model') != -1:
                 models_types.append(k)
 
-    def set_active_dataset(self, dataset_name: Optional[str] = ""):
+    def set_active_dataset(self, dataset_name: Optional[str] = "") -> None:
         """
         Sets active dataset,  by default it reads from spec and
-        use use_dataset key.
-
-        If we need swap.
+        use use_dataset key.  If we need swap form cmd without changing
+        in yaml file.
 
         :param dataset_name: a dataset that already present in config.
         :return:
@@ -202,9 +203,10 @@ class ExperimentSpecs:
 
             datasets_specs = self.get_datasets_specs()
             if dataset_name in datasets_specs:
+                self._validate_spec_config(self.config['datasets'][dataset_name])
                 self.config['use_dataset'] = dataset_name
                 self._use_dataset = dataset_name
-                self.set_dataset_specs()
+                self._update_dataset_specs()
             else:
                 raise TrainerSpecError(f"Dataset {dataset_name} not found in {self.config_file_name}.")
 
@@ -214,7 +216,7 @@ class ExperimentSpecs:
 
         self._use_dataset = self.config['use_dataset']
 
-    def set_dataset_specs(self):
+    def _update_dataset_specs(self):
         """
         Update dataset spec, for example if we need swap dataset.
         :return:
@@ -229,6 +231,7 @@ class ExperimentSpecs:
                                    f"{self._use_dataset} template, please check the config.")
 
         self._dataset_specs = self.config['datasets'][self._use_dataset]
+        #   self.validate_spec_config()
 
     def get_dataset_names(self):
         """
@@ -329,17 +332,72 @@ class ExperimentSpecs:
         if 'lr_schedulers' in self.config:
             self.lr_schedulers = self.config['lr_schedulers']
 
+    def _validate_spec_config(self, spec):
+        """ Validate dataset spec,  each spec has own semantics.
+        :return:
+        """
+
+        target_checksum = {}
+
+        mandatory_kv = ["dir", "training_meta", "validation_meta", "test_meta", "file_type", "format", "file_type"]
+        file_kv = ["validation_meta", "validation_meta", "test_meta"]
+
+        if 'ds_type' not in spec:
+            raise TrainerSpecError(f"Audio dataset must contain ds_type config entry.")
+
+        dataset_type = spec['ds_type']
+        if dataset_type == "audio":
+            for k in mandatory_kv:
+                if k not in spec:
+                    raise TrainerSpecError(f"Audio dataset must contain {k} config entry.")
+
+        ds_dict = {}
+
+        if 'checksums' in spec:
+            target_checksum = spec['checksums']
+
+        # TODO this need be merged with dataset files
+        for k in file_kv:
+            some_file = self._dataset_specs[k]
+            self.resolve_home(spec['dir'])
+            ds_dir = self.resolve_home(spec['dir'])
+            full_path = Path(ds_dir) / some_file
+            final_path = full_path.expanduser().resolve()
+
+            if not final_path.absolute():
+                raise TrainerSpecError(f"Failed resolve path to a file. {some_file}")
+            if not final_path.exists():
+                raise TrainerSpecError(f"Please check config {self.config_file_name}, "
+                                       f"file not found {some_file} in directory {spec['dir']}")
+            if not final_path.is_file():
+                raise TrainerSpecError(f"Please check config {self.config_file_name}, a path resolved, "
+                                       f"not a file. {some_file}. dir {spec['dir']}")
+
+        if 'dataset_files' in spec:
+            ds_files = spec['dataset_files']
+            for ds_file in ds_files:
+                ds_dir = self.resolve_home(self.get_dataset_dir())
+                full_path = Path(spec['dir']) / ds_file
+                final_path = full_path.expanduser().resolve()
+                if not final_path.absolute():
+                    raise TrainerSpecError(f"Failed resolve path to a file. {ds_file}")
+                if not final_path.exists():
+                    raise TrainerSpecError(f"Please check config {self.config_file_name}, "
+                                           f"file not found {ds_file} in directory {spec['dir']}")
+                if not final_path.is_file():
+                    raise TrainerSpecError(f"Please check config {self.config_file_name}, a path resolved, "
+                                           f"not a file. {ds_file}. dir {spec['dir']}")
+
+                if len(target_checksum) > 0:
+                    checksum = model_loader.ds_util.md5_checksum(final_path)
+                    if checksum not in target_checksum:
+                        raise TrainerSpecError(f"Checksum mismatched. check file {final_path}")
+
     def validate_spec_config(self):
         """ Validate dataset spec,  each spec has own semantics.
         :return:
         """
-        mandatory_kv = ["dir", "training_meta", "validation_meta", "test_meta", "file_type"]
-
-        dataset_type = self._dataset_specs['ds_type']
-        if dataset_type == "audio":
-            for k in mandatory_kv:
-                if k not in self._dataset_specs:
-                    raise TrainerSpecError("Audio dataset must contain config entry {}".format(k))
+        return self._validate_spec_config(self._dataset_specs)
 
     def read_config(self, debug=False):
         """
@@ -351,7 +409,7 @@ class ExperimentSpecs:
             logger.debug("Parsing... ", self.config)
 
         self.set_active_dataset()
-        self.set_dataset_specs()
+        self._update_dataset_specs()
         self.set_active_model()
         self.read_lr_scheduler()
         self.read_optimizer()
@@ -451,6 +509,22 @@ class ExperimentSpecs:
                     file_meta_kv[file_name] = tokens[1]
 
         return file_meta_kv
+
+    def _get_dataset_dir(self, spec):
+        """
+        Dataset dir are in specs. key dir
+        :return: dataset dir.
+        """
+
+        if 'dir' not in self._dataset_specs:
+            raise TrainerSpecError(f"{self.config_file_name} must contain dir entry.")
+
+        # resolve home
+        path_to_dir = self.resolve_home(self._dataset_specs['dir'])
+        if path_to_dir != self._dataset_specs['dir']:
+            self._dataset_specs['dir'] = path_to_dir
+
+        return path_to_dir
 
     def get_dataset_dir(self):
         """
@@ -675,7 +749,8 @@ class ExperimentSpecs:
                     logger.info("Dataset contains records {}".format(len(dataset_from_pt['data'])))
                 pt_dict[k] = dataset_from_pt
             else:
-                raise TrainerSpecError("Failed locate {} file.".format(str(ds_dict[k])))
+                raise TrainerSpecError(f"Failed locate {str(ds_dict[k])} file. "
+                                       f"Please check config {self.config_file_name}")
 
         if len(pt_dict) > 0:
             pt_dict['ds_type'] = 'tensor_mel'
@@ -1124,7 +1199,7 @@ class ExperimentSpecs:
 
         return "Adam"
 
-    def get_active_mode(self) -> str:
+    def get_active_model(self) -> str:
         """
         Return active model
         :return:
@@ -1155,7 +1230,7 @@ class ExperimentSpecs:
         Returns:
 
         """
-        _active_model = self.get_active_mode()
+        _active_model = self.get_active_model()
         _models = self.get_models()
         if _active_model not in _models:
             raise TrainerSpecError("config.yaml doesn't contain model {}.".format(_active_model))
@@ -1645,18 +1720,76 @@ class ExperimentSpecs:
         # print(self._config)
         pass
 
+    def _validate_root_mandatory(self, spec):
+        mandatory_root_key = ['train', 'use_dataset', 'use_model', 'draw_prediction', 'load_model',
+                              'load_epoch', 'save_model', 'regenerate', 'active_setting', 'evaluate',
+                              'root_dir', 'log_dir', 'nil_dir', 'graph_dir', 'results_dir', 'figures_dir',
+                              'prediction_dir', 'model_save_dir', 'metrics_dir', 'datasets', 'settings',
+                              'optimizers', 'lr_schedulers', 'strategy', 'models']
+        for k in mandatory_root_key:
+            if k not in spec:
+                raise TrainerSpecError(f"Invalid specification {k} not present.")
+
     def _validate_all_mandatory(self):
-        pass
+        self._validate_root_mandatory(self.config)
 
     def get_active_dataset_spec(self):
         """
-
         :return:
         """
         if not self.is_initialized():
             raise TrainerSpecError("Uninitialized trainer spec. First you need create object from a spec.")
 
         return self._dataset_specs
+
+    def get_dataset_format(self, ds_spec):
+        """
+        this mainly place holder to move all dataset to separate class.
+
+        :param ds_spec:
+        :return:
+        """
+        if 'format' not in ds_spec:
+            return ""
+        return ds_spec['format']
+
+    def is_audio_raw(self, spec):
+        """
+
+        :param spec:
+        :return:
+        """
+        if 'format' in spec and 'ds_type' in spec:
+            return spec['format'] == 'raw' and spec['ds_type'] == "audio"
+        return False
+
+    def set_epochs(self, epochs: int):
+        """
+
+        :param epochs:
+        :return:
+        """
+        if self._setting is None:
+            raise TrainerSpecError("Initialize settings first")
+        self._setting['epochs'] = epochs
+
+    def is_random_sample(self) -> True:
+        if self._setting is None:
+            raise TrainerSpecError("Initialize settings first")
+
+        if 'random_sampler' in self._setting:
+            return self._setting['random_sampler']
+
+        return False
+
+    def is_sequential(self):
+        if self._setting is None:
+            raise TrainerSpecError("Initialize settings first")
+        if 'sequential_sampler' in self._setting:
+            return self._setting['sequential_sampler']
+        return False
+
+
 
 
 def remove_junk(val):

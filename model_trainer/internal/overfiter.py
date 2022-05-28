@@ -1,3 +1,8 @@
+import torch
+
+from .call_interface import Callback
+
+
 class BatchOverfit(Callback):
     """Remembers first batch and tries to overfit it. Useful for debug.
     NOTE: Should go after all other callbacks to make sure it's the last thing to change the input

@@ -1,3 +1,6 @@
+from loguru import logger
+
+
 class TacotronSpecError(Exception):
     """Base class for other exceptions"""
     pass

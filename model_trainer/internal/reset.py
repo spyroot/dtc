@@ -1,6 +1,6 @@
 from collections import defaultdict
-
-from model_trainer.callbacks.base import Callback
+from .call_interface import Callback
+from loguru import logger
 
 
 class ResetOptimizer(Callback):

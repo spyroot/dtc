@@ -1,7 +1,7 @@
 train: True                 # train or not,  default is True for generation we only need load pre-trained model
 #active: 'grid_small'       # dataset set generated.
 #use_dataset: 'LJSpeechSmallPkl'     # dataset set generated.
-use_dataset: 'LJSpeech'     # dataset set generated.
+use_dataset: 'LJSpeechPkl'  # dataset set generated.
 use_model: 'tacotron25'      # model to use , it must be defined in models section.
 draw_prediction: True       # at the of training draw.
 load_model: True            # load model or not, and what
@@ -32,6 +32,24 @@ datasets:
     test_meta: ljs_audio_text_test_filelist.txt
     meta: metadata.csv
     recursive: False
+  LJSpeechPkl:
+    format: tensor_mel
+    ds_type: "audio"
+    dir: "~/Dropbox/Datasets/LJSpeech-1.1"
+    dataset_files:
+      - "LJSpeech_train_num_sam_12500_filter_80.pt"
+      - "LJSpeech_validate_num_sam_100_filter_80.pt"
+      - "LJSpeech_test_num_sam_500_filter_80.pt"
+    training_meta: LJSpeech_train_num_sam_12500_filter_80.pt
+    validation_meta: LJSpeech_validate_num_sam_100_filter_80.pt
+    test_meta: LJSpeech_test_num_sam_500_filter_80.pt
+    checksums:
+      - "ea5765003aeb8cba93fc75367149db5a"
+      - "fe756f00ce48208df6932bd2070f91b7"
+      - "1c5e612dc2e39ad43263c6c590f9d3a8"
+    meta: metadata.csv
+    recursive: False
+    file_type: "torch"
   LJSpeechSmallRaw:
     ds_type: "audio"
     file_type: "wav"
@@ -108,11 +126,8 @@ settings:
     fp16: False                 # fp16 or fp32
     distributed: False          # if we distribute
     backend: "nccl"              # what distributed backend uses.
-    #
     url: "tcp://localhost:54321"
-    #
     cudnn_enabled: True
-    #
     cudnn_benchmark: False
   small:
     batch_size: 64
@@ -179,19 +194,19 @@ lr_schedulers:
       mode: 'min'   #min, max
       patience: 10
       name: dtc_scheduler
-
-# Training strategy
-strategy:
-  tacotron25:
-    type: sequential
-    order:
-     - spectrogram_layer
-     - wav2vec
-  dts:
-    type: sequential
-    order:
-     - spectrogram_layer
-     - wav2vec
+#
+## Training strategy
+#strategy:
+#  tacotron25:
+#    type: sequential
+#    order:
+#     - spectrogram_layer
+#     - wav2vec
+#  dts:
+#    type: sequential
+#    order:
+#     - spectrogram_layer
+#     - wav2vec
 
 # Model definition
 models:

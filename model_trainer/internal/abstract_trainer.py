@@ -12,6 +12,7 @@ import torch
 from loguru import logger
 import torch.distributed as dist
 
+from model_trainer.internal.trainer_state import TrainerState
 from model_trainer.trainer_specs import ExperimentSpecs
 # from distributed import apply_gradient_allreduce
 from model_trainer.utils import fmt_print
@@ -43,26 +44,30 @@ class AbstractTrainer(ABC, metaclass=ABCMeta):
                  cuda_device_id: Optional[int] = 0,
                  is_inference: Optional[bool] = False):
 
-        self.cuda_device_id = cuda_device_id
-        self.disable_pbar = disable_pbar
-        self.device = device
-
-        self.verbose = verbose
-        self.is_notebook = is_notebook
-        self.trainer_spec = trainer_spec
+        # self.state = None
+        self.state = TrainerState()
+        self.state.cuda_device_id = cuda_device_id
+        self.state.disable_pbar = disable_pbar
+        self.state.device = device
+        self.state.rank = rank
+        self.state.world_size = world_size
+        self.state.disable_pbar = disable_pbar
+        self.state.is_notebook = is_notebook
+        self.state.trainer_spec = trainer_spec
+        self.state.verbose = verbose
         self.data_loader = data_loader
+        self.state.n_gpus = 1
 
+        print(f"Data initialized {rank} {device} {cuda_device_id}")
         if trainer_spec is None:
             raise TrainerError("Trainer specification is None")
 
         if not is_inference:
-            logger.info("Trainer created, active model {}", trainer_spec.get_active_mode())
+            logger.info("Trainer created, active model {}", trainer_spec.get_active_model())
 
         # inference or training
-        self.trainer_spec = trainer_spec
-        self.is_inference = is_inference
-        self.rank = rank
-        self.n_gpus = world_size
+        self.state.is_inference = is_inference
+
 
     @abstractmethod
     def train(self):
@@ -103,6 +108,11 @@ class AbstractTrainer(ABC, metaclass=ABCMeta):
         with open(file_name, "wb") as f:
             pickle.dump(g, f)
 
+    @staticmethod
+    def compute_average_loss(self):
+        pass
+
+
     def set_notebook(self, param):
         """
         Update trainer and set it in notebook mode
@@ -126,14 +136,14 @@ class AbstractTrainer(ABC, metaclass=ABCMeta):
         :return:
         """
         if torch.cuda.is_available():
-            n = torch.cuda.device_count() // self.n_gpus
+            n = torch.cuda.device_count() // self.state.n_gpus
 
         if is_set_cuda:
             device = f"cuda:{dist.get_rank()}"
             logger.info("Number gpu on the node {} device".format(n, device))
-            torch.cuda.set_device(self.cuda_device_id)
+            torch.cuda.set_device(self.state.cuda_device_id)
         else:
-            device = self.device
+            device = self.state.device
 
         return device
 
@@ -142,8 +152,8 @@ class AbstractTrainer(ABC, metaclass=ABCMeta):
         Initialize DDP
         :return:
         """
-        os.environ['MASTER_ADDR'] = self.trainer_spec.get_master_address()
-        os.environ['MASTER_PORT'] = self.trainer_spec.get_master_port()
+        os.environ['MASTER_ADDR'] = self.state.trainer_spec.get_master_address()
+        os.environ['MASTER_PORT'] = self.state.trainer_spec.get_master_port()
         # os.environ["PL_TORCH_DISTRIBUTED_BACKEND"] = "nccl"
 
         assert torch.cuda.is_available(), "Distributed mode requires CUDA."
@@ -151,22 +161,23 @@ class AbstractTrainer(ABC, metaclass=ABCMeta):
         logger.info("Distribute protocol nccl available {}".format(torch.distributed.is_nccl_available()))
         logger.info("Distribute protocol mpi available {}".format(torch.distributed.is_mpi_available()))
         logger.info("Distribute protocol glow available {}".format(torch.distributed.is_gloo_available()))
-        logger.info("Distribute endpoint {} my rank {}".format(self.trainer_spec.get_backend(), self.rank))
+        logger.info("Distribute endpoint {} my rank {}".format(self.state.trainer_spec.get_backend(), self.state.rank))
 
         # Set cuda device so everything is done on the right GPU.
         # torch.cuda.set_device(self.rank % torch.cuda.device_count())
-        logger.info("Set cuda device".format(self.rank % torch.cuda.device_count()))
+        logger.info("Set cuda device".format(self.state.rank % torch.cuda.device_count()))
         # Initialize distributed communication
-        if self.rank == 0:
+        if self.state.rank == 0:
             host = socket.gethostname()
             address = socket.gethostbyname(host)
             logger.info("resolve hostname {}".format(host))
             logger.info("resolve hostname {}".format(address))
 
         torch.distributed.init_process_group(
-                backend=self.trainer_spec.get_backend(),
-                init_method=self.trainer_spec.dist_url(),
-                world_size=self.n_gpus,
-                rank=self.rank)
+                backend=self.state.trainer_spec.get_backend(),
+                init_method=self.state.trainer_spec.dist_url(),
+                world_size=self.state.n_gpus,
+                rank=self.state.rank)
 
         logger.debug("Done initializing distributed {}".format(dist.get_rank()))
+

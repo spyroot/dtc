@@ -22,9 +22,9 @@ from model_loader.dataset_stft25 import SFTF2Dataset
 from model_loader.ds_util import md5_checksum
 from model_loader.stft_dataloader import SFTFDataloader
 from model_loader.dataset_stft30 import SFTF3Dataset
-from model_trainer.callbacks.base import Callback
-from model_trainer.callbacks.time_meter import TimeMeter
-from model_trainer.callbacks.time_tracer import BatchTimer
+from model_trainer.internal.call_interface import Callback
+from model_trainer.internal.time_meter import TimeMeter
+from model_trainer.internal.time_tracer import BatchTimer
 from model_trainer.specs.dtc_spec import TacotronSpec, ModelSpecDTC
 from model_trainer.trainer_specs import ExperimentSpecs, TrainerSpecError
 from model_trainer.trainer import Trainer, TrainerError
@@ -84,8 +84,10 @@ def convert_mel_to_data(encoder_spec: TacotronSpec,
                 mel_fmin=encoder_spec.mel_fmin(),
                 mel_fmax=encoder_spec.mel_fmax())
 
+    ds_size = len(dataset)
+
     data = []
-    for i in tqdm(range(0, len(dataset)), desc="Converting"):
+    for i in tqdm(range(0, ds_size), desc="Converting"):
         data.append(dataset[i])
 
     meta['data'] = data
@@ -100,7 +102,6 @@ def convert_mel_to_data(encoder_spec: TacotronSpec,
         return
 
     ds = torch.load(file_name)
-
     print("Loading back and checking.")
     if verbose:
         logger.info(f"Dataset saved to a file: {file_name}")
@@ -132,8 +133,15 @@ def convert(trainer_spec, version=2, dataset_name=None, merge=True, verbose=True
     :param merge:  if true merge all datasets to single one.
     :return:
     """
-    trainer_spec = ExperimentSpecs(verbose=verbose)
-    if dataset_name is None:
+
+    # trainer_spec = ExperimentSpecs(verbose=verbose)
+    if dataset_name is None or len(dataset_name) == 0:
+        ds_spec = trainer_spec.get_active_dataset_spec()
+        if not trainer_spec.is_audio_raw(ds_spec):
+            print("Please check configuration, the active dataset not raw audio.")
+            return
+
+    if dataset_name is None or len(dataset_name) == 0:
         data = trainer_spec.get_audio_dataset()
     else:
         dataset_names = trainer_spec.get_dataset_names()
@@ -162,20 +170,33 @@ def convert(trainer_spec, version=2, dataset_name=None, merge=True, verbose=True
 
     if merge:
         final_list = [*train_listified, *val_listified, *test_listified]
-
     #
-    train_dataset = SFTF2Dataset(model_spec=encoder_spec,
-                                 data=train_listified,
-                                 data_format="audio_raw",
-                                 verbose=verbose)
-    validation_dataset = SFTF2Dataset(model_spec=encoder_spec,
-                                      data=val_listified,
-                                      data_format="audio_raw",
-                                      verbose=verbose)
-    test_dataset = SFTF2Dataset(model_spec=encoder_spec,
-                                data=test_listified,
-                                data_format="audio_raw",
-                                verbose=verbose)
+    if version == 2:
+        train_dataset = SFTF2Dataset(model_spec=encoder_spec,
+                                     data=train_listified,
+                                     data_format="audio_raw",
+                                     verbose=verbose)
+        validation_dataset = SFTF2Dataset(model_spec=encoder_spec,
+                                          data=val_listified,
+                                          data_format="audio_raw",
+                                          verbose=verbose)
+        test_dataset = SFTF2Dataset(model_spec=encoder_spec,
+                                    data=test_listified,
+                                    data_format="audio_raw",
+                                    verbose=verbose)
+    else:
+        train_dataset = SFTF3Dataset(model_spec=encoder_spec,
+                                     data=train_listified,
+                                     data_format="audio_raw",
+                                     verbose=verbose)
+        validation_dataset = SFTF3Dataset(model_spec=encoder_spec,
+                                          data=val_listified,
+                                          data_format="audio_raw",
+                                          verbose=verbose)
+        test_dataset = SFTF3Dataset(model_spec=encoder_spec,
+                                    data=test_listified,
+                                    data_format="audio_raw",
+                                    verbose=verbose)
     #
     if verbose:
         logging.info("filter_length", encoder_spec.filter_length())
@@ -197,6 +218,19 @@ def convert(trainer_spec, version=2, dataset_name=None, merge=True, verbose=True
             raise ConverterError("can't resolve target dir.")
     else:
         final_dir = trainer_spec.get_dataset_dir()
+
+    print("Going to write to dir", final_dir)
+
+    ds_spec = trainer_spec.get_dataset_spec(dataset_name=dataset_name)
+    files = [
+        Path(ds_spec['dir']).expanduser() / ds_spec['training_meta'],
+        Path(ds_spec['dir']).expanduser() / ds_spec['validation_meta'],
+        Path(ds_spec['dir']).expanduser() / ds_spec['test_meta']
+    ]
+
+    # print(files)
+    # print(data['train_meta'])
+    # sys.exit(1)
 
     convert_mel_to_data(encoder_spec, train_dataset,
                         dataset_name=dataset_name,
@@ -535,12 +569,18 @@ def train(spec=None, cmd_args=None, device=None, cudnn_bench=False):
                                     verbose=args.verbose)
         dataloader.set_logger(is_enable=True)
 
+        # trainer = Trainer(spec,
+        #                   dataloader,
+        #                   rank=int(args.rank),
+        #                   world_size=int(cmd_args.world_size),
+        #                   verbose=args.verbose, device=device,
+        #                   callback=[BatchTimer()])
+
         trainer = Trainer(spec,
                           dataloader,
                           rank=int(args.rank),
                           world_size=int(cmd_args.world_size),
-                          verbose=args.verbose, device=device,
-                          callback=[BatchTimer()])
+                          verbose=args.verbose, device=device)
 
         trainer.metric.set_logger(is_enable=True)
         trainer.train()
@@ -630,6 +670,15 @@ def main(cmd_args):
     trainer_spec = ExperimentSpecs(spec_config=cmd_args.config, verbose=cmd_args.verbose)
     trainer_spec.set_logger(cmd_args.verbose)
 
+    if cmd_args.batch_size is not None:
+        trainer_spec.set_batch_size(int(cmd_args.batch_size))
+    if cmd_args.batch_size is not None:
+        trainer_spec.set_epochs(int(cmd_args.epochs))
+
+    if cmd_args.dataset_name is not None and len(cmd_args.dataset_name) > 0:
+        spec = trainer_spec.get_dataset_spec(cmd_args.dataset_name)
+        trainer_spec.set_active_dataset(dataset_name=str(cmd_args.dataset_name))
+
     logger.add(trainer_spec.model_files.get_model_log_file_path(),
                format="{time} {level} {message}",
                filter="model_trainer.trainer_metrics", level="INFO")
@@ -638,10 +687,17 @@ def main(cmd_args):
                format="{time} {level} {message}",
                filter="model_loader.stft_dataloader", level="INFO")
 
+    logger.add(trainer_spec.model_files.get_trace_log_file("trainer"),
+               format="{time} {level} {message}",
+               filter="model_trainer.trainer", level="INFO")
+
     if cmd_args.mode.strip().upper().lower() == 'standalone':
         trainer_spec.set_distributed(False)
     elif cmd_args.mode.strip().upper().lower() == 'distributed':
         trainer_spec.set_distributed(True)
+    else:
+        print("Unknown option supported standalone | distributed, default standalone.")
+
     if trainer_spec.is_distributed_run():
         set_random_seeds(trainer_spec.seed())
 
@@ -724,8 +780,9 @@ if __name__ == '__main__':
     parser.add_argument('--benchmark', type=bool, default=False,
                         required=False, help='set verbose output')
     parser.add_argument('--config', type=str, help='set config file',
-                        default='config.yaml',
-                        required=False)
+                        default='config.yaml', required=False)
+    parser.add_argument('--epochs', type=int, help='overwrites epoch in config file', required=False)
+    parser.add_argument('--batch_size', type=int, help='overwrites batch_size in config file', required=False)
     parser.add_argument('--mode', type=str, default="",
                         help='run trainer in distributed or standalone',
                         required=False)
@@ -785,6 +842,6 @@ if __name__ == '__main__':
         print("Dataset converter error ", str(convert_err))
         logger.error(f"Dataset converter error: {str(convert_err)}")
     except TrainerSpecError as spec_error:
-        print("Invalid spec", str(spec_error))
+        print("Invalid spec:", str(spec_error))
         logger.error(f"Invalid spec: {str(spec_error)}")
         sys.exit(2)

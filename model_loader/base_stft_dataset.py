@@ -5,7 +5,6 @@
 #
 import os
 import random
-import sys
 import warnings
 from abc import abstractmethod
 from pathlib import Path

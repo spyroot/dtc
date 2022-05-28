@@ -13,10 +13,14 @@ class InvalidModelSpec(Exception):
 # @attr.s(frozen = True)
 class ModelSpecDTC(ModelSpec, ABC):
     """
-    MODEL SPEC {'spectrogram_layer': {'model': 'tacotron25', 'optimizer': 'tacotron2_optimizer', 'has_input': True, 'has_output': True, 'max_wav_value': 32768.0, 'frames_per_step': 1, 'sampling_rate': 22050, 'filter_length': 1024, 'win_length': 1024, 'hop_length': 256, 'n_mel_channels': 80, 'mel_fmin': 0.0, 'mel_fmax': 8000.0}, 'vocoder': {'state': 'disabled', 'name': 'Test', 'model': 'GraphLSTM', 'optimizer': 'edge_optimizer', 'lr_scheduler': 'main_lr_scheduler', 'input_size': 1}}
+    MODEL SPEC {'spectrogram_layer': {'model': 'tacotron25', 'optimizer': 'tacotron2_optimizer', 'has_input': True,
+     'has_output': True, 'max_wav_value': 32768.0, 'frames_per_step': 1, 'sampling_rate': 22050, 'filter_length': 1024,
+     'win_length': 1024, 'hop_length': 256, 'n_mel_channels': 80, 'mel_fmin': 0.0, 'mel_fmax': 8000.0},
+     'vocoder': {'state': 'disabled', 'name': 'Test', 'model': 'GraphLSTM',
+     'optimizer': 'edge_optimizer', 'lr_scheduler': 'main_lr_scheduler', 'input_size': 1}}
 
     """
-    def __init__(self, model_spec, dataset_spec, verbose=False):
+    def __init__(self, model_spec, dataset_spec, verbose=False) -> None:
         """
         :param model_spec:
         :param dataset_spec:
@@ -66,7 +70,7 @@ class ModelSpecDTC(ModelSpec, ABC):
         """
         return list(self._model_dict.keys())
 
-    def get_spec(self, name):
+    def get_spec(self, name: str):
         """
 
         :param name:

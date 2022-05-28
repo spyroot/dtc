@@ -3,7 +3,7 @@ from enum import Enum
 
 import numpy as np
 from loguru import logger
-from .base import Callback
+from .call_interface import Callback
 import torch
 
 
@@ -36,7 +36,7 @@ class CheckpointSaver(Callback):
         mode="min",
         include_optimizer=False,
         verbose=True,
-    ):
+    ) -> None:
         super().__init__()
         self.save_dir = save_dir
         self.save_name = save_name
@@ -52,36 +52,61 @@ class CheckpointSaver(Callback):
         self.verbose = verbose
 
     def on_begin(self):
+        """
+        :return:
+        """
         os.makedirs(self.save_dir, exist_ok=True)
 
     def on_epoch_end(self):
+        """
+
+        :return:
+        """
         current = self.get_monitor_value()
         if self.monitor_op(current, self.best):
             ep = self.state.epoch_log
             if self.verbose:
                 logger.info(f"Epoch {ep:2d}: best {self.monitor} improved from {self.best:.4f} to {current:.4f}")
+
             self.best = current
             save_name = os.path.join(self.save_dir, self.save_name.format(ep=ep, metric=current))
             self._save_checkpoint(save_name)
 
     def _save_checkpoint(self, path):
-        if hasattr(self.state.model, "module"):  # used for saving DDP models
+        """
+
+        :param path:
+        :return:
+        """
+
+
+        if hasattr(self.trainer_state.model, "module"):  # used for saving DDP models
             state_dict = self.state.model.module.state_dict()
         else:
-            state_dict = self.state.model.state_dict()
-        save_dict = {"epoch": self.state.epoch, "state_dict": state_dict}
+            state_dict = self.trainer_state.model.state_dict()
+
+        save_dict = {"epoch": self.trainer_state.epoch, "state_dict": state_dict}
+
         if self.include_optimizer:
-            save_dict["optimizer"] = self.state.optimizer.state_dict()
+            save_dict["optimizer"] = self.trainer_state.optimizer.state_dict()
+
         torch.save(save_dict, path)
 
     def get_monitor_value(self):
+        """
+
+        :return:
+        """
         value = None
+
         if self.monitor == "loss":
-            value = self.state.loss_meter.avg
+            return self.metric_state.compute_average_loss()
         else:
-            for name, metric_meter in self.state.metric_meters.items():
+            for name, metric_meter in self.metric_state.items():
                 if name == self.monitor:
                     value = metric_meter.avg
+
         if value is None:
             raise ValueError(f"CheckpointSaver can't find {self.monitor} value to monitor")
+
         return value

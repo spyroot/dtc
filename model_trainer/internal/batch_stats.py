@@ -1,10 +1,10 @@
 from torch.cuda import amp
 
-from .base import listify, Callback
-from model_trainer.callbacks.time_meter import AverageMeter
+from .call_interface import listify, Callback
+from model_trainer.internal.time_meter import AverageMeter
 import torch
 
-from model_trainer.callbacks.utils import to_numpy
+from model_trainer.internal.utils import to_numpy
 
 
 class BatchMetrics(Callback):
