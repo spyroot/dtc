@@ -582,6 +582,7 @@ def train(spec=None, cmd_args=None, device=None, cudnn_bench=False):
                           world_size=int(cmd_args.world_size),
                           verbose=args.verbose, device=device)
 
+        trainer.set_logger(is_enable=True)
         trainer.metric.set_logger(is_enable=True)
         trainer.train()
 

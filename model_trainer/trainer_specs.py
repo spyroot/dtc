@@ -391,7 +391,8 @@ class ExperimentSpecs:
                 if len(target_checksum) > 0:
                     checksum = model_loader.ds_util.md5_checksum(final_path)
                     if checksum not in target_checksum:
-                        raise TrainerSpecError(f"Checksum mismatched. check file {final_path}")
+                        print("expected", target_checksum)
+                        raise TrainerSpecError(f"Checksum {checksum} mismatched. check file {final_path}")
 
     def validate_spec_config(self):
         """ Validate dataset spec,  each spec has own semantics.

@@ -1,29 +1,33 @@
 # import torch.distributed as dist
 # import queue
-from abc import ABC
-
+# from abc import ABC
 
 # from frozendict import frozendict
+# @attr.s()
 
-#@attr.s()
-class TrainerState(ABC):
+# from numba import jit
+# @jitclass(nopython=True)
+class TrainerState:
     """
 
     """
+
     def __init__(self):
-        self.cuda_device_id = 0
         self.cuda_device_id = 0
         self.disable_pbar = 0
         self.n_gpus = 1
-        self.device = None
 
         self.disable_pbar = False
         self.verbose = False
         self.is_notebook = False
-        self.trainer_spec = None
         self.rank = None
 
         self.is_hp_tunner = False
+
+        self.trainer_spec = None
+        self.batch_size = None
+        self.device = None
+
         # self.set_logger(verbose)
         #
         # # device

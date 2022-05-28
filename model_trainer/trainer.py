@@ -993,7 +993,7 @@ class Trainer(AbstractTrainer, ABC):
                                             'mel_loss': mel_loss.item(),
                                             'gate_loss': gate_loss.item(),
                                             'clip_loss': grad_norm.item(),
-                                            'batch': f"{batch_idx}/{self.batch_size}",
+                                            'batch': f"{batch_idx}/{self.state.batch_size}",
                                             'lr': optimizer.param_groups[0]['lr'],
                                             'saved step': self.saved_run})
             # # run prediction if_needed
@@ -1008,7 +1008,7 @@ class Trainer(AbstractTrainer, ABC):
             # hparam we want track.
             hparams = {
                 'lr': optimizer.param_groups[0]['lr'],
-                'batch_size': self.state.trainer_spec.batch_size,
+                'batch_size': self.state.batch_size,
             }
 
             metrics = {
