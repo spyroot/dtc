@@ -1,7 +1,7 @@
 train: True                 # train or not,  default is True for generation we only need load pre-trained model
 #active: 'grid_small'       # dataset set generated.
 #use_dataset: 'LJSpeechSmallPkl'     # dataset set generated.
-use_dataset: 'ljcheep1k_tensor'      # dataset set generated.
+use_dataset: 'LJSpeechSmallPkl'      # dataset set generated.
 use_model: 'tacotron25'            # model to use , it must be defined in models section.
 draw_prediction: True       # at the of training draw.
 load_model: True            # load model or not, and what
@@ -22,78 +22,78 @@ model_save_dir: "model"                    # where we save model
 metrics_dir: "metrics"                     # metrics dir in case we need store separate metrics
 
 datasets:
-  LJSpeech:
-    format: raw
-    ds_type: "audio"
-    file_type: "wav"
-    dir: "~/Dropbox/Datasets/LJSpeech-1.1"
-    training_meta: ljs_audio_text_train_filelist.txt
-    validation_meta:  ljs_audio_text_val_filelist.txt
-    test_meta: ljs_audio_text_test_filelist.txt
-    meta: metadata.csv
-    recursive: False
-  LJSpeechPkl:
-    ds_type: "audio"
-    file_type: "torch"
-    format: tensor_mel
-    dir: "~/Dropbox/Datasets/LJSpeech-1.1"
-    training_meta: LJSpeech_train_num_sam_12500_filter_80.pt
-    validation_meta: LJSpeech_validate_num_sam_100_filter_80.pt
-    test_meta: LJSpeech_test_num_sam_500_filter_80.pt
-    dataset_files:
-      - "LJSpeech_train_num_sam_12500_filter_80.pt"
-      - "LJSpeech_validate_num_sam_100_filter_80.pt"
-      - "LJSpeech_test_num_sam_500_filter_80.pt"
-    checksums:
-      - "ea5765003aeb8cba93fc75367149db5a"
-      - "fe756f00ce48208df6932bd2070f91b7"
-      - "1c5e612dc2e39ad43263c6c590f9d3a8"
-    meta: metadata.csv
-    recursive: False
-  LJSpeechMiniRaw:
-    ds_type: "audio"
-    dir: "~/Dropbox/Datasets/LJSpeechSmall"
+#  LJSpeech:
+#    format: raw
+#    ds_type: "audio"
+#    file_type: "wav"
+#    dir: "~/Dropbox/Datasets/LJSpeech-1.1"
+#    training_meta: ljs_audio_text_train_filelist.txt
+#    validation_meta:  ljs_audio_text_val_filelist.txt
+#    test_meta: ljs_audio_text_test_filelist.txt
+#    meta: metadata.csv
+#    recursive: False
+#  LJSpeechPkl:
+#    ds_type: "audio"
+#    file_type: "torch"
+#    format: tensor_mel
+#    dir: "~/Dropbox/Datasets/LJSpeech-1.1"
+#    training_meta: LJSpeech_train_num_sam_12500_filter_80.pt
+#    validation_meta: LJSpeech_validate_num_sam_100_filter_80.pt
+#    test_meta: LJSpeech_test_num_sam_500_filter_80.pt
+#    dataset_files:
+#      - "LJSpeech_train_num_sam_12500_filter_80.pt"
+#      - "LJSpeech_validate_num_sam_100_filter_80.pt"
+#      - "LJSpeech_test_num_sam_500_filter_80.pt"
+#    checksums:
+#      - "ea5765003aeb8cba93fc75367149db5a"
+#      - "fe756f00ce48208df6932bd2070f91b7"
+#      - "1c5e612dc2e39ad43263c6c590f9d3a8"
+#    meta: metadata.csv
+#    recursive: False
+#  LJSpeechMiniRaw:
+#    ds_type: "audio"
 #    dir: "~/Dropbox/Datasets/LJSpeechSmall"
-    format: raw
-    training_meta: ljs_audio_text_train_filelist.txt
-    validation_meta: ljs_audio_text_val_filelist.txt
-    test_meta: ljs_audio_text_test_filelist.txt
-    meta: metadata.csv
-    recursive: False
-    file_type: "wav"
-  ljcheep1k_audio:
-    ds_type: "audio"
-    dir: "~/Dropbox/Datasets/LJSpeech-1.1"
-    #    dir: "~/Dropbox/Datasets/LJSpeechSmall"
-    format: raw
-    training_meta: ljs_audio_text_train_filelist_1000.txt
-    validation_meta: ljs_audio_text_val_filelist.txt
-    test_meta: ljs_audio_text_test_filelist.txt
-    meta: metadata.csv
-    recursive: False
-    file_type: "wav"
-    dataset_files:
-      - "ljs_audio_text_train_filelist_1000.txt"
-      - "ljs_audio_text_val_filelist.txt"
-      - "ljs_audio_text_test_filelist.txt"
-  ljcheep1k_tensor:
-    ds_type: "audio"
-    file_type: "torch"
-    format: tensor_mel
-    dir: "~/Dropbox/Datasets/LJSpeech-1.1"
-    training_meta: ljcheep1k_audio_train_num_sam_1001_filter_80.pt
-    validation_meta: ljcheep1k_audio_validate_num_sam_100_filter_80.pt
-    test_meta: ljcheep1k_audio_test_num_sam_500_filter_80.pt
-    meta: metadata.csv
-    recursive: False
-    dataset_files:
-      - "ljcheep1k_audio_train_num_sam_1001_filter_80.pt"
-      - "LJSpeech_validate_num_sam_100_filter_80.pt"
-      - "LJSpeech_test_num_sam_500_filter_80.pt"
-    checksums:
-      - "b9ac25f3e8e3b423b63c184d6ba80fb5"
-      - "fe756f00ce48208df6932bd2070f91b7"
-      - "1c5e612dc2e39ad43263c6c590f9d3a8"
+##    dir: "~/Dropbox/Datasets/LJSpeechSmall"
+#    format: raw
+#    training_meta: ljs_audio_text_train_filelist.txt
+#    validation_meta: ljs_audio_text_val_filelist.txt
+#    test_meta: ljs_audio_text_test_filelist.txt
+#    meta: metadata.csv
+#    recursive: False
+#    file_type: "wav"
+#  ljcheep1k_audio:
+#    ds_type: "audio"
+#    dir: "~/Dropbox/Datasets/LJSpeech-1.1"
+#    #    dir: "~/Dropbox/Datasets/LJSpeechSmall"
+#    format: raw
+#    training_meta: ljs_audio_text_train_filelist_1000.txt
+#    validation_meta: ljs_audio_text_val_filelist.txt
+#    test_meta: ljs_audio_text_test_filelist.txt
+#    meta: metadata.csv
+#    recursive: False
+#    file_type: "wav"
+#    dataset_files:
+#      - "ljs_audio_text_train_filelist_1000.txt"
+#      - "ljs_audio_text_val_filelist.txt"
+#      - "ljs_audio_text_test_filelist.txt"
+#  ljcheep1k_tensor:
+#    ds_type: "audio"
+#    file_type: "torch"
+#    format: tensor_mel
+#    dir: "~/Dropbox/Datasets/LJSpeech-1.1"
+#    training_meta: ljcheep1k_audio_train_num_sam_1001_filter_80.pt
+#    validation_meta: ljcheep1k_audio_validate_num_sam_100_filter_80.pt
+#    test_meta: ljcheep1k_audio_test_num_sam_500_filter_80.pt
+#    meta: metadata.csv
+#    recursive: False
+#    dataset_files:
+#      - "ljcheep1k_audio_train_num_sam_1001_filter_80.pt"
+#      - "LJSpeech_validate_num_sam_100_filter_80.pt"
+#      - "LJSpeech_test_num_sam_500_filter_80.pt"
+#    checksums:
+#      - "b9ac25f3e8e3b423b63c184d6ba80fb5"
+#      - "fe756f00ce48208df6932bd2070f91b7"
+#      - "1c5e612dc2e39ad43263c6c590f9d3a8"
   LJSpeechSmallPkl:
     ds_type: "audio"
     dir: "~/Dropbox/Datasets/LJSpeechSmall"

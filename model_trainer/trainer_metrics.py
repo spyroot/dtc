@@ -103,11 +103,19 @@ class Metrics:
         # logger.info(f"Epoch {self._epoc_counter}/{self.num_epochs} started.")
 
     def on_prediction_epoch_end(self):
+        """
+        Update metric for prediction , validation loss.
+        :return:
+        """
         logger.info(f"Epoch validation loss {self._epoc_counter}/{self.num_epochs} epoch "
                     f"{self.val_loss.sum():.2f} | {self.grad_norm_val_loss.sum():.2f}, "
                     f"mean {self.val_loss.mean():.4f} | {self.grad_norm_val_loss.mean():.4f}")
 
     def on_epoch_end(self):
+        """
+
+        :return:
+        """
         self.on_prediction_epoch_end()
         logger.info(f"Epoch train loss {self._epoc_counter}/{self.num_epochs} epoch "
                     f"{self.loss.sum():.2f} | {self.grad_norm_loss.sum():.2f}, "
@@ -115,6 +123,10 @@ class Metrics:
         self._epoc_counter = self._epoc_counter + 1
 
     def on_begin(self):
+        """
+
+        :return:
+        """
         self.loss = np.zeros((self.num_epochs, 1))
         self.grad_norm_loss = np.zeros((self.num_epochs, 1))
         self.val_loss = np.zeros((self.num_epochs, 1))
@@ -124,7 +136,8 @@ class Metrics:
         pass
 
     def update(self, batch_idx, step, loss: float, grad_norm=None, validation=True):
-        """Update metric history.
+        """
+        Update metric history, each step per epoch..
         :param validation:
         :param batch_idx: - batch idx used to index to internal id
         :param step: - current execution step.
@@ -151,7 +164,6 @@ class Metrics:
 
         # print(batch_idx, self.batch_loss)
         if grad_norm is not None:
-            self.grad_norm_loss[step] = grad_norm
             logger.info(f"Step {step} batch {batch_idx} loss {loss:.5f} "
                         f"mean {self.loss.mean():.5f} grad norm loss {grad_norm:.5f}")
         else:
