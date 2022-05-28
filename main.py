@@ -388,7 +388,7 @@ class Trainable(tune.Trainable, Callback):
     def save_checkpoint(self, tmp_checkpoint_dir):
         print("called save_checkpoint with tmp dir ", tmp_checkpoint_dir)
         for model in self._models:
-            for model_layer in self._models[model]:
+            for model_layer in self.trainer._models[model]:
                 checkpoint_path = os.path.join(tmp_checkpoint_dir, f"{model}{model_layer}.pth")
                 torch.save(self.model.state_dict(), checkpoint_path)
         return tmp_checkpoint_dir
@@ -397,7 +397,7 @@ class Trainable(tune.Trainable, Callback):
 
         print("called save_checkpoint with tmp dir ", tmp_checkpoint_dir)
         for model in self._models:
-            for model_layer in self._models[model]:
+            for model_layer in self.trainer._models[model]:
                 checkpoint_path = os.path.join(tmp_checkpoint_dir, f"{model}{model_layer}.pth")
                 self.model.load_state_dict(torch.load(checkpoint_path))
 

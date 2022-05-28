@@ -133,13 +133,10 @@ class Metrics:
         :return: nothing11
         """
         if validation:
-            #self.val_loss[step] = loss
             self.batch_val_loss[batch_idx] = loss
             if grad_norm is not None:
                 self.batch_grad_val_loss[batch_idx] = loss
-               # self.grad_norm_val_loss[step] = loss
             if grad_norm is not None:
-                #self.grad_norm_val_loss[step] = grad_norm
                 logger.info(
                         f"validation step {step} batch {batch_idx} loss {loss:.5f} "
                         f"mean {self.loss.mean():.5f} grad norm loss {grad_norm:.5f}")
@@ -148,11 +145,9 @@ class Metrics:
 
             return
 
-       # self.loss[step] = loss
         self.batch_loss[batch_idx] = loss
         if grad_norm is not None:
             self.batch_grad_loss[batch_idx] = loss
-           # self.grad_norm_loss[step] = loss
 
         # print(batch_idx, self.batch_loss)
         if grad_norm is not None:
@@ -169,7 +164,7 @@ class Metrics:
         """
         self.num_iteration = max(1, num_iteration)
 
-    def set_num_batches(self, num_batches):
+    def update_bach_estimated(self, num_batches):
         """Updates number of total batches
         :param num_batches: - should total batches
         :return: nothing
@@ -267,6 +262,9 @@ class Metrics:
     @staticmethod
     def get_logger_name():
         return __name__
+
+    def update_batch_size(self, batch_size):
+        self.batch_size = batch_size
 
 
 def batch_loss_compute():

@@ -306,6 +306,9 @@ class SFTFDataloader:
         elif version == 3:
             self.collate_fn = TextMelCollate2(nfps=self._encoder_spec.frames_per_step(), device=None)
 
+    def get_batch_size(self):
+        return self._batch_size
+
     def _create_loaders(self):
         """
         Method will create all data loaders.

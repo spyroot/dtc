@@ -953,6 +953,8 @@ class Trainer(AbstractTrainer, ABC):
         total_accuracy = 0
         current_total_loss = 0
         step = self.get_last_iterator(model_name, layer_name)
+        print("got back ", step)
+        self.metric.update_bach_estimated(len(self._train_loader))
         self._callback.on_loader_begin()
         self.metric.on_batch_start()
         for batch_idx, batch in enumerate(self._train_loader):
@@ -972,9 +974,18 @@ class Trainer(AbstractTrainer, ABC):
 
             loss.backward()
             if self.clip_grad:
+                print("clip", step)
+                print("clip", self.state.batch_size)
+                print("dataloader batch size", self.data_loader.get_batch_size())
+                print("dataset len", len(self._train_loader.dataset))
+                print("batch len", len(self._train_loader))
+
+                # print("dataset", self._train_loader.batch_size)
+
                 grad_norm = clip_grad_norm_(model.parameters(), self.state.trainer_spec.grad_clip_thresh())
                 self.metric.update(batch_idx, step, normal_loss, grad_norm=grad_norm.item(), validation=False)
             else:
+                print("uncliped", step)
                 grad_norm = loss
                 self.metric.update(batch_idx, step, normal_loss, grad_norm=None, validation=False)
 
@@ -1146,7 +1157,6 @@ class Trainer(AbstractTrainer, ABC):
         step = self.get_last_iterator(model_name, layer_name)
         if self._last_ckt_epochs[model_name][layer_name] == self.state.trainer_spec.epochs():
             prediction_accuracy = self.validate_epoch(model, model_name, layer_name, step)
-
         # TODO add option if epoch changed after save
         self.metric.set_num_iteration(self.state.trainer_spec.epochs() * self.total_batches)
         self.metric.init()
