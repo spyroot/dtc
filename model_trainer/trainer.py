@@ -761,6 +761,17 @@ class Trainer(AbstractTrainer, ABC):
                     'scheduler_state_dict': self._schedulers[model_name].state_dict()
                 }, model_file)
             else:
+                # checkpoint = {"model": net.state_dict(),
+                #               "optimizer": opt.state_dict(),
+                #               "scaler": scaler.state_dict()}
+
+                # net.load_state_dict(checkpoint["model"])
+                # opt.load_state_dict(checkpoint["optimizer"])
+                # scaler.load_state_dict(checkpoint["scaler"])
+
+            ## First, check if your network fits an advanced use case. See also Prefer binary_cross_entropy_with_logits over binary_cross_entropy.
+
+
                 logger.info("Model saving with optimizer without a scheduler state.")
                 torch.save({
                     'epoch': self.epoch,
@@ -931,6 +942,17 @@ class Trainer(AbstractTrainer, ABC):
     #         dist.all_reduce(param.grad.data, op=dist.ReduceOp.SUM)
     #         param.grad.data /= size
     #
+
+    # with amp.scale_loss(loss, optimizer) as scaled_loss:
+    #     scaled_loss.backward()
+    #     # Gradients are unscaled during context manager exit.
+    # # Now it's safe to clip.  Replace
+    # # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
+    # # with
+    # torch.nn.utils.clip_grad_norm_(amp.master_params(optimizer), max_norm)
+    # # or
+    # torch.nn.utils.clip_grad_value_(amp.master_params(optimizer), max_)
+    #
     def rescale_gradients(self) -> float:
         """
         Performs gradient rescaling. Is a no-op if gradient rescaling is not enabled.
@@ -967,6 +989,8 @@ class Trainer(AbstractTrainer, ABC):
         # else:
         #     device = self.state.device
 
+        scaler = torch.cuda.amp.GradScaler()
+
         total_accuracy = 0
         current_total_loss = 0
         step = self.get_last_iterator(model_name, layer_name)
@@ -976,14 +1000,43 @@ class Trainer(AbstractTrainer, ABC):
         for batch_idx, batch in enumerate(self._train_loader):
             self._callback.on_batch_begin()
             model.zero_grad(set_to_none=True)
-            x, y = take_batch(batch, device)
-            y_pred = model(x)
-            # if self.state.trainer_spec.is_distributed_run():
-            #     reduced_loss = dist.reduce_tensor(loss.data, n_gpus).item()
-            criterion_out = self.criterion(y_pred, y)
-            mel_loss = criterion_out['mel_loss']
-            gate_loss = criterion_out['gate_loss']
-            loss = criterion_out['loss']
+            with torch.cuda.amp.autocast(enabled=self.state.is_amp):
+
+                x, y = take_batch(batch, device)
+                # assert output.dtype is torch.float16
+
+                y_pred = model(x)
+
+                # if self.state.trainer_spec.is_distributed_run():
+                #     reduced_loss = dist.reduce_tensor(loss.data, n_gpus).item()
+
+                criterion_out = self.criterion(y_pred, y)
+                mel_loss = criterion_out['mel_loss']
+                gate_loss = criterion_out['gate_loss']
+                loss = criterion_out['loss']
+
+                # checker
+                # assert mel_loss.dtype is torch.float32
+                # assert gate_loss.dtype is torch.float32
+                # assert loss.dtype is torch.float32
+
+                current_total_loss += loss.item()
+                normal_loss = loss.item()
+
+                # output is float16 because linear layers autocast to float16.
+                # assert output.dtype is torch.float16
+                # loss = loss_fn(output, target)
+                # loss is float32 because mse_loss layers autocast to float32.
+                # assert loss.dtype is torch.float32
+
+            # x, y = take_batch(batch, device)
+            # y_pred = model(x)
+            # # if self.state.trainer_spec.is_distributed_run():
+            # #     reduced_loss = dist.reduce_tensor(loss.data, n_gpus).item()
+            # criterion_out = self.criterion(y_pred, y)
+            # mel_loss = criterion_out['mel_loss']
+            # gate_loss = criterion_out['gate_loss']
+            # loss = criterion_out['loss']
 
             current_total_loss += loss.item()
             normal_loss = loss.item()
