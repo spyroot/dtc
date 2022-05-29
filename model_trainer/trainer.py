@@ -931,6 +931,23 @@ class Trainer(AbstractTrainer, ABC):
     #         dist.all_reduce(param.grad.data, op=dist.ReduceOp.SUM)
     #         param.grad.data /= size
     #
+    def rescale_gradients(self) -> float:
+        """
+        Performs gradient rescaling. Is a no-op if gradient rescaling is not enabled.
+
+        # See: https://nvidia.github.io/apex/advanced.html#gradient-clipping
+        :return: the norm of the gradients.
+        """
+        if self._opt_level is not None:
+            parameters_to_clip = [p for p in torch.amp.master_params(self.optimizer) if p.grad is not None]
+        else:
+            parameters_to_clip = [p for p in self.model.parameters() if p.grad is not None]
+
+        if self.clip_grad:
+            return clip_grad_norm_(parameters_to_clip, self._grad_norm)
+        else:
+            return torch.norm(torch.stack([torch.norm(p.grad.detach()) for p in parameters_to_clip]))
+
     def train_epoch(self, model, model_name: str, layer_name: str, optimizer, scheduler=None):
         """
 

@@ -680,17 +680,17 @@ def main(cmd_args):
         spec = trainer_spec.get_dataset_spec(cmd_args.dataset_name)
         trainer_spec.set_active_dataset(dataset_name=str(cmd_args.dataset_name))
 
-    logger.add(trainer_spec.model_files.get_model_log_file_path(), rotation=None,
+    logger.add(trainer_spec.model_files.get_model_log_file_path(remove_old=True),
                format="{elapsed} {level} {message}",
-               filter="model_trainer.trainer_metrics", level="INFO")
+               filter="model_trainer.trainer_metrics", level="INFO", rotation="1h")
 
     logger.add(trainer_spec.model_files.get_trace_log_file("loader"),
                format="{elapsed} {level} {message}",
-               filter="model_loader.stft_dataloader", level="INFO")
+               filter="model_loader.stft_dataloader", level="INFO", rotation="1h")
 
-    logger.add(trainer_spec.model_files.get_trace_log_file("trainer"), rotation=None,
+    logger.add(trainer_spec.model_files.get_trace_log_file("trainer"),
                format="{elapsed} {level} {message}",
-               filter="model_trainer.trainer", level="INFO")
+               filter="model_trainer.trainer", level="INFO", rotation="1h")
 
     if cmd_args.mode.strip().upper().lower() == 'standalone':
         trainer_spec.set_distributed(False)

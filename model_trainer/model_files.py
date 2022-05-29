@@ -245,16 +245,33 @@ class ModelFiles:
 
         return target_files
 
-    def get_model_log_file_path(self, file_type="log"):
-        """Return log dir
+    def get_model_log_file_path(self, file_type="log", remove_old=False):
+        """Return path to a log file.
+        TODO merge the code
         """
+        file_path = str(self._dirs["logs"] / self.file_name_generator(suffix="metric", file_type=file_type))
+        if remove_old:
+            try:
+                os.remove(file_path)
+            except PermissionError as e:
+                print(f'Failed to delete a file. {file_path}, err:{e}')
         return str(self._dirs["logs"] / self.file_name_generator(suffix="metric", file_type=file_type))
 
-    def get_trace_log_file(self, trace_name: str, file_type="log"):
-        """Return full path for a trace log file,  trace_name a name appended to a file name.
+    def get_trace_log_file(self, trace_name: str, file_type="log", remove_old=False):
+        """Return full path for a trace log file, trace_name a name appended to a file name.
            used to register different log traces.
+        :param trace_name:
+        :param file_type:
+        :param remove_old: in case we want remove it first.
+        :return:
         """
-        return str(self._dirs["logs"] / self.file_name_generator(suffix=trace_name, file_type=file_type))
+        file_path = str(self._dirs["logs"] / self.file_name_generator(suffix=trace_name, file_type=file_type))
+        if remove_old:
+            try:
+                os.remove(file_path)
+            except PermissionError as e:
+                print(f'Failed to delete a file. {file_path}, err:{e}')
+        return file_path
 
     def get_model_log_dir(self, file_type="log"):
         """Return log dir
