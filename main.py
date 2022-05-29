@@ -559,9 +559,9 @@ def train(spec=None, cmd_args=None, device=None, cudnn_bench=False):
         torch.backends.cudnn.benchmark = True
 
     if args.verbose:
-        logger.debug("Torch allow matmul fp16 {}", torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction)
-        logger.debug("Torch cudnn version, {}", torch.backends.cudnn.version())
-        logger.debug("Torch backend openmp", torch.backends.openmp)
+        logger.debug(f"Torch allow matmul fp16 {torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction}")
+        logger.debug(f"Torch cudnn version, {torch.backends.cudnn.version()}")
+        logger.debug(f"Torch backend openmp {torch.backends.openmp}")
     try:
 
         dataloader = SFTFDataloader(spec, rank=cmd_args.rank,
@@ -607,7 +607,7 @@ def dataloader_dry(cmd_args, trainer_specs):
         data_loader.benchmark_read()
 
 
-def set_random_seeds(random_seed=0):
+def set_random_seeds(random_seed=1234):
     """
     Routine called when we run in DDP mode.
     It fixes all seed values.
@@ -680,16 +680,16 @@ def main(cmd_args):
         spec = trainer_spec.get_dataset_spec(cmd_args.dataset_name)
         trainer_spec.set_active_dataset(dataset_name=str(cmd_args.dataset_name))
 
-    logger.add(trainer_spec.model_files.get_model_log_file_path(),
-               format="{time} {level} {message}",
+    logger.add(trainer_spec.model_files.get_model_log_file_path(), rotation=None,
+               format="{elapsed} {level} {message}",
                filter="model_trainer.trainer_metrics", level="INFO")
 
     logger.add(trainer_spec.model_files.get_trace_log_file("loader"),
-               format="{time} {level} {message}",
+               format="{elapsed} {level} {message}",
                filter="model_loader.stft_dataloader", level="INFO")
 
-    logger.add(trainer_spec.model_files.get_trace_log_file("trainer"),
-               format="{time} {level} {message}",
+    logger.add(trainer_spec.model_files.get_trace_log_file("trainer"), rotation=None,
+               format="{elapsed} {level} {message}",
                filter="model_trainer.trainer", level="INFO")
 
     if cmd_args.mode.strip().upper().lower() == 'standalone':

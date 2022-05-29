@@ -27,7 +27,7 @@ class TrainerState:
         self.trainer_spec = None
         self.batch_size = None
         self.device = None
-
+        self.is_distributed = False
         # self.set_logger(verbose)
         #
         # # device

@@ -57,13 +57,14 @@ class AbstractTrainer(ABC, metaclass=ABCMeta):
         self.state.verbose = verbose
         self.data_loader = data_loader
         self.state.n_gpus = 1
+        self.state.is_distributed = trainer_spec.is_distributed_run()
         self.batch_size = trainer_spec.batch_size()
 
-        print(f"Data initialized {self.state.device} {self.state.rank} {self.state.world_size} {self.state.batch_size}")
-
-        print(f"Data initialized {self.state.is_notebook} {self.state.verbose} {self.state.is_notebook} {self.state.cuda_device_id}")
-
-        print(f"Data initialized {self.state.disable_pbar}")
+        # print(f"Data initialized {self.state.device} {self.state.rank} {self.state.world_size} {self.state.batch_size}")
+        # print(f"Data initialized {self.state.is_notebook} {self.state.verbose} "
+        #       f"{self.state.is_notebook} {self.state.cuda_device_id}")
+        #
+        # print(f"Data initialized {self.state.disable_pbar}")
 
         if trainer_spec is None:
             raise TrainerError("Trainer specification is None")

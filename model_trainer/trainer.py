@@ -953,7 +953,6 @@ class Trainer(AbstractTrainer, ABC):
         total_accuracy = 0
         current_total_loss = 0
         step = self.get_last_iterator(model_name, layer_name)
-        print("got back ", step)
         self.metric.update_bach_estimated(len(self._train_loader))
         self._callback.on_loader_begin()
         self.metric.on_batch_start()
@@ -974,18 +973,9 @@ class Trainer(AbstractTrainer, ABC):
 
             loss.backward()
             if self.clip_grad:
-                print("clip", step)
-                print("clip", self.state.batch_size)
-                print("dataloader batch size", self.data_loader.get_batch_size())
-                print("dataset len", len(self._train_loader.dataset))
-                print("batch len", len(self._train_loader))
-
-                # print("dataset", self._train_loader.batch_size)
-
                 grad_norm = clip_grad_norm_(model.parameters(), self.state.trainer_spec.grad_clip_thresh())
                 self.metric.update(batch_idx, step, normal_loss, grad_norm=grad_norm.item(), validation=False)
             else:
-                print("uncliped", step)
                 grad_norm = loss
                 self.metric.update(batch_idx, step, normal_loss, grad_norm=None, validation=False)
 
@@ -1102,7 +1092,8 @@ class Trainer(AbstractTrainer, ABC):
         Cleanup call
         :return:
         """
-        dist.destroy_process_group()
+        if self.state.trainer_spec.is_distributed_run():
+            dist.destroy_process_group()
         logger.info(f"Rank {self.state.rank} is done.")
 
     @staticmethod
@@ -1200,10 +1191,8 @@ class Trainer(AbstractTrainer, ABC):
             # update epoch
             self.epoch = epoch
             # train epoch's batch
-            self.metric.start_epoch_timer(epoch)
             self.metric.on_epoch_begin()
             self.train_epoch(model, model_name, layer_name, optimizer)
-            self.metric.update_epoch_timer(epoch)
             self.metric.on_epoch_end()
             validation_loss += self.validate_epoch(model, model_name, layer_name, epoch)
             # if self.is_hp_tunner:
