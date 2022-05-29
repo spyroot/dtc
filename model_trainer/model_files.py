@@ -250,10 +250,12 @@ class ModelFiles:
         TODO merge the code
         """
         file_path = str(self._dirs["logs"] / self.file_name_generator(suffix="metric", file_type=file_type))
-        if remove_old:
+        if remove_old and Path(file_path).exists():
             try:
-                os.remove(file_path)
+                    os.remove(file_path)
             except PermissionError as e:
+                print(f'Failed to delete a file permission error. {file_path}, err:{e}')
+            except Exception as e:
                 print(f'Failed to delete a file. {file_path}, err:{e}')
         return str(self._dirs["logs"] / self.file_name_generator(suffix="metric", file_type=file_type))
 
@@ -266,10 +268,12 @@ class ModelFiles:
         :return:
         """
         file_path = str(self._dirs["logs"] / self.file_name_generator(suffix=trace_name, file_type=file_type))
-        if remove_old:
+        if remove_old and Path(file_path).exists():
             try:
                 os.remove(file_path)
             except PermissionError as e:
+                print(f'Failed to delete a file permission error. {file_path}, err:{e}')
+            except Exception as e:
                 print(f'Failed to delete a file. {file_path}, err:{e}')
         return file_path
 
