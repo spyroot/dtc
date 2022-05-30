@@ -1539,8 +1539,8 @@ class Trainer(AbstractTrainer, ABC):
             #     sys.exit(1)
             validation_loss += self.validate_epoch(model, model_name, layer_name, epoch)
             self._callback.on_epoch_end()
-            # if self.state.is_hp_tunner:
-            #     break
+            if self.state.is_hp_tunner:
+                break
 
             # with tune.checkpoint_dir(epoch) as checkpoint_dir:
             #     path = os.path.join(checkpoint_dir, "checkpoint")
