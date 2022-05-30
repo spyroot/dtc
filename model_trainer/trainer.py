@@ -1311,17 +1311,18 @@ class Trainer(AbstractTrainer, ABC):
                     scheduler.step()
 
             # self.log_if_needed(it, loss, grad_norm, duration)
-            if self.state.rank == 0 and current_step != 0 and current_step % tbar_update_rate == 0:
-                self.tqdm_iter.set_postfix({'step': current_step,
-                                            'loss': normal_loss,
-                                            'batch_loss': current_total_loss // max(1, batch_idx + 1),
-                                            'avg loss': self.metric.total_mean_loss(),
-                                            'mel_loss': mel_loss.item(),
-                                            'gate_loss': gate_loss.item(),
-                                            'clip_loss': grad_norm.item(),
-                                            'batch': f"{batch_idx}/{self.state.batch_size}",
-                                            'lr': optimizer.param_groups[0]['lr'],
-                                            'saved step': self.saved_run})
+            if not self.is_hp_tunner:
+                if self.state.rank == 0 and current_step != 0 and current_step % tbar_update_rate == 0:
+                    self.tqdm_iter.set_postfix({'step': current_step,
+                                                'loss': normal_loss,
+                                                'batch_loss': current_total_loss // max(1, batch_idx + 1),
+                                                'avg loss': self.metric.total_mean_loss(),
+                                                'mel_loss': mel_loss.item(),
+                                                'gate_loss': gate_loss.item(),
+                                                'clip_loss': grad_norm.item(),
+                                                'batch': f"{batch_idx}/{self.state.batch_size}",
+                                                'lr': optimizer.param_groups[0]['lr'],
+                                                'saved step': self.state.saved_run})
             # # run prediction if_needed
             # if step != 0 and step % self.state.trainer_spec.predict() == 0:
             #     prediction_accuracy = self.validate(model, model_name, step)
