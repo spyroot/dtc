@@ -1,5 +1,6 @@
 import os
 import sys
+import warnings
 from pathlib import Path
 from typing import List, Callable, Optional
 from typing import Type
@@ -1613,9 +1614,10 @@ class ExperimentSpecs:
         if self.is_initialized() is False:
             raise TrainerSpecError("Training must be initialized first.")
 
-        if 'grad_clip_thresh' in self._setting:
-            return float(self._setting['grad_clipping'])
+        if 'grad_max_norm' in self._setting:
+            return float(self._setting['grad_max_norm'])
 
+        print("return default")
         return 1.0
 
     @staticmethod
@@ -1789,6 +1791,32 @@ class ExperimentSpecs:
         if 'sequential_sampler' in self._setting:
             return self._setting['sequential_sampler']
         return False
+
+    def get_tuner_spec(self):
+        if 'ray' in self.config:
+            return self.config['ray']
+        return {}
+
+    def update_grad_clip(self, grad_clip_rate: float):
+        """
+        Update gradient max norm clip.
+
+        :param grad_clip_rate:
+        :return:
+        """
+        if grad_clip_rate > 1.0:
+            warnings.warn("Grad clip must be in range 0.0 - 1.0.")
+            return
+
+        if grad_clip_rate < 0.0:
+            warnings.warn("Grad clip must be in range 0.0 - 1.0.")
+            return
+
+        if 'grad_max_norm' not in self._setting:
+            warnings.warn("Current setting has no grad_max_norm.")
+            return
+
+        self._setting['grad_max_norm'] = float(grad_clip_rate)
 
 
 

@@ -366,6 +366,9 @@ class Trainable(tune.Trainable, Callback):
         else:
             batch_size = spec.batch_size()
 
+        if 'grad_clip' in config:
+            config['spec'].update_grad_clip(config['grad_clip'])
+
         SFTFDataloader.set_logger(False)
         data = SFTFDataloader(config['spec'],
                               batch_size=batch_size,
@@ -395,8 +398,8 @@ class Trainable(tune.Trainable, Callback):
         #            format="{elapsed} {level} {message}",
         #            filter="model_trainer.trainer", level="INFO", rotation="1h")
 
-        self.trainer.set_logger(is_enable=True)
-        self.trainer.metric.set_logger(is_enable=True)
+        self.trainer.set_logger(is_enable=False)
+        self.trainer.metric.set_logger(is_enable=False)
 
     def on_epoch_begin(self):
         # loss = validation_loss)
@@ -428,7 +431,6 @@ class Trainable(tune.Trainable, Callback):
 
     def step(self):
         """
-
         :return:
         """
         self.trainer.train_optimizer(self.config)
@@ -443,15 +445,6 @@ class Trainable(tune.Trainable, Callback):
         }
 
     # def reset_config(self, new_config):
-    #     self.trainer.update_optimizer(new_config)
-    #     for param_group in self.optimizer.param_groups:
-    #         if "lr" in new_config:
-    #             param_group["lr"] = new_config["lr"]
-    #         if "momentum" in new_config:
-    #             param_group["momentum"] = new_config["momentum"]
-    #
-    #     self.model = ConvNet()
-    #     self.config = new_config
     #     return True
 
 
@@ -491,8 +484,6 @@ def tune_hyperparam(spec=None, cmd_args=None, device=None, cudnn_bench=False):
 
     try:
 
-        pickle.dumps(Trainer)
-
         metric = 'mean_train_loss'
         scheduler = ASHAScheduler(
                 metric=metric,
@@ -507,27 +498,51 @@ def tune_hyperparam(spec=None, cmd_args=None, device=None, cudnn_bench=False):
                 # parameter_columns=["l1", "l2", "lr", "batch_size"],
                 metric_columns=[metric, "training_iteration"])
 
+        ray_spec = spec.get_tuner_spec()
+
         config = {
-            # "l1": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
-            # "l2": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
             "spec": spec,
             "world_size": int(0),
             "device": device,
-            "lr": ray.tune.loguniform(1e-4, 1e-1),
-            "batch_size": ray.tune.choice([2, 4, 8])
-            # "batch_size": ray.tune.choice([2, 4, 8, 16, 32, 64, 128])
         }
 
+        if 'batch_size' in ray_spec:
+            config['batch_size'] = ray.tune.choice(ray_spec['batch_size'])
+
+        if 'lr_min' in ray_spec and 'lr_max' in ray_spec:
+            config['lr'] = ray.tune.loguniform(ray_spec['lr_min'], ray_spec['lr_max'])
+
+        if 'num_samples' not in ray_spec:
+            print("Please indicate num_samples ray need take.")
+            return
+
+        if 'checkpoint_freq' not in ray_spec:
+            print("Please checkpoint_freq ray need take.")
+            return
+
+        if 'resources' not in ray_spec:
+            print("Please indicate resources ray can use.")
+            return
+
+        resources = ray_spec['resources']
+
+        # optional
+        if 'grad_clip' in ray_spec:
+            grad_clip_spec = ray_spec['grad_clip']
+            if 'min' in grad_clip_spec and 'max' in grad_clip_spec:
+                config['grad_clip'] = ray.tune.loguniform(float(grad_clip_spec['min']),   float(grad_clip_spec['max']))
+
         tuner_result = ray.tune.run(Trainable,
-                                    resources_per_trial={"cpu": 4, "gpu": 1},
+                                    resources_per_trial={"cpu": int(resources['cpu']),
+                                                         "gpu": int(resources['gpu'])},
                                     config=config,
-                                    num_samples=10,
+                                    num_samples=ray_spec['num_samples'],
                                     scheduler=scheduler,
-                                    checkpoint_freq=2,
+                                    checkpoint_freq=ray_spec['checkpoint_freq'],
                                     local_dir=spec.model_files.get_tuner_log_dir(),
                                     stop={
                                         # "mean_accuracy": 0.95,
-                                        "training_iteration": 3 if cmd_args.smoke_test else 20,
+                                        "training_iteration": 2 if cmd_args.smoke_test else 20,
                                     },
                                     max_concurrent_trials=1,
                                     progress_reporter=reporter)
@@ -537,25 +552,6 @@ def tune_hyperparam(spec=None, cmd_args=None, device=None, cudnn_bench=False):
         print("Best trial final train loss: {}".format(best_trial.last_result[metric]))
         # print("Best trial final validation accuracy: {}".format(best_trial.last_result["accuracy"]))
         # print('best config: ', analysis.get_best_config(metric="score", mode="max"))
-        # tuner_result = ray.tune.run(
-        #         tune.with_parameters(
-        #                 Trainer(spec,
-        #                         SFTFDataloader(spec, rank=cmd_args.rank,
-        #                                        world_size=cmd_args.world_size,
-        #                                        verbose=args.verbose),
-        #                         rank=int(args.rank),
-        #                         world_size=int(cmd_args.world_size),
-        #                         verbose=args.verbose, device=device,
-        #                         callback=[BatchTimer()],
-        #                         config=config,
-        #                         checkpoint_dir=spec.model_files.get_tuner_dir())
-        #         ),
-        #         resources_per_trial={"gpu": 1},
-        #         config=config,
-        #         num_samples=10,
-        #         scheduler=scheduler,
-        #         stop={"training_iteration": 5},
-        #         progress_reporter=reporter)
 
     except TrainerError as e:
         print("Error: trainer error: ", e)
@@ -578,9 +574,6 @@ def train(spec=None, cmd_args=None, device=None, cudnn_bench=False):
     """
     if int(cmd_args.rank) == 0:
         logger.info("Staring rank zero node.")
-
-    if args.tune:
-        tune_hyperparam(spec, cmd_args, device, cudnn_bench)
 
     if spec.is_distributed_run():
         logger.info("Staring training in distributed settings. "
@@ -762,6 +755,9 @@ def main(cmd_args):
     if cmd_args.convert:
         convert(trainer_spec, dataset_name=cmd_args.dataset_name, verbose=cmd_args.verbose)
         return
+
+    if cmd_args.tune:
+        return tune_hyperparam(spec=trainer_spec, cmd_args=cmd_args, device=_device)
 
     trainer_spec.model_files.build_dir()
     if cmd_args.train:

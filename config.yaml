@@ -132,7 +132,7 @@ settings:
   small:
     batch_size: 64
     grad_clipping: True
-    grad_clip_thresh: 1.0
+    grad_max_norm : 1.0
     # tensorboard update rate
     tensorboard_update: 20
     # early stopping
@@ -298,3 +298,19 @@ models:
       optimizer: edge_optimizer
       lr_scheduler: main_lr_scheduler
       input_size: 1
+
+
+ray:
+  batch_size: [1, 2, 4, 8, 16, 32, 64, 128]
+  lr_min: 1e-4
+  lr_max: 1e-1
+  num_samples: 10
+  checkpoint_freq: 4
+  resources:
+    cpu: 4
+    gpu: 1
+  attention_location_filters: 32
+  attention_kernel_size: 31
+  grad_clip:
+    min: 0.5
+    max: 1.0

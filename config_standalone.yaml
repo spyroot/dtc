@@ -155,7 +155,7 @@ settings:
     epochs: 500
     batch_size: 4
     grad_clipping: True
-    grad_clip_thresh: 1.0              # grad_clip_thresh rate
+    grad_max_norm: 1.0                 # grad_max_norm rate
     tensorboard_update: 20             # tensorboard_update update rate iter
     early_stopping: True               # tensorboard update rate
     console_log_rate: 4                # when to log to console
@@ -286,3 +286,17 @@ models:
       optimizer: edge_optimizer
       lr_scheduler: main_lr_scheduler
       input_size: 1
+
+ray:
+  batch_size: [1, 2, 4, 8, 16, 32, 64, 128]
+  lr_min: 0.0001
+  lr_max: 0.1
+  checkpoint_freq: 4
+  num_samples: 10
+  resources:
+    cpu: 4
+    gpu: 1
+  grad_clip:
+    min: 0.5
+    max: 1.0
+
