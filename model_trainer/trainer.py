@@ -1311,7 +1311,7 @@ class Trainer(AbstractTrainer, ABC):
                     scheduler.step()
 
             # self.log_if_needed(it, loss, grad_norm, duration)
-            if not self.is_hp_tunner:
+            if not self.state.is_hp_tunner:
                 if self.state.rank == 0 and current_step != 0 and current_step % tbar_update_rate == 0:
                     self.tqdm_iter.set_postfix({'step': current_step,
                                                 'loss': normal_loss,
