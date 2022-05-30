@@ -1339,15 +1339,15 @@ class Trainer(AbstractTrainer, ABC):
             if not self.state.is_hp_tunner:
                 if self.state.rank == 0 and current_step != 0 and current_step % tbar_update_rate == 0:
                     self.tqdm_iter.set_postfix({'step': current_step,
+                                                'grad': grad_norm.item(),
+                                                'batch mean': self.metric.batch_grad_loss.mean(),
                                                 'loss': normal_loss,
-                                                'batch_loss': self.metric.batch_grad_loss.mean(),
-                                                'avg loss': self.metric.epoch_train_gn_loss.mean(),
-                                                'mel_loss': mel_loss.item(),
-                                                'gate_loss': gate_loss.item(),
-                                                'clip_loss': grad_norm.item(),
+                                                'epoch': self.metric.epoch_train_gn_loss.mean(),
+                                                'mel': mel_loss.item(),
+                                                'gate': gate_loss.item(),
                                                 'batch': f"{batch_idx}/{loader_data_size}",
                                                 'lr': optimizer.param_groups[0]['lr'],
-                                                'saved step': self.state.saved_run})
+                                                'saved': self.state.saved_run})
             # # run prediction if_needed
             # if step != 0 and step % self.state.trainer_spec.predict() == 0:
             #     prediction_accuracy = self.validate(model, model_name, step)
