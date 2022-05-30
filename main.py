@@ -35,6 +35,7 @@ from ray.tune import CLIReporter
 from ray.tune.schedulers import ASHAScheduler
 from ray import tune
 from ray.tune.suggest.optuna import OptunaSearch
+import warnings
 
 os.environ["NCCL_DEBUG"] = "INFO"
 os.environ["NCCL_IB_DISABLE"] = "1"
@@ -43,8 +44,6 @@ os.environ["LOCAL_RANK"] = "0"
 os.environ["RANK"] = "0"
 os.environ["WORLD_SIZE"] = "2"
 os.environ["TUNE_DISABLE_AUTO_CALLBACK_SYNCER"] = "1"
-
-import warnings
 
 warnings.filterwarnings("ignore")
 
@@ -63,6 +62,7 @@ def convert_mel_to_data(encoder_spec: TacotronSpec,
                         post_check=True,
                         verbose=True):
     """
+    Convert audio dataset to MEL tensor representation.
 
     :param encoder_spec:  all parameter for SFTS encoder
     :param dataset: list.

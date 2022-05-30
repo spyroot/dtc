@@ -1,7 +1,7 @@
 train: True                 # train or not,  default is True for generation we only need load pre-trained model
 #active: 'grid_small'       # dataset set generated.
 #use_dataset: 'LJSpeechSmallPkl'     # dataset set generated.
-use_dataset: 'ljcheep1k_tensor'      # dataset set generated.
+use_dataset: 'ljmini'      # dataset set generated.
 use_model: 'tacotron25'            # model to use , it must be defined in models section.
 draw_prediction: True       # at the of training draw.
 load_model: True            # load model or not, and what
@@ -94,12 +94,12 @@ datasets:
       - "b9ac25f3e8e3b423b63c184d6ba80fb5"
       - "fe756f00ce48208df6932bd2070f91b7"
       - "1c5e612dc2e39ad43263c6c590f9d3a8"
-  LJSpeechSmallPkl:
+  ljmini:
     ds_type: "audio"
     dir: "~/Dropbox/Datasets/LJSpeechSmall"
     format: tensor_mel
-    training_meta: LJSpeechSmall_train_80.pt
-    validation_meta: LJSpeechSmall_validate_80.pt
+    training_meta: LJSpeech_train_num_sam_129_filter_80.pt
+    validation_meta: LJSpeech_validate_num_sam_100_filter_80.pt
     test_meta: LJSpeechSmall_test_80.pt
     meta: metadata.csv
     recursive: False
