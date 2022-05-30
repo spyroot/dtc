@@ -347,8 +347,15 @@ def init_distributed(spec=None, rank=0, world_size=0) -> None:
 
 
 class Trainable(tune.Trainable, Callback):
-    def setup(self, config):
+    """
 
+    """
+    def setup(self, config):
+        """
+
+        :param config:
+        :return:
+        """
         self.config = config
         spec = config['spec']
 
@@ -376,7 +383,8 @@ class Trainable(tune.Trainable, Callback):
                                hp_tunner=True,
                                disable_pbar=True)
 
-        self.trainer.set_logger(False)
+        self.trainer.set_logger(is_enable=True)
+        self.trainer.metric.set_logger(is_enable=True)
 
     def on_epoch_begin(self):
         # loss = validation_loss)
@@ -393,8 +401,9 @@ class Trainable(tune.Trainable, Callback):
         """
         print("called save_checkpoint with tmp dir ", tmp_dir)
         checkpoint_path = os.path.join(tmp_dir, "model.pth")
-        self.trainer.save_models(checkpoint_path)
-        return tmp_dir
+        self.trainer.save_model_layer("spectrogram_layer", checkpoint_path)
+
+        return checkpoint_path
 
     def load_checkpoint(self, tmp_dir):
         """
@@ -402,12 +411,11 @@ class Trainable(tune.Trainable, Callback):
         :param tmp_dir:
         :return:
         """
-        self.trainer.load_models()
-        self.trainer.lo
+
         print("called save_checkpoint with tmp dir ", tmp_dir)
-        # for model in self._models:
-        #     for model_layer in self.trainer._models[model]:
-        #         self.model.load_state_dict(torch.load(checkpoint_path))
+        checkpoint_path = os.path.join(tmp_dir, "model.pth")
+        self.trainer.load_model_layer("spectrogram_layer", checkpoint_path)
+        return checkpoint_path
 
     def step(self):
         """
