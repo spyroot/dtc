@@ -1667,7 +1667,7 @@ class ExperimentSpecs:
         if 'type' not in model_strategy_spec:
             raise TrainerSpecError("Strategy must contain type.")
 
-        return model_strategy_spec['type']
+        return model_strategy_spec['type'].lower()
 
     def is_backup_before_save(self):
         pass

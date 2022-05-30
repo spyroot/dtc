@@ -30,6 +30,16 @@ class TrainerState:
         self.is_distributed = False
         self.is_amp = False
 
+        self.current_model = None
+        self.current_layer = None
+
+        # current epoch trainer executing.
+        self.epoch = None
+        self.step = None
+
+        # last saved run
+        self.saved_run = None
+
         # self.set_logger(verbose)
         #
         # # device

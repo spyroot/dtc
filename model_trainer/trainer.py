@@ -5,7 +5,9 @@
 # import torch.distributed as dist
 # import queue
 import random
+import sys
 from abc import ABC
+from pathlib import Path
 from typing import Callable, Optional
 
 import numpy as np
@@ -100,6 +102,13 @@ class Trainer(AbstractTrainer, ABC):
                                       cuda_device_id=cuda_device_id,
                                       is_inference=is_inference)
 
+        # unit testing flags.
+
+        self._brake_epoch_loop = 1
+        self._brake_epoch_train = False
+        self.state.batch_size = data_loader.get_batch_size()
+
+        # end unit test.
         if config is not None:
             self.config = config
 
@@ -136,20 +145,22 @@ class Trainer(AbstractTrainer, ABC):
 
         # TODO need refactor that, and move to dict and abstract,
         self.criterion = Tacotron2Loss()
+
         # dict store all model
         self._models = {}
+
         # store last epoch
         self._last_ckt_epochs: dict[str, dict[str, int]] = {}
+
         # dict holds model name = last iterator value
-        self._steps: dict[str, int] = {}
-        #
+        self._last_step: dict[str, int] = {}
+
+        #  torch.cuda.amp.GradScaler for automatic mixed precision
         self.scaler = None
-        # tqdm_iter, if we need fix post of iter
+
+        # tqdm_iter, if we need fix post or pre or update state.
+        # only rank 0 upate that.
         self.tqdm_iter = None
-        # current epoch trainer executing.
-        self.epoch = None
-        # last saved run
-        self.saved_run = None
 
         self.clip_grad = False
         self.total_batches = 0
@@ -169,13 +180,20 @@ class Trainer(AbstractTrainer, ABC):
                                   verbose=False)
 
         self._callback = BaseCallbacks(callbacks=callback)
+
         # self.callbacks.set
         logger.info("Device ID {}".format(self.state.cuda_device_id))
         # main queue note that train loop can re-add model back for training.
+
+        # depend on a strategy how we train models.
+        # in sequential case, train model my_model
+        # than sub-model of model my_model
         self.q = deque()
+
         # late we will move this to factory
-        # type class that will do creation
+        # type class that will do all creation.
         self.model_creator, self.trainer_dispatcher, self._batch_loader = self.create_model_dispatch()
+
         # init trainer
         self.init_trainer()
 
@@ -185,7 +203,6 @@ class Trainer(AbstractTrainer, ABC):
     #     :return:
     #     """
     #
-    #     print("Got checkpoint dir")
     #     return self.train()
 
     def get_models(self):
@@ -260,7 +277,10 @@ class Trainer(AbstractTrainer, ABC):
 
     def create_tacotron25(self, is_set_cuda=False) -> nn.Module:
         """
-        Factor method, creator for tacotron 2.5
+        Factor method, creator for tacotron 2.5.
+        TODO this one will be moved out of trainer.
+        So we will have clear separation between trainer state , creation
+        etc.
         :return:
         """
         logger.debug("Creating tacotron25 model.")
@@ -320,10 +340,11 @@ class Trainer(AbstractTrainer, ABC):
         :return: nothing
         :param is_set_cuda: will pin directly
         """
-        logger.info(f"Creating layer {model_name} {layer_name}")
+        logger.info(f"Creating a model {model_name} layer: {layer_name}.")
         if model_name not in self.model_creator:
             raise ValueError("Unknown {} model for a "
-                             "trainer, supported models are {}".format(model_name, list(self.model_creator.keys())))
+                             "trainer, supported"
+                             " models are {}".format(model_name, list(self.model_creator.keys())))
 
         creator = self.model_creator[model_name][layer_name]
         if model_name not in self._models:
@@ -331,7 +352,7 @@ class Trainer(AbstractTrainer, ABC):
 
         m = creator(is_set_cuda)
         if m is None:
-            raise TrainerError("Failed create a model. {}".format(creator.__name__))
+            raise TrainerError("Failed create a model. {}.".format(creator.__name__))
 
         self._models[model_name][layer_name] = m
         logger.debug(f"Added model layer {layer_name} to a model {model_name}")
@@ -340,11 +361,13 @@ class Trainer(AbstractTrainer, ABC):
 
         # update last epoch
         self._last_ckt_epochs[model_name][layer_name] = 0
+        self._last_step[layer_name] = 0
 
     def create_models(self):
         """
         For each active model, which might consist two or more models.
-        we create a target model
+        Each model store in internal dict.
+
         :return: nothing, create_model will add each model to a dict[model_name] = model
         """
         active_model = self.state.trainer_spec.get_active_model()
@@ -352,60 +375,133 @@ class Trainer(AbstractTrainer, ABC):
         for m in _models:
             self._create_model_layers(active_model, m)
 
-    def load(self, model_name: str, layer_name: str, to_device=True, ignore_layers=None, model_file=None):
+    def load_models(self, to_device=True, ignore_layers=None):
+        """
+        Load al models.
+        :return:
+        """
+        if self.rank > 0:
+            print(f"Skiping loading. node rank {self.rank}")
+
+        for model in self._models:
+            for layer in self._models[model]:
+                self.load(model_name=model, layer_name=layer, to_device=to_device, ignore_layers=ignore_layers)
+
+    # def load_model(self, model_file=None):
+    #
+    #     if model_file is not None:
+    #         load_models(model_)
+    #
+    #     if model_file is None:
+    #         model_file = self.state.trainer_spec.model_files.get_model_file_path(model_name)
+    #     else:
+    #         model_file = self.state.trainer_spec.model_files.get_model_file_path(model_name)
+
+    def load(self):
+        """
+        :return:
+        """
+        if self.state.rank > 0:
+            print(f"Skipping loading. node rank {self.rank}")
+
+        for m in self._models:
+            for layer in self._models[m]:
+                model_file = self.state.trainer_spec.model_files.get_model_file_path(layer)
+                self._load_model(model_name=m, layer_name=layer, file_path=model_file)
+
+    def _load_model(self, model_name: str, layer_name: str, to_device=True,
+                    ignore_layers=None, file_path=None, skip_opt_state=False,
+                    strict=False):
         """
         Method loads model from a checkpoint.  It will update internal state,
         that include model, last epoch, last step.
 
         :param model_name: - mode name that method need to load
         :param layer_name: - layer of model that we need load.
-        :param model_file: - model file.
+        :param file_path:  - path to a particular model file.
         :param ignore_layers: - a list contain of layers we skip
         :param to_device: - if true will load to device indicate as main device
+        :param skip_opt_state:  by default we always load optimizer, if skip we skip
         :return: epoch, step
         """
         # setting in config, if set don't load trainer won't load model
-        if not self.state.trainer_spec.is_load_model():
-            return 0
+        last_epoch = 0
+        last_step = 0
 
         if self.is_hp_tunner:
-            return 0
+            print("Hyperparameter tunner, skipping.... loading.")
+            return last_epoch, last_step
 
-        if model_file is None:
-            model_file = self.state.trainer_spec.model_files.get_model_file_path(model_name)
+        if not self.state.trainer_spec.is_load_model():
+            print("Configuration set to skip loading models.")
+            return last_epoch, last_step
+
+        # by default, we use layer_name
+        if file_path is None:
+            p = Path(self.state.trainer_spec.model_files.get_model_file_path(layer_name))
         else:
-            model_file = self.state.trainer_spec.model_files.get_model_file_path(model_name)
+            p = Path(file_path).expanduser()
 
-        logger.info("Loading model '{}' model file name {}".format(model_name, model_file))
+        resolved_path = p.resolve()
+        if not resolved_path.exists():
+            self._last_ckt_epochs[model_name][layer_name] = last_epoch
+            self._last_step[layer_name] = last_step
+            return False
+        if not resolved_path.is_file():
+            raise TrainerError(f"Provided path is not a file {file_path}.")
+        resolved_path = str(resolved_path)
+
+        print(f"Loading model node rank {self.state.rank} '{model_name}' "
+              f"model {layer_name} fro file {resolved_path}.")
+
+        logger.info(f"Loading model node rank {self.state.rank} "
+                    f"'{model_name}' model {layer_name} fro file {resolved_path}.")
+
         # load trained optimizer state_dict
         try:
             if to_device:
                 if self.state.trainer_spec.is_distributed_run():
-                    self._models[model_name].to(self.rank)
+                    self._models[model_name][layer_name].to(self.state.rank)
                 else:
-                    self._models[model_name].to(self.state.device)
+                    if {self.state.device} == "cpu":
+                        print(f"Sending model to {self.state.device} device.")
+                    else:
+                        print(f"Sending model to {self.state.device} device,"
+                              f" cuda device id {self.state.cuda_device_id}.")
+                    self._models[model_name][layer_name].to(self.state.device)
 
             if to_device:
-                checkpoint = torch.load(model_file, map_location=self.state.device)
+                print(f"Loading checkpoint to device and map location {self.state.device}")
+                checkpoint = torch.load(resolved_path, map_location=self.state.device)
             else:
-                checkpoint = torch.load(model_file)
+                print(f"Loading checkpoint from {resolved_path}.")
+                checkpoint = torch.load(resolved_path)
 
             if 'model_state_dict' not in checkpoint:
-                raise TrainerError("model has no state dict")
+                raise TrainerError(f"{model_name} layer {layer_name} has no state dict.")
+
+            if model_name not in self._models:
+                raise TrainerError(f"{model_name} not created. You need first create model.")
+
+            if layer_name not in self._models[model_name]:
+                raise TrainerError(f"{layer_name} not in model create.")
 
             self._models[model_name][layer_name].load_state_dict(checkpoint['model_state_dict'])
             if 'model_state_dict' not in checkpoint:
-                raise TrainerError("model has no state dict")
+                raise TrainerError("model has no state dict.")
 
-            self._optimizers[model_name][layer_name].load_state_dict(checkpoint['optimizer_state_dict'])
-            if 'optimizer_state_dict' not in checkpoint:
-                raise TrainerError("model has no optimizer_state_dict")
+            if not skip_opt_state:
+                logger.debug(f"Loading optimizer state for model {model_name} layer {layer_name}.")
+                self._optimizers[model_name][layer_name].load_state_dict(checkpoint['optimizer_state_dict'])
+                if 'optimizer_state_dict' not in checkpoint:
+                    raise TrainerError(f"{model_name} has no optimizer_state_dict.")
 
             # if model has scheduler, re-create.
             if model_name in self._schedulers:
-                self._schedulers[model_name].load_state_dict(checkpoint['scheduler_state_dict'])
-                if 'scheduler_state_dict' not in checkpoint:
-                    raise TrainerError("model has no scheduler_state_dict")
+                if layer_name in self._schedulers[model_name]:
+                    self._schedulers[model_name].load_state_dict(checkpoint['scheduler_state_dict'])
+                    if 'scheduler_state_dict' not in checkpoint:
+                        raise TrainerError("model has no scheduler_state_dict")
 
             #  ignore layers.
             if ignore_layers is not None and len(ignore_layers) > 0:
@@ -417,32 +513,48 @@ class Trainer(AbstractTrainer, ABC):
 
             # self.state.trainer_spec.set_lr(0.00001)
             if 'epoch' not in checkpoint:
-                raise TrainerError("saved checkpoint has no epoch key")
+                raise TrainerError("saved checkpoint has no epoch.")
+
+            if model_name not in self._last_ckt_epochs:
+                self._last_ckt_epochs[model_name] = {}
             self._last_ckt_epochs[model_name][layer_name] = checkpoint['epoch']
 
             # load last iterator.
             if 'it' not in checkpoint:
                 raise TrainerError("saved checkpoint has no last iteration key.")
-            self._steps[layer_name] = checkpoint['it']
-            logger.info("Last checkpoint. epoch {} step {}".format(checkpoint['epoch'], checkpoint['it']))
+
+            if checkpoint['epoch'] is not None:
+                last_epoch = checkpoint['epoch']
+
+            if checkpoint['it'] is not None:
+                last_step = checkpoint['it']
+
+            self._last_ckt_epochs[model_name][layer_name] = last_epoch
+            self._last_step[layer_name] = last_step
+
+            print(f"Last checkpoint: {last_epoch}, step last step {last_step}.")
+            logger.info(f"Last checkpoint: {last_epoch}, step last step {last_step}.")
+
+            if last_epoch > 0 or last_step > 0:
+                print(f"Resuming training from from epoch {last_epoch}, step {last_step}.")
+                logger.info(f"Resuming training from epoch {last_epoch}, step {last_step}.")
 
             # load metric
             self.metric.load()
-
-            return checkpoint['epoch'], checkpoint['it']
+            return last_epoch, last_step
         except FileNotFoundError as e:
-            print("Failed load model files {}. No saved model found.".format(model_file))
-            logger.info(f"No model file to load model file, return default epoch 0, iteration 0 {e}")
-            logger.info(e)
+            print("Failed load model files {}. No saved model found.".format(file_path))
+            logger.error(f"No model file to load model file, return default epoch 0, iteration 0 {e}")
+            logger.error(e)
 
-        return 0, 0
+        return last_epoch, last_step
 
     def load_for_inference(self, model_name: str, layer_name: str, model_file=None, to_device=True, ignore_layers=None):
         """
         Method loads model from a checkpoint for inference.
 
-        :param model_name: - mode name that method need to load
-        :param layer_name: - layer we need load
+        :param model_name: - mode name that method need to load.
+        :param layer_name: - model layer we need load.
         :param model_file: - torch model file.
         :param ignore_layers: - a list contain of layers we skip
         :param to_device: - if true will load to device indicate as main device
@@ -471,14 +583,14 @@ class Trainer(AbstractTrainer, ABC):
                 self._models[model_name] = new_state
 
             if 'epoch' not in checkpoint:
-                raise TrainerError("saved checkpoint has no epoch key.")
+                raise TrainerError("Saved checkpoint has no epoch key.")
             self._last_ckt_epochs[model_name][layer_name] = checkpoint['epoch']
 
             # load last iterator.
             if 'it' not in checkpoint:
-                raise TrainerError("saved checkpoint has no last step key.")
+                raise TrainerError("Saved checkpoint has no last step key.")
 
-            self._steps[layer_name] = checkpoint['it']
+            self._last_step[layer_name] = checkpoint['it']
             logger.info("Last checkpoint. epoch {} step {}".format(checkpoint['epoch'], checkpoint['it']))
             return checkpoint['epoch'], checkpoint['it']
         except FileNotFoundError as e:
@@ -514,15 +626,9 @@ class Trainer(AbstractTrainer, ABC):
             tqdm_iter = tnrange(last_epoch, max_epochs)
         else:
             tqdm_iter = tqdm(range(last_epoch, max_epochs),
-                             desc=f"Training in progress, device {self.state.device} total batches {self.total_batches}",
+                             desc=f"Training in progress, device {self.state.device}, "
+                                  f"batch size {self.state.batch_size}",
                              disable=self.state.disable_pbar)
-            # total=self.get_last_iterator(model_name) * self.total_batches,
-            # desc="training")
-
-        # for b in trange(
-        #         epochs * self., unit_scale=0.1, unit="epoch",
-        #         bar_format="{l_bar}{bar}|{n:.1f}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]"
-        # ):
 
         # tqdm_iter.set_postfix({'total_epoch_loss': 0})
         return tqdm_iter
@@ -713,24 +819,166 @@ class Trainer(AbstractTrainer, ABC):
         #     logger.debug("Attaching lr scheduler.")
         #     self.create_lr_scheduler(model_name, layer, opt)
 
-    def save_if_need(self, model_name: str, layer_name: str,
-                     step: Optional[int] = 0,
-                     last_epoch=False) -> bool:
+    def save(self) -> None:
+        """
+        :return:
+        """
+        if self.state.rank > 0:
+            logger.info(f"Skipping saving, node rank {self.state.rank}")
+            return
+
+        if self.is_hp_tunner:
+            logger.info(f"Skipping saving, hyperparameter tunner.")
+            return
+
+        for m in self._models:
+            for layer in self._models[m]:
+                model_file = self.state.trainer_spec.model_files.get_model_file_path(layer)
+                if not self.state.disable_pbar:
+                    self.tqdm_iter.set_description(f"Saving in progress, device {self.state.device}")
+                self._save_model(model_name=m, layer_name=layer, file_path=model_file)
+
+    def _save_model(self, model_name: str, layer_name: str, file_path: str,
+                    epoch: Optional[int] = None,
+                    step: Optional[int] = None) -> None:
+        """
+
+        :param model_name: a mode saving
+        :param layer_name: a layer of model that , trainer saving
+        :param file_path:  a full path to a model
+        :param epoch: if we need save epoch
+        :param step:  if we need save last step
+        :return: nothing
+        """
+
+        last_epoch = self.state.epoch
+        last_step = self.state.step
+
+        if step is not None:
+            last_step = step
+
+        if model_name is None or len(model_name) == 0:
+            raise TrainerError(f"Can't save model, model name argument is empty.")
+        if layer_name is None or len(layer_name) == 0:
+            raise TrainerError(f"Can't save model {model_name}, layer name argument is empty.")
+        if file_path is None or len(file_path) == 0:
+            raise TrainerError(f"Can't save model {model_name}, "
+                               f"layer name {layer_name} argument name is empty.")
+
+        if epoch is not None:
+            last_epoch = epoch
+
+        p = Path(file_path).expanduser()
+        if p.is_dir():
+            raise TrainerError("Invalid file_path.")
+
+        resolved_path = str(p.resolve())
+        logger.info('Saving node model {}'.format(resolved_path))
+        self._callback.saving_start()
+
+        is_saved = False
+        # TODO for not dirty fix/ need check no ops for scaled save, because I need store per mode layer.
+        if self.state.is_amp:
+            print(f"Saving model and auto precision state with scheduler state, "
+                  f"last epoch {last_epoch}, last step {last_step}, model file {resolved_path}.")
+            logger.info(f"Saving model and auto precision state with, "
+                        f"last epoch {last_epoch}, last step {last_step}, model file {resolved_path}.")
+            if model_name in self._schedulers:
+                logger.info("Model saving with optimizer and scheduler state.")
+                torch.save({'epoch': last_epoch, 'it': last_step,
+                            'model_state_dict': self._models[model_name][layer_name].state_dict(),
+                            'optimizer_state_dict': self._optimizers[model_name][layer_name].state_dict(),
+                            'scheduler_state_dict': self._schedulers[model_name].state_dict(),
+                            "scaler": self.scaler.state_dict()
+                            }, resolved_path)
+                is_saved = True
+
+            else:
+                print(f"Saving model and auto precision state without scheduler state, "
+                      f"last epoch {last_epoch}, last step {last_step}, model file {resolved_path}.")
+                logger.info(f"Saving model with without scheduler state, "
+                            f"last epoch {last_epoch}, last step {last_step}, model file {resolved_path}.")
+                logger.info("Model saving with optimizer without a scheduler state.")
+                torch.save({'epoch': last_epoch, 'it': last_step,
+                            'model_state_dict': self._models[model_name][layer_name].state_dict(),
+                            'optimizer_state_dict': self._optimizers[model_name][layer_name].state_dict(),
+                            "scaler": self.scaler.state_dict(),
+                            }, resolved_path)
+                is_saved = True
+
+        else:
+            if model_name in self._schedulers:
+                print(f"Saving model with scheduler state, "
+                      f"last epoch {last_epoch}, last step {last_step}, model file {resolved_path}.")
+                logger.info(f"Saving model with scheduler state, "
+                            f"last epoch {last_epoch}, last step {last_step}, model file {resolved_path}.")
+                torch.save({'epoch': last_epoch, 'it': last_step,
+                            'model_state_dict': self._models[model_name][layer_name].state_dict(),
+                            'optimizer_state_dict': self._optimizers[model_name][layer_name].state_dict(),
+                            'scheduler_state_dict': self._schedulers[model_name].state_dict()
+                            }, resolved_path)
+                is_saved = True
+
+            else:
+                print(f"Saving without scheduler state, "
+                      f"last epoch {last_epoch}, last step {last_step}")
+                print(f"Model file {resolved_path}.")
+                logger.info(f"Saving without scheduler state, "
+                            f"last epoch {last_epoch}, last step {last_step}, model file {resolved_path}.")
+                torch.save({'epoch': last_epoch, 'it': last_step,
+                            'model_state_dict': self._models[model_name][layer_name].state_dict(),
+                            'optimizer_state_dict': self._optimizers[model_name][layer_name].state_dict(),
+                            }, resolved_path)
+                is_saved = True
+
+        if is_saved:
+            self.state.saved_run = last_step
+            self._last_ckt_epochs[model_name][layer_name] = last_epoch
+
+    def save_model_layer(self, layer_name: str, model_file: str, step=0):
+        """
+        Save's all models.
+
+        :param layer_name:
+        :param model_file:
+        :param step:
+        :return:
+        """
+        for m in self._models:
+            for layer in self._models[m]:
+                self.save_model(model_name=m, layer_name=layer, model_file=model_file, step=step)
+
+    def save_models(self, model_files: list[str], step=0):
+        """
+        Save's all models.
+
+        :param model_files:
+        :param step:
+        :return:
+        """
+        for m in self._models:
+            if len(self._models[m]) == len(model_files):
+                for i, layer in enumerate(self._models[m]):
+                    self.save_model(model_name=m, layer_name=layer,
+                                    model_file=model_files[i],
+                                    step=step)
+            else:
+                raise TrainerError(f"Model contains {len(self._models[m])} layers, "
+                                   f"each sub-layer must have must have one file per model.")
+
+    def save_if_need(self, step: int) -> bool:
         """
         Method called by trainer, to check if model 
         or model layer need to save or not.
-        
-        :param layer_name:
-        :param step: Current step in iteration , monotonic counter.
-        :param model_name:  active model
-        :param last_epoch: if it last we save a model.
         """
         if self.is_hp_tunner:
             return False
 
+        if self.state.trainer_spec.is_save_required() is False:
+            return False
+
         # by default condition to save epoch , if save per iteration we check iteration.
-        if self.state.trainer_spec.is_save_required() is False or step == 0 or \
-                self.state.trainer_spec.epochs_save() == 0:
+        if step == 0:
             return False
 
         # in case we run distributed no need save.
@@ -739,49 +987,14 @@ class Trainer(AbstractTrainer, ABC):
 
         # model save predicate condition, either iteration or epoch counter.
         # for large model it makes sense to track iteration vs epoch counter.
-        model_file = self.state.trainer_spec.model_files.get_model_file_path(layer_name)
-        save_condition = self.epoch if self.state.trainer_spec.is_save_iteration() else step
-        if save_condition == 0 or save_condition == self.saved_run:
+        save_condition = self.state.epoch if self.state.trainer_spec.is_save_iteration() else self.state.step
+        if save_condition == 0 or save_condition == self.state.saved_run:
             return False
 
         # do nothing
-        if last_epoch is True or save_condition % self.state.trainer_spec.epochs_save() == 0:
-            if self.state.trainer_spec.is_train_verbose():
-                logger.info('Saving node model {}'.format(model_file))
-                self._callback.saving_start()
-                # backup before safe.
-                # if self.state.trainer_spec.is_backup_before_save():
-                #     self.backup_model(model_file)
-            if model_name in self._schedulers:
-                logger.info("Model saving with optimizer and scheduler state.")
-                torch.save({
-                    'epoch': self.epoch, 'it': step,
-                    'model_state_dict': self._models[model_name][layer_name].state_dict(),
-                    'optimizer_state_dict': self._optimizers[model_name][layer_name].state_dict(),
-                    'scheduler_state_dict': self._schedulers[model_name].state_dict()
-                }, model_file)
-            else:
-                # checkpoint = {"model": net.state_dict(),
-                #               "optimizer": opt.state_dict(),
-                #               "scaler": scaler.state_dict()}
-
-                # net.load_state_dict(checkpoint["model"])
-                # opt.load_state_dict(checkpoint["optimizer"])
-                # scaler.load_state_dict(checkpoint["scaler"])
-
-            ## First, check if your network fits an advanced use case. See also Prefer binary_cross_entropy_with_logits over binary_cross_entropy.
-
-
-                logger.info("Model saving with optimizer without a scheduler state.")
-                torch.save({
-                    'epoch': self.epoch,
-                    'it': step,
-                    'model_state_dict': self._models[model_name][layer_name].state_dict(),
-                    'optimizer_state_dict': self._optimizers[model_name][layer_name].state_dict(),
-                    #    'scheduler_state_dict': self.schedulers[model_name].state_dict()
-                }, model_file)
-
-            self.saved_run = save_condition
+        if save_condition % self.state.trainer_spec.epochs_save() == 0:
+            self.save()
+            self.state.saved_run = save_condition
             self._callback.saved()
             # save metrics
             self.metric.save()
@@ -789,10 +1002,12 @@ class Trainer(AbstractTrainer, ABC):
 
         return False
 
-    def validate_epoch(self, model: nn.Module, model_name: str, layer_name: str, step: Optional[int] = None):
+    def validate_epoch(self, model: nn.Module, model_name: str,
+                       layer_name: str, step: Optional[int] = None, warmup: Optional[bool] = False):
         """
         Validation epoch
 
+        :param warmup:
         :param model:  model we are training.
         :param model_name:  model_name a model we are training.
         :param layer_name: layer in that model we are training.
@@ -805,7 +1020,10 @@ class Trainer(AbstractTrainer, ABC):
         take_batch = self._batch_loader[model_name][layer_name]
         model.eval()
         self.metric.on_prediction_batch_start()
-        self.tqdm_iter.set_description("Validation in progress,")
+        if warmup:
+            self.tqdm_iter.set_description(f"Warm up in progress, device {self.state.device}")
+        else:
+            self.tqdm_iter.set_description(f"Validation in progress, device {self.state.device}")
         with torch.no_grad():
             total_prediction_loss = 0.0
             for batch_idx, batch in enumerate(self._validation_loader):
@@ -836,7 +1054,7 @@ class Trainer(AbstractTrainer, ABC):
                                             'gate_loss': gate_loss.item(),
                                             'clip_loss': loss.item(),
                                             'batch': f"{batch_idx}/{self.state.batch_size}",
-                                            'saved step': self.saved_run})
+                                            'saved step': self.state.saved_run})
             # normalize
             total_prediction_loss = total_prediction_loss / (len(self._validation_loader) + 1)
         self._callback.validation_end()
@@ -858,22 +1076,40 @@ class Trainer(AbstractTrainer, ABC):
 
         return total_prediction_loss
 
-    def get_last_iterator(self, model_name: str, layer_name: str) -> int:
+    def update_running_state(self, model_name: str, layer_name: str) -> tuple[int, int]:
         """
          Return last iterator,  for a given model and layer.
-         During a model save each model might have own iterator counter.
-         thus, trainer has a dict that hold self.iters[mode_name][layer_name] = it
+         During a model save each model might have own iterator counter
+         Hence we save epoch and current step.
 
-        :param model_name: model name that must already present.
+         During resuming we load back epoch and current step.
+
+         Thus, step or epoch might be re-adjusted and hence last saved epoch and step
+         are not the same.
+
+         It will re adjust based on "some" strategy.
+         trainer has a dict that hold self._last_step[mode_name][layer_name] = it
+
+        :param model_name:
         :param layer_name: model layer must be already created.
         :return: return last iterator counter.
         """
-        it = 0
-        if layer_name in self._steps:
-            it = self._steps[layer_name]
+        last_epoch = 0
+        last_step = 0
+        # model loader will load last step to last step.
+        if model_name in self._last_ckt_epochs:
+            if layer_name in self._last_ckt_epochs[model_name]:
+                last_epoch = self._last_ckt_epochs[model_name][layer_name]
         else:
-            self._steps[layer_name] = 0
-        return it
+            print("Strange case")
+
+        if layer_name in self._last_step:
+            last_step = self._last_step[layer_name]
+            self.state.step = last_step
+        else:
+            print("Strange case two")
+
+        return last_epoch, last_step
 
     def plot_data(self, data, figsize=(16, 4)):
         """
@@ -970,14 +1206,21 @@ class Trainer(AbstractTrainer, ABC):
         else:
             return torch.norm(torch.stack([torch.norm(p.grad.detach()) for p in parameters_to_clip]))
 
-    def train_epoch(self, model, model_name: str, layer_name: str, optimizer, scheduler=None):
+    def current_running_state(self):
         """
+        :return:
+        """
+        return self.state.epoch, self.state.step
 
-        :param model:
-        :param model_name:
-        :param layer_name: 
-        :param optimizer:
-        :param scheduler:
+    def train_epoch(self, model, model_name: str, layer_name: str, optimizer,
+                    schedulers: Optional[list[torch.optim.lr_scheduler._LRScheduler]] = None) -> None:
+        """
+        Train one step of epoch.
+        :param model:  a model that we train.
+        :param model_name: a model name that we train
+        :param layer_name: a layer of model that we train.
+        :param optimizer: a optimizer that we use
+        :param schedulers: a schedulers that we use.
         :return:
         """
         device = self.state.device
@@ -989,11 +1232,10 @@ class Trainer(AbstractTrainer, ABC):
         # else:
         #     device = self.state.device
 
-        scaler = torch.cuda.amp.GradScaler()
-
         total_accuracy = 0
         current_total_loss = 0
-        step = self.get_last_iterator(model_name, layer_name)
+
+        current_epoch, current_step = self.current_running_state()
         self.metric.update_bach_estimated(len(self._train_loader))
         self._callback.on_loader_begin()
         self.metric.on_batch_start()
@@ -1044,20 +1286,23 @@ class Trainer(AbstractTrainer, ABC):
             loss.backward()
             if self.clip_grad:
                 grad_norm = clip_grad_norm_(model.parameters(), self.state.trainer_spec.grad_clip_thresh())
-                self.metric.update(batch_idx, step, normal_loss, grad_norm=grad_norm.item(), validation=False)
+                self.metric.update(batch_idx, current_epoch, normal_loss,
+                                   grad_norm=grad_norm.item(), validation=False)
             else:
                 grad_norm = loss
-                self.metric.update(batch_idx, step, normal_loss, grad_norm=None, validation=False)
+                self.metric.update(batch_idx, current_epoch,
+                                   normal_loss, grad_norm=None, validation=False)
 
             optimizer.step()
             self._callback.on_batch_begin()
             # run lr_scheduler
-            if scheduler is not None:
-                scheduler.step()
+            if schedulers is not None:
+                for scheduler in schedulers:
+                    scheduler.step()
 
             # self.log_if_needed(it, loss, grad_norm, duration)
-            if self.state.rank == 0 and step != 0 and step % tbar_update_rate == 0:
-                self.tqdm_iter.set_postfix({'step': step,
+            if self.state.rank == 0 and current_step != 0 and current_step % tbar_update_rate == 0:
+                self.tqdm_iter.set_postfix({'step': current_step,
                                             'loss': normal_loss,
                                             'batch_loss': current_total_loss // max(1, batch_idx + 1),
                                             'avg loss': self.metric.total_mean_loss(),
@@ -1073,7 +1318,7 @@ class Trainer(AbstractTrainer, ABC):
             #     total_accuracy += prediction_accuracy
             # save model checkpoint if needed
             if self.state.rank == 0:
-                self.save_if_need(model_name=model_name, layer_name=layer_name, step=step)
+                self.save_if_need(step=current_step)
 
             # dist.barrier()
             # hparam we want track.
@@ -1098,12 +1343,14 @@ class Trainer(AbstractTrainer, ABC):
 
             # self.tf_logger.log_training(criterions, step, optimizer.param_groups[0]['lr'],
             #                             hparams=hparams, metrics=metrics)
-            step += 1
+            current_step += 1
 
         self.metric.on_batch_end()
         self._callback.on_loader_end()
-        self._steps[layer_name] = step
-        return step
+
+        # update last step trained for a current model.
+        self._last_step[layer_name] = current_step
+        self.state.step = current_step
 
     def tacotron25_batch(self, batch, device):
         """
@@ -1191,7 +1438,10 @@ class Trainer(AbstractTrainer, ABC):
         """
         assert model_name in self._models
         assert layer_name in self._models[model_name]
+
         model = self._models[model_name][layer_name]
+        print(f"Prepare model {model_name} layer {layer_name} for training.")
+
         if self.state.trainer_spec.is_distributed_run():
             device = self.state.device
         else:
@@ -1207,17 +1457,20 @@ class Trainer(AbstractTrainer, ABC):
         optimizer = self._optimizers[model_name][layer_name]
         scheduler = None
 
-        if layer_name in self._schedulers:
-            logger.info("Model {} contains a scheduler".format(model_name))
-            scheduler = self._schedulers[model_name]
+        if model_name in self._schedulers:
+            if layer_name in self._schedulers:
+                logger.info("Model {} contains a scheduler".format(model_name))
+                scheduler = self._schedulers[model_name][layer_name]
 
         # if self.state.trainer_spec.is_distributed_run():
         #     logger.info("Running in distributed model. applying gradient reduce.".format(model_name))
         #     model = apply_gradient_allreduce(model)
 
-        step = self.get_last_iterator(model_name, layer_name)
-        if self._last_ckt_epochs[model_name][layer_name] == self.state.trainer_spec.epochs():
-            prediction_accuracy = self.validate_epoch(model, model_name, layer_name, step)
+        last_epoch, last_step = self.update_running_state(model_name=model_name, layer_name=layer_name)
+        if last_epoch == self.state.trainer_spec.epochs():
+            print("Model trainer, warm up validation pass.")
+            self.validate_epoch(model, model_name, layer_name, warmup=True)
+
         # TODO add option if epoch changed after save
         self.metric.set_num_iteration(self.state.trainer_spec.epochs() * self.total_batches)
         self.metric.init()
@@ -1225,7 +1478,11 @@ class Trainer(AbstractTrainer, ABC):
                     self.state.trainer_spec.epochs(), self._last_ckt_epochs, len(self._train_loader),
                     self.state.trainer_spec.epochs() * len(self._train_loader))
 
-        return model, optimizer, scheduler, step
+        # re-adjust last step
+        if not self.state.disable_pbar:
+            self.tqdm_iter.set_postfix({'step': self.state.step})
+
+        return model, optimizer, scheduler
 
     def trainer_sequential(self, model_name: str, layer_name: str) -> None:
         """
@@ -1237,33 +1494,38 @@ class Trainer(AbstractTrainer, ABC):
         """
         assert model_name in self._models
         assert layer_name in self._models[model_name]
+        assert self.state.current_layer == layer_name
+        assert self.state.current_model == model_name
 
-        model, optimizer, scheduler, step = self.prepare_trainer(model_name, layer_name)
+        model, optimizer, scheduler = self.prepare_trainer(model_name, layer_name)
 
-        if layer_name in self._steps:
-            logger.info(f"Epoch saved out of",
-                        {self._last_ckt_epochs[model_name][layer_name]},
-                        {self.state.trainer_spec.epochs()})
-            logger.info(f"Last iteration saved {self._steps[layer_name]}")
+        # logger.info(f"Epoch {self._last_ckt_epochs[model_name][layer_name]} "
+        #             f"saved out of {{self.state.trainer_spec.epochs()}}.")
+
+        logger.info(f"Last epoch saved {self._last_ckt_epochs[model_name][layer_name]}")
+        logger.info(f"Last iteration saved {self._last_step[layer_name]}")
 
         # if self.state.trainer_spec.is_distributed_run():
         #     model = dist
+
         model.train()
-        self.tqdm_iter.set_postfix({'step': step})
         self._callback.on_begin()
         self.metric.on_begin()
 
         validation_loss = 0
         for epoch in self.tqdm_iter:
+            self.state.epoch = epoch
             self._callback.on_epoch_begin()
             if self.state.trainer_spec.is_distributed_run():
                 dist.barrier()
             # update epoch
-            self.epoch = epoch
             # train epoch's batch
             self.metric.on_epoch_begin()
             self.train_epoch(model, model_name, layer_name, optimizer)
             self.metric.on_epoch_end()
+            # if self._brake_epoch_loop == epoch:
+            #     sys.exit(1)            # if self._brake_epoch_loop == epoch:
+            #     sys.exit(1)
             validation_loss += self.validate_epoch(model, model_name, layer_name, epoch)
             # if self.is_hp_tunner:
             #     return
@@ -1276,13 +1538,9 @@ class Trainer(AbstractTrainer, ABC):
             #     torch.save((model.state_dict(), optimizer.state_dict()), path)
             # tune.report(loss=validation_loss)
 
+        self.state.epoch += 1
         self._callback.on_end()
         self.metric.on_end()
-
-        # save
-        if self.state.rank == 0 and self.save_if_need(model_name, layer_name, step=self._steps[layer_name],
-                                                      last_epoch=True):
-            logger.info(f"Saving {self.state.rank.trainer_spec.epochs()} last epoch.")
 
         self._callback.on_epoch_end()
         self.metric.total_mean_loss()
@@ -1297,19 +1555,19 @@ class Trainer(AbstractTrainer, ABC):
         """
         # torch.manual_seed(self.model_spec.seed())
         # torch.cuda.manual_seed(self.model_spec.seed())
-        #
-        # if self.rank == 0:
-        #     self.load_models()
         # if self.state.trainer_spec.is_distributed_run():
-        #     #torch.cuda.set_device(self.state.device)
+        # torch.cuda.set_device(self.state.device)
 
         torch.cuda.empty_cache()
         model_name = self.state.trainer_spec.get_active_model()
         model_layers = self.state.trainer_spec.get_active_sub_models()
 
+        self.load()
+
         if self.is_trained(model_name):
-            print("It looks like model already trained. \
-                   Check file {}".format(self.state.trainer_spec.model_files.get_model_file_path(model_name)))
+            print(f"It looks like model {model_name} already trained.")
+            for layer in model_layers:
+                print(f"Last saved file {self.state.trainer_spec.model_files.get_model_file_path(layer)}")
             return
 
         # last_step = 0
@@ -1318,8 +1576,9 @@ class Trainer(AbstractTrainer, ABC):
             for layer in model_layers:
                 self.q.append(layer)
             while len(self.q) > 0:
-
                 layer_name = self.q.pop()
+                self.state.current_model = model_name
+                self.state.current_layer = layer_name
                 # update whatever we need
                 if config is not None:
                     if 'batch_size' in config:
@@ -1333,11 +1592,9 @@ class Trainer(AbstractTrainer, ABC):
                         for param_group in self._optimizers[model_name][layer_name].param_groups:
                             param_group['lr'] = config["lr"]
                 # run model
-                self.trainer_sequential(model_name, layer_name)
-                if self.state.rank == 0 and self.save_if_need(model_name=model_name,
-                                                              layer_name=layer_name,
-                                                              last_epoch=True):
-                    logger.info(f"Saved last epoch {self.state.trainer_spec.epochs()}")
+                self.trainer_sequential(model_name=model_name, layer_name=layer_name)
+                self.save()
+                logger.info(f"Saved last epoch {self.state.trainer_spec.epochs()}")
 
         self.cleanup()
 
@@ -1389,13 +1646,14 @@ class Trainer(AbstractTrainer, ABC):
 
         return False
 
-    def get_model(self, model_name):
+    def get_model(self, name: str):
         """
-        :param model_name:
+
+        :param name:
         :return:
         """
-        if model_name in self._models:
-            return self._models[model_name]
+        if name in self._models:
+            return self._models[name]
 
     @staticmethod
     def set_logger(is_enable: bool) -> None:
@@ -1423,70 +1681,3 @@ class Trainer(AbstractTrainer, ABC):
             t_writer.add_histogram(name, weight, epoch)
             t_writer.add_histogram(f'{name}.grad', weight.grad, epoch)
         # tune.report(loss=(val_loss / val_steps), accuracy=correct / total)
-
-    # def backup_model(self, model_file):
-    #     """
-    #
-    #     :param model_file:
-    #     :return:
-    #     """
-    #     from datetime import datetime
-    #     dateTimeObj = datetime.now()
-    #     copyfile.copy(model_file, f"{dateTimeObj.year}{dateTimeObj.month}{dateTimeObj.day}_{model_file}_")
-    #
-
-#
-# def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
-#
-#     data_dir = os.path.abspath("./data")
-#
-#     load_data(data_dir)
-#     dataloader = SFTFDataloader(spec, rank=cmd_args.rank, world_size=cmd_args.world_size, verbose=args.verbose)
-#
-#     config = {
-#         "l1": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
-#         "l2": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
-#         "lr": tune.loguniform(1e-4, 1e-1),
-#         "batch_size": tune.choice([2, 4, 8, 16])
-#     }
-#     scheduler = ASHAScheduler(
-#         metric="loss",
-#         mode="min",
-#         max_t=max_num_epochs,
-#         grace_period=1,
-#         reduction_factor=2)
-#
-#     reporter = CLIReporter(
-#         # parameter_columns=["l1", "l2", "lr", "batch_size"],
-#         metric_columns=["loss", "accuracy", "training_iteration"])
-#
-#     result = tune.run(
-#         partial(train_cifar, data_dir=data_dir),
-#         resources_per_trial={"cpu": 2, "gpu": gpus_per_trial},
-#         config=config,
-#         num_samples=num_samples,
-#         scheduler=scheduler,
-#         progress_reporter=reporter)
-#
-#     best_trial = result.get_best_trial("loss", "min", "last")
-#     print("Best trial config: {}".format(best_trial.config))
-#     print("Best trial final validation loss: {}".format(
-#         best_trial.last_result["loss"]))
-#     print("Best trial final validation accuracy: {}".format(
-#         best_trial.last_result["accuracy"]))
-#
-#     best_trained_model = Net(best_trial.config["l1"], best_trial.config["l2"])
-#     device = "cpu"
-#     if torch.cuda.is_available():
-#         device = "cuda:0"
-#         if gpus_per_trial > 1:
-#             best_trained_model = nn.DataParallel(best_trained_model)
-#     best_trained_model.to(device)
-#
-#     best_checkpoint_dir = best_trial.checkpoint.value
-#     model_state, optimizer_state = torch.load(os.path.join(
-#         best_checkpoint_dir, "checkpoint"))
-#     best_trained_model.load_state_dict(model_state)
-#
-#     test_acc = test_accuracy(best_trained_model, device)
-#     print("Best trial test set accuracy: {}".format(test_acc))

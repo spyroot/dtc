@@ -75,14 +75,17 @@ class AbstractTrainer(ABC, metaclass=ABCMeta):
         # inference or training
         self.state.is_inference = is_inference
 
-
     @abstractmethod
     def train(self):
         pass
 
     @abstractmethod
-    def load(self, model_name: str, ignore_layers):
+    def load(self):
         pass
+
+    # @abstractmethod
+    # def save(self):
+    #     pass
 
     @staticmethod
     def split_tensor(tensor, n_gpus):
@@ -119,14 +122,14 @@ class AbstractTrainer(ABC, metaclass=ABCMeta):
     def compute_average_loss(self):
         pass
 
-
     def set_notebook(self, param):
         """
-        Update trainer and set it in notebook mode
+        Update trainer and set it in notebook mode.
+
         :param param:
         :return:
         """
-        self.is_notebook = param
+        self.state.is_notebook = param
 
     def set_verbose(self, param):
         """
@@ -134,7 +137,7 @@ class AbstractTrainer(ABC, metaclass=ABCMeta):
         :param param:
         :return:
         """
-        self.verbose = param
+        self.state.verbose = param
 
     def _loop_up_device(self, is_set_cuda: bool):
         """
@@ -187,4 +190,3 @@ class AbstractTrainer(ABC, metaclass=ABCMeta):
                 rank=self.state.rank)
 
         logger.debug("Done initializing distributed {}".format(dist.get_rank()))
-

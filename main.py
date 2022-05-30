@@ -385,23 +385,35 @@ class Trainable(tune.Trainable, Callback):
     def on_epoch_end(self):
         pass
 
-    def save_checkpoint(self, tmp_checkpoint_dir):
-        print("called save_checkpoint with tmp dir ", tmp_checkpoint_dir)
-        for model in self._models:
-            for model_layer in self.trainer._models[model]:
-                checkpoint_path = os.path.join(tmp_checkpoint_dir, f"{model}{model_layer}.pth")
-                torch.save(self.model.state_dict(), checkpoint_path)
-        return tmp_checkpoint_dir
+    def save_checkpoint(self, tmp_dir):
+        """
 
-    def load_checkpoint(self, tmp_checkpoint_dir):
+        :param tmp_dir:
+        :return:
+        """
+        print("called save_checkpoint with tmp dir ", tmp_dir)
+        checkpoint_path = os.path.join(tmp_dir, "model.pth")
+        self.trainer.save_models(checkpoint_path)
+        return tmp_dir
 
-        print("called save_checkpoint with tmp dir ", tmp_checkpoint_dir)
-        for model in self._models:
-            for model_layer in self.trainer._models[model]:
-                checkpoint_path = os.path.join(tmp_checkpoint_dir, f"{model}{model_layer}.pth")
-                self.model.load_state_dict(torch.load(checkpoint_path))
+    def load_checkpoint(self, tmp_dir):
+        """
+
+        :param tmp_dir:
+        :return:
+        """
+        self.trainer.load_models()
+        self.trainer.lo
+        print("called save_checkpoint with tmp dir ", tmp_dir)
+        # for model in self._models:
+        #     for model_layer in self.trainer._models[model]:
+        #         self.model.load_state_dict(torch.load(checkpoint_path))
 
     def step(self):
+        """
+
+        :return:
+        """
         self.trainer.train_optimizer(self.config)
         self.trainer.metric.batch_val_loss.mean()
         print(f"###### returned {self.trainer.metric.val_loss.mean()}")
@@ -584,7 +596,17 @@ def train(spec=None, cmd_args=None, device=None, cudnn_bench=False):
 
         trainer.set_logger(is_enable=True)
         trainer.metric.set_logger(is_enable=True)
+
         trainer.train()
+
+        # trainer.save()
+        # trainer.load()
+
+        # /Users/spyroot/Dropbox/macbook2022/git/dtc/results/model/spectrogram_layer_tacotron25_small_batch_1_epoch_500.dat
+        # model_file = trainer.state.trainer_spec.model_files.get_model_file_path('spectrogram_layer')
+        # print(model_file)
+        # trainerm.
+        # trainer.train()
 
     except TrainerError as e:
         print("Error: trainer error: ", e)
