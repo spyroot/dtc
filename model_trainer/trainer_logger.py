@@ -59,10 +59,10 @@ class TensorboardTrainerLogger(SummaryWriter):
 
         self.add_hparams(tf_hp_dict)
 
-    def log_validation(self, reduced_loss, model: nn.Module, y, y_pred, step=None, mel_filter=True) -> None:
+    def log_validation(self, loss, model: nn.Module, y, y_pred, step=None, mel_filter=True) -> None:
         """
         Log validation step.
-        :param reduced_loss:
+        :param loss:
         :param model:
         :param y:
         :param y_pred:
@@ -70,7 +70,7 @@ class TensorboardTrainerLogger(SummaryWriter):
         :param mel_filter:
         :return:
         """
-        self.add_scalar("validation.loss", reduced_loss, step)
+        self.add_scalar("validation.loss", loss, step)
         _, mel_outputs, gate_outputs, alignments = y_pred
         mel_targets, gate_targets = y
 

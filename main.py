@@ -5,7 +5,6 @@ import pickle
 import random
 import signal
 import sys
-from functools import partial
 from pathlib import Path
 import socket
 
@@ -350,6 +349,7 @@ class Trainable(tune.Trainable, Callback):
     """
 
     """
+
     def setup(self, config):
         """
 
@@ -382,6 +382,18 @@ class Trainable(tune.Trainable, Callback):
                                device=config['device'],
                                hp_tunner=True,
                                disable_pbar=True)
+
+        # logger.add(self.trainer.model_files.get_model_log_file_path(remove_old=True),
+        #            format="{elapsed} {level} {message}",
+        #            filter="model_trainer.trainer_metrics", level="INFO", rotation="1h")
+        #
+        # logger.add(self.trainer.model_files.get_trace_log_file("loader"),
+        #            format="{elapsed} {level} {message}",
+        #            filter="model_loader.stft_dataloader", level="INFO", rotation="1h")
+        #
+        # logger.add(self.trainer.model_files.get_trace_log_file("trainer"),
+        #            format="{elapsed} {level} {message}",
+        #            filter="model_trainer.trainer", level="INFO", rotation="1h")
 
         self.trainer.set_logger(is_enable=True)
         self.trainer.metric.set_logger(is_enable=True)
@@ -421,8 +433,14 @@ class Trainable(tune.Trainable, Callback):
         """
         self.trainer.train_optimizer(self.config)
         self.trainer.metric.batch_val_loss.mean()
-        print(f"###### returned {self.trainer.metric.val_loss.mean()}")
-        return {"mean_val_loss": self.trainer.metric.val_loss.mean()}
+        print(f"## train epoch grand norm loss  {self.trainer.metric.epoch_train_gn_loss.sum():.3f}")
+        print(f"## train epoch loss mean        {self.trainer.metric.epoch_train_loss.sum():.3f}")
+        print(f"## validation epoch             {self.trainer.metric.epoch_val_loss.sum():.3f}")
+
+        return {
+            "mean_train_loss": self.trainer.metric.epoch_train_gn_loss.sum(),
+            "mean_val_loss": self.trainer.metric.epoch_val_loss.sum()
+        }
 
     # def reset_config(self, new_config):
     #     self.trainer.update_optimizer(new_config)
@@ -467,19 +485,23 @@ def tune_hyperparam(spec=None, cmd_args=None, device=None, cudnn_bench=False):
         torch.backends.cudnn.benchmark = True
 
     if args.verbose:
-        logger.debug("Torch allow matmul fp16 {}", torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction)
-        logger.debug("Torch cudnn version, {}", torch.backends.cudnn.version())
-        logger.debug("Torch backend openmp", torch.backends.openmp)
+        logger.debug(f"Torch allow matmul fp16 {torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction}")
+        logger.debug(f"Torch cudnn version, {torch.backends.cudnn.version}")
+        logger.debug(f"Torch backend openmp", {torch.backends.openmp})
 
     try:
-        metric = 'mean_val_loss'
 
+        pickle.dumps(Trainer)
+
+        metric = 'mean_train_loss'
         scheduler = ASHAScheduler(
                 metric=metric,
                 mode="min",
                 max_t=spec.epochs(),
                 grace_period=1,
                 reduction_factor=2)
+
+        # metric_columns=["loss", "accuracy", "training_iteration"])
 
         reporter = CLIReporter(
                 # parameter_columns=["l1", "l2", "lr", "batch_size"],
@@ -492,7 +514,8 @@ def tune_hyperparam(spec=None, cmd_args=None, device=None, cudnn_bench=False):
             "world_size": int(0),
             "device": device,
             "lr": ray.tune.loguniform(1e-4, 1e-1),
-            "batch_size": ray.tune.choice([2, 4, 8, 16, 32, 64])
+            "batch_size": ray.tune.choice([2, 4, 8])
+            # "batch_size": ray.tune.choice([2, 4, 8, 16, 32, 64, 128])
         }
 
         tuner_result = ray.tune.run(Trainable,
@@ -511,7 +534,7 @@ def tune_hyperparam(spec=None, cmd_args=None, device=None, cudnn_bench=False):
 
         best_trial = tuner_result.get_best_trial(metric, "min", "last")
         print("Best trial config: {}".format(best_trial.config))
-        print("Best trial final validation loss: {}".format(best_trial.last_result[metric]))
+        print("Best trial final train loss: {}".format(best_trial.last_result[metric]))
         # print("Best trial final validation accuracy: {}".format(best_trial.last_result["accuracy"]))
         # print('best config: ', analysis.get_best_config(metric="score", mode="max"))
         # tuner_result = ray.tune.run(
@@ -586,47 +609,16 @@ def train(spec=None, cmd_args=None, device=None, cudnn_bench=False):
                                     verbose=args.verbose)
         dataloader.set_logger(is_enable=True)
 
-        # trainer = Trainer(spec,
-        #                   dataloader,
-        #                   rank=int(args.rank),
-        #                   world_size=int(cmd_args.world_size),
-        #                   verbose=args.verbose, device=device,
-        #                   callback=[BatchTimer()])
-
         trainer = Trainer(spec,
                           dataloader,
                           rank=int(args.rank),
                           world_size=int(cmd_args.world_size),
                           verbose=args.verbose, device=device,
-                          hp_tunner=True,
-                          disable_pbar=True,
-                          )
+                          hp_tunner=False)
 
         trainer.set_logger(is_enable=True)
         trainer.metric.set_logger(is_enable=True)
-
         trainer.train()
-        trainer.save_model_layer("spectrogram_layer",
-                                 "/Users/spyroot/Dropbox/macbook2022/git/dtc/results/model/test.dat")
-
-        # create second trainer and resume
-        trainer2 = Trainer(spec,
-                           dataloader,
-                           rank=int(args.rank),
-                           world_size=int(cmd_args.world_size),
-                           verbose=args.verbose, device=device,
-                           hp_tunner=True,
-                           disable_pbar=True)
-
-        trainer2.load_model_layer("spectrogram_layer",
-                                  "/Users/spyroot/Dropbox/macbook2022/git/dtc/results/model/test.dat")
-        trainer2.train()
-
-        # /Users/spyroot/Dropbox/macbook2022/git/dtc/results/model/spectrogram_layer_tacotron25_small_batch_1_epoch_500.dat
-        # model_file = trainer.state.trainer_spec.model_files.get_model_file_path('spectrogram_layer')
-        # print(model_file)
-        # trainerm.
-        # trainer.train()
 
     except TrainerError as e:
         print("Error: trainer error: ", e)

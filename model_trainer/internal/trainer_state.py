@@ -40,6 +40,9 @@ class TrainerState:
         # last saved run
         self.saved_run = None
 
+        self.data_loaders = None
+        self.collate_fn = None
+
         # self.set_logger(verbose)
         #
         # # device

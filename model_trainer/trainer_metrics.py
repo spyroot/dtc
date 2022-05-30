@@ -33,14 +33,17 @@ class Metrics:
         :param num_iteration: num total iteration
         :param verbose:  verbose or not
         """
-        self.grad_norm_val_loss = None
-        self.batch_grad_val_loss = None
+
+        # accumulated validation loss per batch iteration.
         self.batch_val_loss = None
-        self.val_loss = None
+
+        # accumulated epoch validation loss per batch iteration.
+        self.epoch_val_loss = None
+
         Metrics.set_logger(verbose)
         # epoch loss
-        self.epoch_loss = None
-        self.epoch_gn_oss = None
+        self.epoch_train_loss = None
+        self.epoch_train_gn_loss = None
 
         # batch stats
         self.batch_loss = None
@@ -73,82 +76,78 @@ class Metrics:
         self._epoc_counter = 0
 
     def on_prediction_batch_start(self):
-        """
+        """_
 
         :return:
         """
         self.batch_val_loss = np.zeros((self.num_batches, 1))
-        self.batch_grad_val_loss = np.zeros((self.num_batches, 1))
 
     def on_prediction_batch_end(self):
         """
-
         :return:
         """
-        logger.info(f"{self.batch_val_loss.sum():5.2f} | {self.batch_grad_val_loss.sum():5.2f}, "
-                    f"mean {self.batch_val_loss.mean():5.4f} | {self.batch_grad_val_loss.mean():5.4f} | batch pred")
-        self.val_loss[self._epoc_counter] = self.batch_val_loss.mean()
-        self.grad_norm_val_loss[self._epoc_counter] = self.batch_grad_val_loss.mean()
+        logger.info(f"{self.batch_val_loss.sum():5.2f} "
+                    f"mean {self.batch_val_loss.mean():5.4f} | batch pred")
+
+        self.epoch_val_loss[self._epoc_counter] = self.batch_val_loss.mean()
 
     def on_prediction_epoch_start(self):
         pass
 
     def on_batch_start(self):
-        # self.batch_loss = np.zeros((self.num_batches, 1))
-        # self.batch_grad_loss = np.zeros((self.num_batches, 1))
+        """
+
+        :return:
+        """
         self.batch_loss = np.zeros((self.num_batches, 1))
         self.batch_grad_loss = np.zeros((self.num_batches, 1))
 
     def on_batch_end(self):
+        """
+        On train batch end.
+        :return:
+        """
         logger.info(f"{self.batch_loss.sum():5.2f} | {self.batch_grad_loss.sum():5.2f}, "
                     f"mean {self.batch_loss.mean():5.4f} | {self.batch_grad_loss.mean():5.4f} | batch train ")
 
-        self.epoch_loss[self._epoc_counter] = self.batch_loss.mean()
-        self.epoch_gn_oss[self._epoc_counter] = self.batch_grad_loss.mean()
+        self.epoch_train_loss[self._epoc_counter] = self.batch_loss.mean()
+        self.epoch_train_gn_loss[self._epoc_counter] = self.batch_grad_loss.mean()
 
     def on_epoch_begin(self):
         """
-
+        On epoch begin , reset if needed.
         :return:
         """
         self.start_epoch_timer()
         self.on_prediction_epoch_start()
-        # logger.info(f"Epoch {self._epoc_counter}/{self.num_epochs} started.")
 
     def on_prediction_epoch_end(self):
         """
-         Update metric for prediction , validation loss.
+        Update metric for prediction , validation loss.
         :return:
         """
         self.update_epoch_timer()
-        logger.info(f"{self.val_loss.sum():5.2f} | {self.grad_norm_val_loss.sum():5.2f}, "
-                    f"mean {self.val_loss.mean():5.4f} | {self.grad_norm_val_loss.mean():5.4f} | epoch pred ")
-
-        # logger.info(f"Epoch validation loss {self._epoc_counter}/{self.num_epochs} epoch "
-        #             f"{self.val_loss.sum():.2f} | {self.grad_norm_val_loss.sum():.2f}, "
-        #             f"mean {self.val_loss.mean():.4f} | {self.grad_norm_val_loss.mean():.4f}")
+        logger.info(f"{self.epoch_val_loss.sum():5.2f} | "
+                    f"mean {self.epoch_val_loss.mean():5.4f} | epoch pred ")
 
     def on_epoch_end(self):
         """
         :return:
         """
         self.on_prediction_epoch_end()
-        logger.info(f"{self.epoch_loss.sum():5.2f} | {self.epoch_gn_oss.sum():5.2f}, "
-                    f"mean {self.epoch_loss.mean():5.4f} | {self.epoch_gn_oss.mean():5.4f} | epoch train | "
+        logger.info(f"{self.epoch_train_loss.sum():5.2f} | {self.epoch_train_gn_loss.sum():5.2f}, "
+                    f"mean {self.epoch_train_loss.mean():5.4f} | {self.epoch_train_gn_loss.mean():5.4f} | epoch train | "
                     f"{self.epoch_timer.mean():3.3f} | {np.average(self.epoch_timer):3.3f}")
-        # logger.info(f"Epoch train loss {self._epoc_counter}/{self.num_epochs} epoch "
-        #             f"{self.loss.sum():.2f} | {self.grad_norm_loss.sum():.2f}, "
-        #             f"mean {self.loss.mean():.4f} | {self.grad_norm_loss.mean():.4f}")
+
         self._epoc_counter = self._epoc_counter + 1
 
     def on_begin(self):
         """
         :return:
         """
-        self.epoch_loss = np.zeros((self.num_epochs + 1, 1))
-        self.epoch_gn_oss = np.zeros((self.num_epochs + 1, 1))
-        self.val_loss = np.zeros((self.num_epochs + 1, 1))
-        self.grad_norm_val_loss = np.zeros((self.num_epochs + 1, 1))
+        self.epoch_train_loss = np.zeros((self.num_epochs + 1, 1))
+        self.epoch_train_gn_loss = np.zeros((self.num_epochs + 1, 1))
+        self.epoch_val_loss = np.zeros((self.num_epochs + 1, 1))
         self.epoch_timer = np.zeros((self.num_epochs, 1))
 
     def on_end(self):
@@ -166,27 +165,10 @@ class Metrics:
         """
         if validation:
             self.batch_val_loss[batch_idx] = loss
-            if grad_norm is not None:
-                self.batch_grad_val_loss[batch_idx] = loss
-            # if grad_norm is not None:
-            #     # logger.info(
-            #     #         f"validation step {step} batch {batch_idx} loss {loss:.5f} "
-            #     #         f"mean {self.loss.mean():.5f} grad norm loss {grad_norm:.5f}")
-            # else:
-            #     # logger.info(f"validation step {step} batch {batch_idx} loss {loss:.5f} mean {self.loss.mean()}:5f")
-
-            return
 
         self.batch_loss[batch_idx] = loss
         if grad_norm is not None:
-            self.batch_grad_loss[batch_idx] = loss
-
-        # print(batch_idx, self.batch_loss)
-        # if grad_norm is not None:
-        #     logger.info(f"Step {step} batch {batch_idx} loss {loss:.5f} "
-        #                 f"mean {self.loss.mean():.5f} grad norm loss {grad_norm:.5f}")
-        # else:
-        #     logger.info(f"Step {step} batch {batch_idx} loss {loss:.5f} mean {self.loss.mean()}:5f")
+            self.batch_grad_loss[batch_idx] = grad_norm
 
     def set_num_iteration(self, num_iteration):
         """Update number of total iterations
@@ -202,36 +184,22 @@ class Metrics:
         """
         self.num_batches = max(1, num_batches)
 
-    # def update_total_loss(self):
-    #     """
-    #
-    #     :return:
-    #     """
-    #     self.total_iteration = max(1, self.num_batches) * max(1, self.num_iteration)
-    #     self.total_loss = np.zeros((self.num_batches, 1))
-    #     self.loss = np.zeros((self.total_iteration, 1))
-    #     return
-
     def init(self):
         """
 
         :return:
         """
         self.total_iteration = max(1, self.num_batches) * max(1, self.num_iteration)
-
-        if self.num_batches > 0 and self.num_iteration > 0 and self.total_iteration > 0:
-            logger.info("Creating metric data. {} ".format(self.num_batches))
+        if self.num_batches > 0 and self.num_iteration > 0:
+            logger.info("Creating metric data, num batches {} ".format(self.num_batches))
             self.batch_loss = np.zeros((self.num_batches, 1))
             self.batch_grad_loss = np.zeros((self.num_batches, 1))
-            self.epoch_loss = np.zeros((self.total_iteration, 1))
-            self.epoch_gn_oss = np.zeros((self.total_iteration, 1))
+            self.epoch_train_loss = np.zeros((self.num_epochs, 1))
+            self.epoch_train_gn_loss = np.zeros((self.num_epochs, 1))
             self.epoch_timer = np.zeros((self.num_epochs, 1))
-        # logger.info(f"Metric started, expected num batches {self.num_batches}")
-        # logger.info(f"Metric expected iter per step {self.num_iteration} and {self.total_iteration} total iteration")
-        # logger.debug("Metric shapes loss {} total_loss {} delta timer {}",
-        #              self.loss.shape,
-        #              self.batch_loss.shape,
-        #              self.epoch_timer.shape)
+            logger.info(f"Metric shapes metric batch loss {self.batch_loss.shape}")
+            logger.info(f"Metric shapes metric batch loss {self.batch_grad_loss.shape}")
+            logger.info(f"Metric shapes metric batch loss {self.epoch_train_loss.shape}")
 
         return
 
@@ -253,7 +221,7 @@ class Metrics:
         :return:
         """
         logger.info("Saving metric files.")
-        np.save(self.metric_step_file_path, self.epoch_loss)
+        np.save(self.metric_step_file_path, self.epoch_train_loss)
         np.save(self.metric_batch_file_path, self.batch_loss)
         np.save(self.metric_perf_trace_path, self.epoch_timer)
 
@@ -262,18 +230,18 @@ class Metrics:
         :return:
         """
         logger.info("Loading metric files.")
-        self.epoch_loss = np.load(self.metric_step_file_path)
+        self.epoch_train_loss = np.load(self.metric_step_file_path)
         self.batch_loss = np.load(self.metric_batch_file_path)
         self.epoch_timer = np.load(self.metric_perf_trace_path)
 
-    def total_mean_loss(self):
+    def total_train_mean_loss(self):
         """Return mean loss, compute mean from entire loss history
         :return:
         """
-        if self.epoch_loss is None:
+        if self.epoch_train_loss is None:
             return 0.0
 
-        return self.epoch_loss.mean(0)[-1]
+        return self.epoch_train_loss.mean(0)[-1]
 
     @staticmethod
     def set_logger(is_enable: bool) -> None:

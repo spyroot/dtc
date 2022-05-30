@@ -309,6 +309,14 @@ class SFTFDataloader:
     def get_batch_size(self):
         return self._batch_size
 
+    def get_train_dataset_size(self):
+        if 'train_set' in self._datasets:
+            return len(self._datasets['train_set'])
+
+    def get_val_dataset_size(self):
+        if 'validation_end' in self._datasets:
+            return len(self._datasets['validation_end'])
+
     def _create_loaders(self):
         """
         Method will create all data loaders.

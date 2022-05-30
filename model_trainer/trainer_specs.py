@@ -1551,7 +1551,7 @@ class ExperimentSpecs:
             raise TrainerSpecError("Initialize settings first")
 
         if 'tensorboard_update' in self._setting:
-            if self.batch_size <= int(self._setting['tensorboard_update']):
+            if self.batch_size() <= int(self._setting['tensorboard_update']):
                 logger.warning("Tensorboard update rate less than batch size.")
                 return 1
             return int(self._setting['tensorboard_update'])

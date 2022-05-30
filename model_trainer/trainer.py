@@ -23,12 +23,13 @@ from torch.nn.utils import clip_grad_norm_
 from tqdm import tqdm, tnrange
 from yaml import warnings
 # from frozendict import frozendict
+from collections import defaultdict
 
 from model_loader.stft_dataloader import SFTFDataloader
 from model_trainer.internal.abstract_trainer import TrainerError, AbstractTrainer
 from model_trainer.distributed_wrapper import DistributedDataWrapper
-# from model_trainer.trainer_logger import TensorboardTrainerLogger
 from model_trainer.internal.call_interface import BaseCallbacks
+from model_trainer.trainer_logger import TensorboardTrainerLogger
 from model_trainer.trainer_metrics import Metrics
 from model_trainer.trainer_specs import ExperimentSpecs
 # from distributed import apply_gradient_allreduce
@@ -134,13 +135,14 @@ class Trainer(AbstractTrainer, ABC):
         if not self.state.is_inference:
             if data_loader is None:
                 raise TrainerError("Trainer need torch data loader.")
-            self._data_loaders, self.collate_fn = data_loader.get_all()
-            self._train_loader = self._data_loaders[self._tkey]
-            self._validation_loader = self._data_loaders[self._vkey]
+            self.state.data_loader = data_loader
+            self.state.data_loaders, self.state.collate_fn = self.state.data_loader.get_all()
+            self._train_loader = self.state.data_loaders[self._tkey]
+            self._validation_loader = self.state.data_loaders[self._vkey]
 
-            if len(self._train_loader.dataset) == 0:
+            if len(self._train_loader) == 0:
                 warnings.warn("Training dataset empty")
-            if len(self._validation_loader.dataset) == 0:
+            if len(self._validation_loader) == 0:
                 warnings.warn("Training dataset empty")
 
         # TODO need refactor that, and move to dict and abstract,
@@ -166,11 +168,13 @@ class Trainer(AbstractTrainer, ABC):
         self.total_batches = 0
         if self.state.is_inference is False:
             # total batches
-            self.total_batches = len(self._data_loaders[self._tkey])
+            self.total_batches = len(self.state.data_loaders[self._tkey])
             # clip or not grad
             self.clip_grad = trainer_spec.is_grad_clipped()
 
-            # self.tf_logger = TensorboardTrainerLogger(trainer_spec.tensorboard_update_rate())
+            if self.state.is_hp_tunner is False:
+                self.tf_logger = TensorboardTrainerLogger(trainer_spec.tensorboard_update_rate())
+
             self.metric = Metrics(metric_step_file_path=trainer_spec.model_files.get_metric_file_path(),
                                   metric_batch_file_path=trainer_spec.model_files.get_metric_batch_file_path(),
                                   metric_perf_trace_path=trainer_spec.model_files.get_time_file_path(),
@@ -508,7 +512,7 @@ class Trainer(AbstractTrainer, ABC):
 
             # if run hyperparameter tunner we never do resume.
             if self.state.is_hp_tunner:
-                print(f"Hyperparameter tunner, loading only states.")
+                print(f"Hyperparameter tunner running, loading only states.")
                 self._last_ckt_epochs[model_name][layer_name] = 0
                 self._last_step[layer_name] = 0
                 return 0, 0
@@ -1013,78 +1017,85 @@ class Trainer(AbstractTrainer, ABC):
         return False
 
     def validate_epoch(self, model: nn.Module, model_name: str,
-                       layer_name: str, step: Optional[int] = None, warmup: Optional[bool] = False):
+                       layer_name: str, step: Optional[int] = None,
+                       warmup: Optional[bool] = False):
         """
         Validation epoch
 
-        :param warmup:
         :param model:  model we are training.
         :param model_name:  model_name a model we are training.
         :param layer_name: layer in that model we are training.
         :param step: optional,  if we do validation in some n step before
                                 end of epoch, we want log and track.
+        :param warmup:
         :return:
         """
         # take a batch.
         self._callback.validation_start()
         take_batch = self._batch_loader[model_name][layer_name]
         model.eval()
+        self.metric.update_bach_estimated(len(self._validation_loader))
         self.metric.on_prediction_batch_start()
         if warmup:
             self.tqdm_iter.set_description(f"Warm up in progress, device {self.state.device}")
         else:
             self.tqdm_iter.set_description(f"Validation in progress, device {self.state.device}")
+
+        aggregate_loss_term = defaultdict(float)
         with torch.no_grad():
-            total_prediction_loss = 0.0
+            current_batch_size = len(self._validation_loader)
             for batch_idx, batch in enumerate(self._validation_loader):
                 x, y = take_batch(batch, self.state.device)
                 y_pred = model(x)
                 # our loss mel_loss + gate_loss
                 criterion_out = self.criterion(y_pred, y)
-                mel_loss = criterion_out['mel_loss']
-                gate_loss = criterion_out['gate_loss']
-                loss = criterion_out['loss']
-                if self.clip_grad:
-                    grad_norm = clip_grad_norm_(model.parameters(), self.state.trainer_spec.grad_clip_thresh())
-                    self.metric.update(batch_idx, step, loss.item(), grad_norm=grad_norm.item(), validation=True)
-                else:
-                    self.metric.update(batch_idx, step, loss.item(), grad_norm=None, validation=True)
 
-                if self.state.trainer_spec.is_distributed_run():
-                    reduced_val_loss = self.split_tensor(loss.data, self.state.n_gpus).item()
-                else:
-                    reduced_val_loss = loss.item()
-                total_prediction_loss += reduced_val_loss
+                all_reduced_loss = {}
+                for loss_term_key in criterion_out:
+                    loss_tensor = criterion_out[loss_term_key]
+                    if self.state.trainer_spec.is_distributed_run():
+                        all_reduced_loss[loss_term_key] = self.split_tensor(loss_tensor.data, self.state.n_gpus).item()
+                    else:
+                        all_reduced_loss[loss_term_key] = loss_tensor.item()
 
-                self.tqdm_iter.set_postfix({'step': step,
-                                            'loss': loss.item(),
-                                            'batch_loss': total_prediction_loss // max(1, batch_idx + 1),
-                                            'avg loss': self.metric.total_mean_loss(),
-                                            'mel_loss': mel_loss.item(),
-                                            'gate_loss': gate_loss.item(),
-                                            'clip_loss': loss.item(),
-                                            'batch': f"{batch_idx}/{self.state.batch_size}",
-                                            'saved step': self.state.saved_run})
-            # normalize
-            total_prediction_loss = total_prediction_loss / (len(self._validation_loader) + 1)
+                self.metric.update(batch_idx, step, all_reduced_loss['loss'], validation=True)
+
+                tqdm_update_dict = {'step': step,
+                                    'loss': all_reduced_loss['loss'],
+                                    'batch_loss': all_reduced_loss['loss'] // max(1, batch_idx + 1),
+                                    'avg loss': self.metric.total_train_mean_loss(),
+                                    'batch': f"{batch_idx}/{current_batch_size}",
+                                    'saved step': self.state.saved_run}
+
+                for k in all_reduced_loss:
+                    tqdm_update_dict[k] = all_reduced_loss[k]
+                self.tqdm_iter.set_postfix(tqdm_update_dict)
+
+                # sum each loss term
+                for k in all_reduced_loss:
+                    aggregate_loss_term[k] += all_reduced_loss[k]
+
+        # normalize at the end
+        for k in aggregate_loss_term:
+            aggregate_loss_term[k] = (aggregate_loss_term[k] / (batch_idx + 1))
+
         self._callback.validation_end()
         self.metric.on_prediction_batch_end()
 
-        # tune.report(loss=total_prediction_loss)
         model.train()
-        # if self.rank == 0:
-        # t_writer.add_scalar('val_loss_' + model_name, loss.item(), it)
-        # print("Validation loss {}: {:9f}  ".format(it, total_prediction_loss))
-        # criterions = {
-        #     "train_normal_loss": normal_loss,
-        #     "train_clipped_loss": grad_norm,
-        #     "train_mel_loss": mel_loss.item(),
-        #     "train_gate_loss": mel_loss.item(),
-        #     "total_prediction_loss": total_prediction_loss,
-        # }
-        #   self.tf_logger.log_validation(total_prediction_loss, model, y, y_pred, step=step)
 
-        return total_prediction_loss
+        # update tensorboard
+        if self.state.is_hp_tunner is False and self.rank == 0:
+            # criterions = {
+            #     "train_normal_loss": normal_loss,
+            #     "train_clipped_loss": grad_norm,
+            #     "train_mel_loss": mel_loss.item(),
+            #     "train_gate_loss": mel_loss.item(),
+            #     "total_prediction_loss": total_prediction_loss,
+            # }
+           self.tf_logger.log_validation(aggregate_loss_term['loss'], model, y, y_pred, step=self.state.step)
+
+        return aggregate_loss_term
 
     def update_running_state(self, model_name: str, layer_name: str) -> tuple[int, int]:
         """
@@ -1242,13 +1253,22 @@ class Trainer(AbstractTrainer, ABC):
         # else:
         #     device = self.state.device
 
-        total_accuracy = 0
         current_total_loss = 0
+        current_grad_norm_loss = 0
 
         current_epoch, current_step = self.current_running_state()
         self.metric.update_bach_estimated(len(self._train_loader))
         self._callback.on_loader_begin()
         self.metric.on_batch_start()
+        if self.state.is_hp_tunner:
+            print(f"Entering train epoch loop: "
+                  f"train loader length: {len(self._train_loader)}, "
+                  f"train batch size: {self._train_loader.batch_size}, "
+                  f"dataset size: {self.state.data_loader.get_train_dataset_size()} "
+                  f"loader batch size: {self.state.data_loader.get_batch_size()}")
+
+        grad_norm = None
+        batch_counter = 0
         for batch_idx, batch in enumerate(self._train_loader):
             self._callback.on_batch_begin()
             model.zero_grad(set_to_none=True)
@@ -1272,7 +1292,6 @@ class Trainer(AbstractTrainer, ABC):
                 # assert gate_loss.dtype is torch.float32
                 # assert loss.dtype is torch.float32
 
-                current_total_loss += loss.item()
                 normal_loss = loss.item()
 
                 # output is float16 because linear layers autocast to float16.
@@ -1290,18 +1309,16 @@ class Trainer(AbstractTrainer, ABC):
             # gate_loss = criterion_out['gate_loss']
             # loss = criterion_out['loss']
 
-            current_total_loss += loss.item()
-            normal_loss = loss.item()
-
             loss.backward()
             if self.clip_grad:
                 grad_norm = clip_grad_norm_(model.parameters(), self.state.trainer_spec.grad_clip_thresh())
-                self.metric.update(batch_idx, current_epoch, normal_loss,
-                                   grad_norm=grad_norm.item(), validation=False)
+                grad_loss = grad_norm.item()
+                self.metric.update(batch_idx, current_epoch, loss=normal_loss, grad_norm=grad_loss, validation=False)
+                current_total_loss += normal_loss
+                current_grad_norm_loss += grad_norm
             else:
-                grad_norm = loss
-                self.metric.update(batch_idx, current_epoch,
-                                   normal_loss, grad_norm=None, validation=False)
+                current_total_loss += normal_loss
+                self.metric.update(batch_idx, current_epoch, normal_loss, grad_norm=None, validation=False)
 
             optimizer.step()
             self._callback.on_batch_begin()
@@ -1316,7 +1333,7 @@ class Trainer(AbstractTrainer, ABC):
                     self.tqdm_iter.set_postfix({'step': current_step,
                                                 'loss': normal_loss,
                                                 'batch_loss': current_total_loss // max(1, batch_idx + 1),
-                                                'avg loss': self.metric.total_mean_loss(),
+                                                'avg loss': self.metric.total_train_mean_loss(),
                                                 'mel_loss': mel_loss.item(),
                                                 'gate_loss': gate_loss.item(),
                                                 'clip_loss': grad_norm.item(),
@@ -1327,8 +1344,9 @@ class Trainer(AbstractTrainer, ABC):
             # if step != 0 and step % self.state.trainer_spec.predict() == 0:
             #     prediction_accuracy = self.validate(model, model_name, step)
             #     total_accuracy += prediction_accuracy
+
             # save model checkpoint if needed
-            if self.state.rank == 0:
+            if self.state.rank == 0 and self.state.is_hp_tunner is False:
                 self.save_if_need(step=current_step)
 
             # dist.barrier()
@@ -1355,6 +1373,17 @@ class Trainer(AbstractTrainer, ABC):
             # self.tf_logger.log_training(criterions, step, optimizer.param_groups[0]['lr'],
             #                             hparams=hparams, metrics=metrics)
             current_step += 1
+            batch_counter += 1
+
+        if self.clip_grad:
+            if self.state.is_hp_tunner:
+                print(f"Exiting train epoch loop: "
+                      f"total grad norm loss: {current_grad_norm_loss / batch_counter}  "
+                      f"train total loss : {current_total_loss / batch_counter}")
+        else:
+            if self.state.is_hp_tunner:
+                print(f"Exiting train epoch loop: "
+                      f"train total loss : {current_total_loss / batch_counter}")
 
         self.metric.on_batch_end()
         self._callback.on_loader_end()
@@ -1520,40 +1549,39 @@ class Trainer(AbstractTrainer, ABC):
         self.metric.on_begin()
 
         if self.state.is_hp_tunner:
-            print(f"Training in hyperparameter tunner mode")
-        validation_loss = 0
+            print(f"Training in hyperparameter tunner mode.")
+
+        epochs_loss_terms = defaultdict(float)
         for epoch in self.tqdm_iter:
             if self.state.is_hp_tunner:
                 print(f"Training in hyperparameter tunner mode. {epoch} max epoch {len(self.tqdm_iter)}")
+
+            for param_group in self._optimizers[model_name][layer_name].param_groups:
+                print(f"Training lr {param_group['lr']} batch_size {self.state.batch_size}")
 
             self.state.epoch = epoch
             self._callback.on_epoch_begin()
             if self.state.trainer_spec.is_distributed_run():
                 dist.barrier()
-            # update epoch
             # train epoch's batch
             self.metric.on_epoch_begin()
             self.train_epoch(model, model_name, layer_name, optimizer)
             self.metric.on_epoch_end()
             # if self._brake_epoch_loop == epoch:
             #     sys.exit(1)            # if self._brake_epoch_loop == epoch:
-            #     sys.exit(1)
-            validation_loss += self.validate_epoch(model, model_name, layer_name, epoch)
+            aggregate_loss = self.validate_epoch(model, model_name, layer_name, epoch)
+            for k in aggregate_loss:
+                epochs_loss_terms[k] += aggregate_loss[k]
             self._callback.on_epoch_end()
             if self.state.is_hp_tunner:
                 break
-
-            # with tune.checkpoint_dir(epoch) as checkpoint_dir:
-            #     path = os.path.join(checkpoint_dir, "checkpoint")
-            #     torch.save((model.state_dict(), optimizer.state_dict()), path)
-            # tune.report(loss=validation_loss)
 
         self.state.epoch += 1
         self._callback.on_end()
         self.metric.on_end()
 
         self._callback.on_epoch_end()
-        self.metric.total_mean_loss()
+        self.metric.total_train_mean_loss()
         return
 
     def train(self, model_name=None, config=None, checkpoint_dir=None):
@@ -1591,7 +1619,7 @@ class Trainer(AbstractTrainer, ABC):
                 # update whatever we need
                 if config is not None:
                     if 'batch_size' in config:
-                        self._data_loaders.update(config['batch_size'])
+                        self.state.data_loaders.update(config['batch_size'])
                         # self.data_loader.update_batch(int(config["batch_size"]))
                         # self._train_loader[self._tkey].update_batch(config["batch_size"])
                         # self._validation_loader[self._tkey].update_batch(config["batch_size"])

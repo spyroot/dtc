@@ -47,7 +47,6 @@ class AbstractTrainer(ABC, metaclass=ABCMeta):
         # self.state = None
         self.state = TrainerState()
         self.state.cuda_device_id = cuda_device_id
-        self.state.disable_pbar = disable_pbar
         self.state.device = device
         self.state.rank = rank
         self.state.world_size = world_size
