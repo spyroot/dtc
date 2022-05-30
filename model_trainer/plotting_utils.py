@@ -1,11 +1,23 @@
 import matplotlib
-
 matplotlib.use("Agg")
 import matplotlib.pylab as plt
 import numpy as np
 
 
 def _draw_single_box(image, xmin, ymin, xmax, ymax, display_str, color='black', color_text='black', thickness=2):
+    """
+
+    :param image:
+    :param xmin:
+    :param ymin:
+    :param xmax:
+    :param ymax:
+    :param display_str:
+    :param color:
+    :param color_text:
+    :param thickness:
+    :return:
+    """
     from PIL import ImageDraw, ImageFont
     font = ImageFont.load_default()
     draw = ImageDraw.Draw(image)
@@ -17,20 +29,15 @@ def _draw_single_box(image, xmin, ymin, xmax, ymax, display_str, color='black', 
         # Reverse list and print from bottom to top.
         text_width, text_height = font.getsize(display_str)
         margin = np.ceil(0.05 * text_height)
-        draw.rectangle(
-                [(left, text_bottom - text_height - 2 * margin),
-                 (left + text_width, text_bottom)], fill=color
-        )
-        draw.text(
-                (left + margin, text_bottom - text_height - margin),
-                display_str, fill=color_text, font=font
-        )
+        draw.rectangle([(left, text_bottom - text_height - 2 * margin),
+                        (left + text_width, text_bottom)], fill=color)
+        draw.text((left + margin, text_bottom - text_height - margin),
+                  display_str, fill=color_text, font=font)
     return image
 
 
 def draw_boxes(disp_image, boxes, labels=None):
     """
-
     :param disp_image:
     :param boxes:
     :param labels:
@@ -52,7 +59,8 @@ def draw_boxes(disp_image, boxes, labels=None):
 
 def make_image(tensor, rescale=1, rois=None, labels=None):
     """
-    Convert a numpy representation of an image to Image protobuf
+    Convert a numpy representation of an image to Image protobuf.
+
     :param tensor:
     :param rescale:
     :param rois:

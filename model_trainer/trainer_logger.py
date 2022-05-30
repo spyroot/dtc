@@ -9,15 +9,14 @@ class TensorboardTrainerLogger(SummaryWriter):
     """
 
     """
-
-    def __init__(self, tensorboard_update_rate=0,  logdir=None, is_distributed=False):
+    def __init__(self, tensorboard_update_rate=0,  comments="", logdir=None, is_distributed=False):
         """
 
         :param tensorboard_update_rate:
         :param logdir:
         :param is_distributed:
         """
-        super(TensorboardTrainerLogger, self).__init__("my_experiment", comment="LR_0.1_BATCH_16", flush_secs=2)
+        super(TensorboardTrainerLogger, self).__init__("results/tensorboard", comment="dts", flush_secs=2)
         self.update_rate = tensorboard_update_rate
 
     def log_training(self, criterions: dict, step, lr, hparams=None, metrics=None, extra_data=None) -> None:
@@ -31,17 +30,14 @@ class TensorboardTrainerLogger(SummaryWriter):
         :param extra_data:  extra data key value pair
         :return: 
         """
-        if self.update_rate == 0:
+
+        print(f"logging step {step} {criterions.keys()} {self.update_rate}")
+        if self.update_rate == 0 or step % self.update_rate != 0:
             return
 
-        if step % self.update_rate != 0:
-            return
-
+        # make sure key not overlap with validation.
         for k in criterions:
             self.add_scalar(k, criterions[k], step)
-
-        # self.add_scalar("training.loss", cluster_loss, step)
-        # self.add_scalar("grad.norm", grad_norm, step)
 
         self.add_scalar("learning.rate", lr, step)
 
@@ -62,7 +58,6 @@ class TensorboardTrainerLogger(SummaryWriter):
         """
         if self.update_rate == 0 or step % self.update_rate != 0:
             return
-
         self.add_hparams(tf_hp_dict)
 
     def log_validation(self, loss, model: nn.Module, y, y_pred, step=None, mel_filter=True) -> None:
@@ -77,6 +72,7 @@ class TensorboardTrainerLogger(SummaryWriter):
         :return:
         """
         self.add_scalar("validation.loss", loss, step)
+
         _, mel_outputs, gate_outputs, alignments = y_pred
         mel_targets, gate_targets = y
 

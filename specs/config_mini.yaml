@@ -1,0 +1,256 @@
+train: True                 # train or not,  default is True for generation we only need load pre-trained model
+#active: 'grid_small'       # dataset set generated.
+use_dataset: 'ljmini'       # dataset set generated.
+use_model: 'tacotron25'     # model to use , it must be defined in models section.
+draw_prediction: True       # at the of training draw.
+load_model: True            # load model or not, and what
+load_epoch: 500             # load model,  last epoch
+save_model: True            # save model,
+regenerate: True            # regenerated,  factor when indicated by epochs_save
+active_setting: small       # indicate what setting to use, so we can switch from debug to production
+evaluate: True              # will run evaluation
+
+root_dir: "."
+log_dir: "logs"
+nil_dir: "timing"
+graph_dir: "graphs"
+results_dir: "results"
+figures_dir: "figures"
+prediction_dir: "prediction"               # where we save prediction
+model_save_dir: "model"                    # where we save model
+metrics_dir: "metrics"                     # metrics dir in case we need store separate metrics
+
+datasets:
+  LJSpeech:
+    format: raw
+    ds_type: "audio"
+    file_type: "wav"
+    dir: "~/Dropbox/Datasets/LJSpeech-1.1"
+    training_meta: ljs_audio_text_train_filelist.txt
+    validation_meta:  ljs_audio_text_val_filelist.txt
+    test_meta: ljs_audio_text_test_filelist.txt
+    meta: metadata.csv
+    recursive: False
+  ljcheep1k_tensor:
+    ds_type: "audio"
+    file_type: "torch"
+    format: tensor_mel
+    dir: "~/Dropbox/Datasets/LJSpeech-1.1"
+    training_meta: ljcheep1k_audio_train_num_sam_1001_filter_80.pt
+    validation_meta: ljcheep1k_audio_validate_num_sam_100_filter_80.pt
+    test_meta: ljcheep1k_audio_test_num_sam_500_filter_80.pt
+    meta: metadata.csv
+    recursive: False
+    dataset_files:
+      - "ljcheep1k_audio_train_num_sam_1001_filter_80.pt"
+      - "LJSpeech_validate_num_sam_100_filter_80.pt"
+      - "LJSpeech_test_num_sam_500_filter_80.pt"
+    checksums:
+      - "b9ac25f3e8e3b423b63c184d6ba80fb5"
+      - "fe756f00ce48208df6932bd2070f91b7"
+      - "1c5e612dc2e39ad43263c6c590f9d3a8"
+  ljmini:
+    ds_type: "audio"
+    dir: "~/Dropbox/Datasets/LJSpeechSmall"
+    format: tensor_mel
+    training_meta: LJSpeech_train_num_sam_129_filter_80.pt
+    validation_meta: LJSpeech_validate_num_sam_100_filter_80.pt
+    test_meta: LJSpeechSmall_test_80.pt
+    meta: metadata.csv
+    recursive: False
+    file_type: "torch"
+
+
+settings:
+  # debug mode
+  debug:
+    early_stopping: True
+    epochs_log:  1000
+    start_test:  10
+    epochs_test: 10
+    epochs_save: 10
+    tensorboard_update: 10
+  # baseline
+  mini:
+    # if we need enable early stopping
+    early_stopping: True
+    epochs_log: 1000
+    start_test: 2
+    epochs_test: 2
+    epochs_save: 2
+    tensorboard_update: 10
+  # baseline
+  baseline:
+    early_stopping: True
+    epochs_log:  1000
+    start_test:  100
+    epochs_test: 100
+    epochs_save: 100
+    tensorboard_update: 100
+  # baseline
+  medium:
+    batch_size: 64
+    tensorboard_update: 20      # update rate each step mod tensorboard_update
+    early_stopping: True        # early stopping
+    console_log_rate: 10        # when to log to console
+    start_test: 20              # when to start run a validation test, i.e we can post
+    epochs_test: 20             # epoch mod epochs_test_rate to start testing
+    epochs_save: 5              # when to save
+    save_per_iteration: True    # if we want save per iteration for large model make sense not to wait
+    seed: 1234                  # fix seed
+    epochs: 2                   # total epochs
+    iters_per_checkpoint: 10    #
+    fp16: False                 # fp16 or fp32
+    distributed: False          # if we distribute
+    backend: "nccl"              # what distributed backend uses.
+    url: "tcp://localhost:54321"
+    cudnn_enabled: True
+    cudnn_benchmark: False
+  small:
+    epochs: 10
+    batch_size: 4
+    grad_clipping: True
+    grad_max_norm: 1.0                 # grad_max_norm rate
+    tensorboard_update: 20             # tensorboard_update update rate iter
+    early_stopping: True               # tensorboard update rate
+    console_log_rate: 4                # when to log to console
+    start_test: 20                     # when to start run a test
+    predict: 10                        # predict to start predict , validate
+    predict_per_iteration: False       # use epoch or iteration counter, in large batch size we might want to see progress.
+    epochs_save: 8                     # when to save
+    save_per_iteration: True           # if we want save per iteration
+    seed: 1234                         # fix seed
+    fp16: False                        # fp16 run
+    distributed: False                 # what distributed backend uses.
+    backend: "nccl"                    # backend: "gloo"
+    url: "tcp://localhost:54321"       # ddp
+    master_address: localhost          # master
+    master_port: 54321
+    cudnn_enabled: True
+    cudnn_benchmark: False
+    random_sampler: True               # enable random sampler
+    workers:
+      - 192.168.254.205
+
+optimizers:
+  node_optimizer:
+    eps: 1e-8
+    weight_decay: 0
+    amsgrad: False
+    momentum=0:
+    betas: [0.9, 0.999]
+    type: Adam
+  edge_optimizer:
+    eps: 1e-8
+    weight_decay: 0
+    amsgrad: False
+    momentum=0:
+    betas: [ 0.9, 0.999 ]
+    type: Adam
+  tacotron2_optimizer:
+    type: Adam
+    weight_decay: 1e-6
+    betas: [ 0.9, 0.999 ]
+    learning_rate: 1e-3
+    amsgrad: False
+    eps: 1e-8
+
+# lr_schedulers definition
+lr_schedulers:
+    - type: multistep
+      milestones: [ 400, 1000 ]
+      name: main_lr_scheduler
+    - type: ReduceLROnPlateau
+      mode: 'min'   #min, max
+      patience: 10
+      name: dtc_scheduler
+
+# Training strategy
+strategy:
+  tacotron25:
+    type: sequential
+    order:
+     - spectrogram_layer
+     - wav2vec
+  dts:
+    type: sequential
+    order:
+     - spectrogram_layer
+     - wav2vec
+
+# Model definition
+models:
+  # this pure model specific, single model can describe both edges and nodes
+  # in case we need use single model for edge and node prediction task ,
+  # use keyword single_model: model_name
+  tacotron25:
+    spectrogram_layer:
+      model: tacotron25
+      optimizer: tacotron2_optimizer
+#      lr_scheduler: main_lr_scheduler
+      has_input: True
+      has_output: True
+      max_wav_value: 32768.0
+      frames_per_step: 1
+      sampling_rate: 22050
+      filter_length: 1024   # length of the FFT window
+      win_length: 1024      # each frame of audio is windowed by
+      hop_length: 256
+      n_mel_channels: 80
+      mel_fmin: 0.0
+      mel_fmax: 8000.0
+    vocoder:
+      state: disabled
+      name: Test
+      model: GraphLSTM
+      optimizer: edge_optimizer
+      lr_scheduler: main_lr_scheduler
+      input_size: 1
+  dts:
+    spectrogram_layer:
+      model: tacotron3
+      optimizer: tacotron2_optimizer
+      #      lr_scheduler: main_lr_scheduler
+      has_input: True
+      has_output: True
+      max_wav_value: 32768.0
+      frames_per_step: 1
+      sampling_rate: 22050
+      filter_length: 1024   # length of the FFT window
+      win_length: 1024      # each frame of audio is windowed by
+      hop_length: 256
+      n_mel_channels: 80
+      mel_fmin: 0.0
+      mel_fmax: 8000.0
+    vocoder:
+      name: Test
+      state: disabled
+      model: GraphLSTM
+      optimizer: edge_optimizer
+      lr_scheduler: main_lr_scheduler
+      input_size: 1
+  GraphLstmRnn:
+    node_model:
+      model: GraphLSTM
+      optimizer: node_optimizer
+      lr_scheduler: main_lr_scheduler
+      has_input: True
+      has_output: True
+    edge_model:
+      model: GraphLSTM
+      optimizer: edge_optimizer
+      lr_scheduler: main_lr_scheduler
+      input_size: 1
+
+ray:
+  batch_size: [1, 2, 4, 8, 16, 32, 64, 128]
+  lr_min: 0.0001
+  lr_max: 0.1
+  checkpoint_freq: 4
+  num_samples: 10
+  resources:
+    cpu: 4
+    gpu: 1
+  grad_clip:
+    min: 0.5
+    max: 1.0
