@@ -1623,6 +1623,8 @@ class Trainer(AbstractTrainer, ABC):
                 self.q.append(layer)
             while len(self.q) > 0:
                 layer_name = self.q.pop()
+                self.state.current_model = model_name
+                self.state.current_layer = layer_name
                 # update whatever we need
                 if config is not None:
                     if 'lr' in config:
