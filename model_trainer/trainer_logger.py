@@ -11,6 +11,12 @@ class TensorboardTrainerLogger(SummaryWriter):
     """
 
     def __init__(self, tensorboard_update_rate=0,  logdir=None, is_distributed=False):
+        """
+
+        :param tensorboard_update_rate:
+        :param logdir:
+        :param is_distributed:
+        """
         super(TensorboardTrainerLogger, self).__init__("my_experiment", comment="LR_0.1_BATCH_16", flush_secs=2)
         self.update_rate = tensorboard_update_rate
 
@@ -20,8 +26,8 @@ class TensorboardTrainerLogger(SummaryWriter):
         :param metrics:
         :param criterions:
         :param step:  current step of in training loop
-        :param lr: learning rate
         :param hparams:  dict host hparams.
+        :param lr: learning rate
         :param extra_data:  extra data key value pair
         :return: 
         """

@@ -492,10 +492,7 @@ def tune_hyperparam(spec=None, cmd_args=None, device=None, cudnn_bench=False):
                 grace_period=1,
                 reduction_factor=2)
 
-        # metric_columns=["loss", "accuracy", "training_iteration"])
-
         reporter = CLIReporter(
-                # parameter_columns=["l1", "l2", "lr", "batch_size"],
                 metric_columns=[metric, "training_iteration"])
 
         ray_spec = spec.get_tuner_spec()

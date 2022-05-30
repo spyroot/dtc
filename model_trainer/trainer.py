@@ -1378,8 +1378,9 @@ class Trainer(AbstractTrainer, ABC):
                 "train_gate_loss": gate_loss,
             }
 
-            # self.tf_logger.log_training(criterions, step, optimizer.param_groups[0]['lr'],
-            #                             hparams=hparams, metrics=metrics)
+            if self.state.is_hp_tunner:
+                self.tf_logger.log_training(criterions, current_step,
+                                            optimizer.param_groups[0]['lr'], hparams=hparams, metrics=metrics)
             current_step += 1
             batch_counter += 1
 
