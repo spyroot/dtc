@@ -395,7 +395,6 @@ class Trainable(tune.Trainable, Callback):
 
     def save_checkpoint(self, tmp_dir):
         """
-
         :param tmp_dir:
         :return:
         """
@@ -407,11 +406,9 @@ class Trainable(tune.Trainable, Callback):
 
     def load_checkpoint(self, tmp_dir):
         """
-
         :param tmp_dir:
         :return:
         """
-
         print("called save_checkpoint with tmp dir ", tmp_dir)
         checkpoint_path = os.path.join(tmp_dir, "model.pth")
         self.trainer.load_model_layer("spectrogram_layer", checkpoint_path)
