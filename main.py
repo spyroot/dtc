@@ -592,15 +592,30 @@ def train(spec=None, cmd_args=None, device=None, cudnn_bench=False):
                           dataloader,
                           rank=int(args.rank),
                           world_size=int(cmd_args.world_size),
-                          verbose=args.verbose, device=device)
+                          verbose=args.verbose, device=device,
+                          hp_tunner=True,
+                          disable_pbar=True,
+                          )
 
         trainer.set_logger(is_enable=True)
         trainer.metric.set_logger(is_enable=True)
 
         trainer.train()
+        trainer.save_model_layer("spectrogram_layer",
+                                 "/Users/spyroot/Dropbox/macbook2022/git/dtc/results/model/test.dat")
 
-        # trainer.save()
-        # trainer.load()
+        # create second trainer and resume
+        trainer2 = Trainer(spec,
+                           dataloader,
+                           rank=int(args.rank),
+                           world_size=int(cmd_args.world_size),
+                           verbose=args.verbose, device=device,
+                           hp_tunner=True,
+                           disable_pbar=True)
+
+        trainer2.load_model_layer("spectrogram_layer",
+                                  "/Users/spyroot/Dropbox/macbook2022/git/dtc/results/model/test.dat")
+        trainer2.train()
 
         # /Users/spyroot/Dropbox/macbook2022/git/dtc/results/model/spectrogram_layer_tacotron25_small_batch_1_epoch_500.dat
         # model_file = trainer.state.trainer_spec.model_files.get_model_file_path('spectrogram_layer')
@@ -650,6 +665,7 @@ import torch, time, gc
 # Timing utilities
 start_time = None
 
+
 def start_timer():
     global start_time
     gc.collect()
@@ -658,12 +674,14 @@ def start_timer():
     torch.cuda.synchronize()
     start_time = time.time()
 
+
 def end_timer_and_print(local_msg):
     torch.cuda.synchronize()
     end_time = time.time()
     print("\n" + local_msg)
     print("Total execution time = {:.3f} sec".format(end_time - start_time))
     print("Max memory used by tensors = {} bytes".format(torch.cuda.max_memory_allocated()))
+
 
 def inference(spec: ExperimentSpecs, cmd_args, device):
     """

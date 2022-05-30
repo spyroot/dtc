@@ -112,7 +112,7 @@ class Trainer(AbstractTrainer, ABC):
         if config is not None:
             self.config = config
 
-        self.is_hp_tunner = hp_tunner
+        self.state.is_hp_tunner = hp_tunner
         self.checkpoint_dir = checkpoint_dir
         self.set_logger(verbose)
 
@@ -375,30 +375,37 @@ class Trainer(AbstractTrainer, ABC):
         for m in _models:
             self._create_model_layers(active_model, m)
 
-    def load_models(self, to_device=True, ignore_layers=None):
+    # def load_models(self, to_device=True, ignore_layers=None):
+    #     """
+    #     Load al models.
+    #     :return:
+    #     """
+    #     if self.state.rank > 0:
+    #         print(f"Skipping loading. node rank {self.rank}")
+    #
+    #     for model in self._models:
+    #         for layer in self._models[model]:
+    #             self.load(model_name=model, layer_name=layer, to_device=to_device, ignore_layers=ignore_layers)
+
+    def load_model_layer(self, layer_name: str, file_path: str):
         """
-        Load al models.
+
+        :param layer_name:
+        :param file_path:
         :return:
         """
-        if self.rank > 0:
-            print(f"Skiping loading. node rank {self.rank}")
+        if self.state.rank > 0:
+            print(f"Skipping loading. node rank {self.rank}")
 
         for model in self._models:
             for layer in self._models[model]:
-                self.load(model_name=model, layer_name=layer, to_device=to_device, ignore_layers=ignore_layers)
-
-    # def load_model(self, model_file=None):
-    #
-    #     if model_file is not None:
-    #         load_models(model_)
-    #
-    #     if model_file is None:
-    #         model_file = self.state.trainer_spec.model_files.get_model_file_path(model_name)
-    #     else:
-    #         model_file = self.state.trainer_spec.model_files.get_model_file_path(model_name)
+                if layer_name == layer:
+                    self._load_model(model_name=model, layer_name=layer,
+                                     file_path=file_path, to_device=True, ignore_layers=None)
 
     def load(self):
         """
+        Load all model and model layer.
         :return:
         """
         if self.state.rank > 0:
@@ -427,10 +434,6 @@ class Trainer(AbstractTrainer, ABC):
         # setting in config, if set don't load trainer won't load model
         last_epoch = 0
         last_step = 0
-
-        if self.is_hp_tunner:
-            print("Hyperparameter tunner, skipping.... loading.")
-            return last_epoch, last_step
 
         if not self.state.trainer_spec.is_load_model():
             print("Configuration set to skip loading models.")
@@ -503,6 +506,13 @@ class Trainer(AbstractTrainer, ABC):
                     if 'scheduler_state_dict' not in checkpoint:
                         raise TrainerError("model has no scheduler_state_dict")
 
+            # if run hyperparameter tunner we never do resume.
+            if self.state.is_hp_tunner:
+                print(f"Hyperparameter tunner, loading only states.")
+                self._last_ckt_epochs[model_name][layer_name] = 0
+                self._last_step[layer_name] = 0
+                return 0, 0
+
             #  ignore layers.
             if ignore_layers is not None and len(ignore_layers) > 0:
                 model_dict = {k: v for k, v in self._models[model_name].items()
@@ -542,6 +552,7 @@ class Trainer(AbstractTrainer, ABC):
             # load metric
             self.metric.load()
             return last_epoch, last_step
+
         except FileNotFoundError as e:
             print("Failed load model files {}. No saved model found.".format(file_path))
             logger.error(f"No model file to load model file, return default epoch 0, iteration 0 {e}")
@@ -827,7 +838,7 @@ class Trainer(AbstractTrainer, ABC):
             logger.info(f"Skipping saving, node rank {self.state.rank}")
             return
 
-        if self.is_hp_tunner:
+        if self.state.is_hp_tunner:
             logger.info(f"Skipping saving, hyperparameter tunner.")
             return
 
@@ -837,6 +848,35 @@ class Trainer(AbstractTrainer, ABC):
                 if not self.state.disable_pbar:
                     self.tqdm_iter.set_description(f"Saving in progress, device {self.state.device}")
                 self._save_model(model_name=m, layer_name=layer, file_path=model_file)
+
+    def save_models(self, model_files: list[str], step=0):
+        """
+        Save's all models.
+        :param model_files:
+        :param step:
+        :return:
+        """
+        for m in self._models:
+            if len(self._models[m]) == len(model_files):
+                for i, layer in enumerate(self._models[m]):
+                    self.save_model(model_name=m, layer_name=layer,
+                                    model_file=model_files[i], tep=step)
+            else:
+                raise TrainerError(f"Model contains {len(self._models[m])} layers, "
+                                   f"each sub-layer must have must have one file per model.")
+
+    def save_model_layer(self, layer_name: str, file_path: str):
+        """
+        Save's specific model's layer to a file_path.
+
+        :param layer_name:
+        :param file_path:
+        :return:
+        """
+        for m in self._models:
+            for layer in self._models[m]:
+                if layer_name == layer:
+                    self._save_model(model_name=m, layer_name=layer, file_path=file_path)
 
     def _save_model(self, model_name: str, layer_name: str, file_path: str,
                     epoch: Optional[int] = None,
@@ -935,43 +975,13 @@ class Trainer(AbstractTrainer, ABC):
             self.state.saved_run = last_step
             self._last_ckt_epochs[model_name][layer_name] = last_epoch
 
-    def save_model_layer(self, layer_name: str, model_file: str, step=0):
-        """
-        Save's all models.
-
-        :param layer_name:
-        :param model_file:
-        :param step:
-        :return:
-        """
-        for m in self._models:
-            for layer in self._models[m]:
-                self.save_model(model_name=m, layer_name=layer, model_file=model_file, step=step)
-
-    def save_models(self, model_files: list[str], step=0):
-        """
-        Save's all models.
-
-        :param model_files:
-        :param step:
-        :return:
-        """
-        for m in self._models:
-            if len(self._models[m]) == len(model_files):
-                for i, layer in enumerate(self._models[m]):
-                    self.save_model(model_name=m, layer_name=layer,
-                                    model_file=model_files[i],
-                                    step=step)
-            else:
-                raise TrainerError(f"Model contains {len(self._models[m])} layers, "
-                                   f"each sub-layer must have must have one file per model.")
-
     def save_if_need(self, step: int) -> bool:
         """
         Method called by trainer, to check if model 
         or model layer need to save or not.
         """
-        if self.is_hp_tunner:
+        if self.state.is_hp_tunner:
+            print("Hyperparameter tunner, skipping saving.")
             return False
 
         if self.state.trainer_spec.is_save_required() is False:
@@ -1498,10 +1508,6 @@ class Trainer(AbstractTrainer, ABC):
         assert self.state.current_model == model_name
 
         model, optimizer, scheduler = self.prepare_trainer(model_name, layer_name)
-
-        # logger.info(f"Epoch {self._last_ckt_epochs[model_name][layer_name]} "
-        #             f"saved out of {{self.state.trainer_spec.epochs()}}.")
-
         logger.info(f"Last epoch saved {self._last_ckt_epochs[model_name][layer_name]}")
         logger.info(f"Last iteration saved {self._last_step[layer_name]}")
 
@@ -1512,8 +1518,13 @@ class Trainer(AbstractTrainer, ABC):
         self._callback.on_begin()
         self.metric.on_begin()
 
+        if self.state.is_hp_tunner:
+            print(f"Training in hyperparameter tunner mode")
         validation_loss = 0
         for epoch in self.tqdm_iter:
+            if self.state.is_hp_tunner:
+                print(f"Training in hyperparameter tunner mode. {epoch} max epoch {len(self.tqdm_iter)}")
+
             self.state.epoch = epoch
             self._callback.on_epoch_begin()
             if self.state.trainer_spec.is_distributed_run():
@@ -1527,11 +1538,9 @@ class Trainer(AbstractTrainer, ABC):
             #     sys.exit(1)            # if self._brake_epoch_loop == epoch:
             #     sys.exit(1)
             validation_loss += self.validate_epoch(model, model_name, layer_name, epoch)
-            # if self.is_hp_tunner:
-            #     return
             self._callback.on_epoch_end()
-            if self.is_hp_tunner:
-                break
+            # if self.state.is_hp_tunner:
+            #     break
 
             # with tune.checkpoint_dir(epoch) as checkpoint_dir:
             #     path = os.path.join(checkpoint_dir, "checkpoint")
@@ -1563,7 +1572,6 @@ class Trainer(AbstractTrainer, ABC):
         model_layers = self.state.trainer_spec.get_active_sub_models()
 
         self.load()
-
         if self.is_trained(model_name):
             print(f"It looks like model {model_name} already trained.")
             for layer in model_layers:
