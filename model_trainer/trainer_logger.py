@@ -71,7 +71,7 @@ class TensorboardTrainerLogger(SummaryWriter):
         :param mel_filter:
         :return:
         """
-        self.add_scalar("validation.loss", loss, step)
+        self.add_scalar("loss/validation", loss, step)
 
         _, mel_outputs, gate_outputs, alignments = y_pred
         mel_targets, gate_targets = y

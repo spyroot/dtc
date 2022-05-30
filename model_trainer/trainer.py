@@ -173,7 +173,10 @@ class Trainer(AbstractTrainer, ABC):
             self.clip_grad = trainer_spec.is_grad_clipped()
 
             if self.state.is_hp_tunner is False:
-                self.tf_logger = TensorboardTrainerLogger(trainer_spec.tensorboard_update_rate())
+                # by default we log model name currently trainer and batch size.
+                self.tf_logger = TensorboardTrainerLogger(trainer_spec.tensorboard_update_rate(),
+                                                          comments=f"{trainer_spec.get_active_model()}_"
+                                                                   f"{trainer_spec.batch_size()}")
 
             self.metric = Metrics(metric_step_file_path=trainer_spec.model_files.get_metric_file_path(),
                                   metric_batch_file_path=trainer_spec.model_files.get_metric_batch_file_path(),
@@ -1099,7 +1102,7 @@ class Trainer(AbstractTrainer, ABC):
             #     "train_gate_loss": mel_loss.item(),
             #     "total_prediction_loss": total_prediction_loss,
             # }
-           self.tf_logger.log_validation(aggregate_loss_term['loss'], model, y, y_pred, step=self.state.step)
+            self.tf_logger.log_validation(aggregate_loss_term['loss'], model, y, y_pred, step=self.state.step)
 
         return aggregate_loss_term
 
@@ -1246,7 +1249,7 @@ class Trainer(AbstractTrainer, ABC):
         :param model:  a model that we train.
         :param model_name: a model name that we train
         :param layer_name: a layer of model that we train.
-        :param optimizer: a optimizer that we use
+        :param optimizer:  optimizer that bounded to this model.
         :param schedulers: a schedulers that we use.
         :return:
         """
@@ -1354,33 +1357,31 @@ class Trainer(AbstractTrainer, ABC):
             #     total_accuracy += prediction_accuracy
 
             # save model checkpoint if needed
+            # ray has issue with torch and tensorboard.
             if self.state.rank == 0 and self.state.is_hp_tunner is False:
                 self.save_if_need(step=current_step)
 
-            # dist.barrier()
-            # hparam we want track.
-            hparams = {
-                'lr': optimizer.param_groups[0]['lr'],
-                'batch_size': self.state.batch_size,
-            }
+                # dist.barrier()
+                # hparam we want track.
+                hparams = {
+                    'lr': optimizer.param_groups[0]['lr'],
+                    'batch_size': self.state.batch_size,
+                }
+                metrics = {
+                    'loss/loss': normal_loss,
+                    'loss/validation': grad_norm,
+                }
+                criterions = {
+                    "loss/normal_loss": normal_loss,
+                    "loss/loss": grad_norm,
+                    "loss/mel_loss": mel_loss,
+                    "loss/gate_loss": gate_loss,
+                }
 
-            metrics = {
-                'hparam/loss': normal_loss,
-                'hparam/grad_norm': grad_norm,
-                'hparam/mel_los': mel_loss,
-                'hparam/gate_loss': grad_norm,
-            }
-
-            criterions = {
-                "train_normal_loss": normal_loss,
-                "train_clipped_loss": grad_norm,
-                "train_mel_loss": mel_loss,
-                "train_gate_loss": gate_loss,
-            }
-
-            if self.state.is_hp_tunner:
-                self.tf_logger.log_training(criterions, current_step,
-                                            optimizer.param_groups[0]['lr'], hparams=hparams, metrics=metrics)
+                if self.state.is_hp_tunner:
+                    self.tf_logger.log_training(criterions, current_step,
+                                                optimizer.param_groups[0]['lr'],
+                                                hparams=hparams, metrics=metrics)
             current_step += 1
             batch_counter += 1
 
