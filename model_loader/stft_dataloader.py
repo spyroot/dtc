@@ -360,6 +360,7 @@ class SFTFDataloader:
 
         # for DDP we recompute.
         if self._trainer_spec.is_distributed_run():
+            print("adjusting")
             self._batch_size = int(self._trainer_spec.batch_size() / float(self._world_size))
 
         if self._trainer_spec.is_overfit():

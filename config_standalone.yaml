@@ -1,7 +1,7 @@
 train: True                 # train or not,  default is True for generation we only need load pre-trained model
 #active: 'grid_small'       # dataset set generated.
 #use_dataset: 'LJSpeechSmallPkl'     # dataset set generated.
-use_dataset: 'LJSpeechSmallPkl'      # dataset set generated.
+use_dataset: 'ljcheep1k_tensor'      # dataset set generated.
 use_model: 'tacotron25'            # model to use , it must be defined in models section.
 draw_prediction: True       # at the of training draw.
 load_model: True            # load model or not, and what
@@ -22,16 +22,16 @@ model_save_dir: "model"                    # where we save model
 metrics_dir: "metrics"                     # metrics dir in case we need store separate metrics
 
 datasets:
-#  LJSpeech:
-#    format: raw
-#    ds_type: "audio"
-#    file_type: "wav"
-#    dir: "~/Dropbox/Datasets/LJSpeech-1.1"
-#    training_meta: ljs_audio_text_train_filelist.txt
-#    validation_meta:  ljs_audio_text_val_filelist.txt
-#    test_meta: ljs_audio_text_test_filelist.txt
-#    meta: metadata.csv
-#    recursive: False
+  LJSpeech:
+    format: raw
+    ds_type: "audio"
+    file_type: "wav"
+    dir: "~/Dropbox/Datasets/LJSpeech-1.1"
+    training_meta: ljs_audio_text_train_filelist.txt
+    validation_meta:  ljs_audio_text_val_filelist.txt
+    test_meta: ljs_audio_text_test_filelist.txt
+    meta: metadata.csv
+    recursive: False
 #  LJSpeechPkl:
 #    ds_type: "audio"
 #    file_type: "torch"
@@ -76,24 +76,24 @@ datasets:
 #      - "ljs_audio_text_train_filelist_1000.txt"
 #      - "ljs_audio_text_val_filelist.txt"
 #      - "ljs_audio_text_test_filelist.txt"
-#  ljcheep1k_tensor:
-#    ds_type: "audio"
-#    file_type: "torch"
-#    format: tensor_mel
-#    dir: "~/Dropbox/Datasets/LJSpeech-1.1"
-#    training_meta: ljcheep1k_audio_train_num_sam_1001_filter_80.pt
-#    validation_meta: ljcheep1k_audio_validate_num_sam_100_filter_80.pt
-#    test_meta: ljcheep1k_audio_test_num_sam_500_filter_80.pt
-#    meta: metadata.csv
-#    recursive: False
-#    dataset_files:
-#      - "ljcheep1k_audio_train_num_sam_1001_filter_80.pt"
-#      - "LJSpeech_validate_num_sam_100_filter_80.pt"
-#      - "LJSpeech_test_num_sam_500_filter_80.pt"
-#    checksums:
-#      - "b9ac25f3e8e3b423b63c184d6ba80fb5"
-#      - "fe756f00ce48208df6932bd2070f91b7"
-#      - "1c5e612dc2e39ad43263c6c590f9d3a8"
+  ljcheep1k_tensor:
+    ds_type: "audio"
+    file_type: "torch"
+    format: tensor_mel
+    dir: "~/Dropbox/Datasets/LJSpeech-1.1"
+    training_meta: ljcheep1k_audio_train_num_sam_1001_filter_80.pt
+    validation_meta: ljcheep1k_audio_validate_num_sam_100_filter_80.pt
+    test_meta: ljcheep1k_audio_test_num_sam_500_filter_80.pt
+    meta: metadata.csv
+    recursive: False
+    dataset_files:
+      - "ljcheep1k_audio_train_num_sam_1001_filter_80.pt"
+      - "LJSpeech_validate_num_sam_100_filter_80.pt"
+      - "LJSpeech_test_num_sam_500_filter_80.pt"
+    checksums:
+      - "b9ac25f3e8e3b423b63c184d6ba80fb5"
+      - "fe756f00ce48208df6932bd2070f91b7"
+      - "1c5e612dc2e39ad43263c6c590f9d3a8"
   LJSpeechSmallPkl:
     ds_type: "audio"
     dir: "~/Dropbox/Datasets/LJSpeechSmall"
@@ -158,7 +158,7 @@ settings:
     grad_clip_thresh: 1.0              # grad_clip_thresh rate
     tensorboard_update: 20             # tensorboard_update update rate iter
     early_stopping: True               # tensorboard update rate
-    console_log_rate: 5                # when to log to console
+    console_log_rate: 4                # when to log to console
     start_test: 20                     # when to start run a test
     predict: 10                        # predict to start predict , validate
     predict_per_iteration: False       # use epoch or iteration counter, in large batch size we might want to see progress.

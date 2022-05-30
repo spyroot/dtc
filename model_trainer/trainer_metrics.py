@@ -197,9 +197,9 @@ class Metrics:
             self.epoch_train_loss = np.zeros((self.num_epochs, 1))
             self.epoch_train_gn_loss = np.zeros((self.num_epochs, 1))
             self.epoch_timer = np.zeros((self.num_epochs, 1))
-            logger.info(f"Metric shapes metric batch loss {self.batch_loss.shape}")
-            logger.info(f"Metric shapes metric batch loss {self.batch_grad_loss.shape}")
-            logger.info(f"Metric shapes metric batch loss {self.epoch_train_loss.shape}")
+            logger.info(f"Metric shapes batch loss {self.batch_loss.shape[0]}")
+            logger.info(f"Metric shapes batch loss {self.batch_grad_loss.shape[0]}")
+            logger.info(f"Metric shapes epoch shape {self.epoch_train_loss.shape[0]}")
 
         return
 

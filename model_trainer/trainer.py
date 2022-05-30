@@ -938,8 +938,8 @@ class Trainer(AbstractTrainer, ABC):
                 is_saved = True
 
             else:
-                print(f"Saving model and auto precision state without scheduler state, "
-                      f"last epoch {last_epoch}, last step {last_step}, model file {resolved_path}.")
+                # print(f"Saving model and auto precision state without scheduler state, "
+                #       f"last epoch {last_epoch}, last step {last_step}, model file {resolved_path}.")
                 logger.info(f"Saving model with without scheduler state, "
                             f"last epoch {last_epoch}, last step {last_step}, model file {resolved_path}.")
                 logger.info("Model saving with optimizer without a scheduler state.")
@@ -952,8 +952,8 @@ class Trainer(AbstractTrainer, ABC):
 
         else:
             if model_name in self._schedulers:
-                print(f"Saving model with scheduler state, "
-                      f"last epoch {last_epoch}, last step {last_step}, model file {resolved_path}.")
+                # print(f"Saving model with scheduler state, "
+                #       f"last epoch {last_epoch}, last step {last_step}, model file {resolved_path}.")
                 logger.info(f"Saving model with scheduler state, "
                             f"last epoch {last_epoch}, last step {last_step}, model file {resolved_path}.")
                 torch.save({'epoch': last_epoch, 'it': last_step,
@@ -964,9 +964,11 @@ class Trainer(AbstractTrainer, ABC):
                 is_saved = True
 
             else:
-                print(f"Saving without scheduler state, "
-                      f"last epoch {last_epoch}, last step {last_step}")
-                print(f"Model file {resolved_path}.")
+
+                # print(f"Saving without scheduler state, "
+                #       f"last epoch {last_epoch}, last step {last_step}")
+                # print(f"Model file {resolved_path}.")
+
                 logger.info(f"Saving without scheduler state, "
                             f"last epoch {last_epoch}, last step {last_step}, model file {resolved_path}.")
                 torch.save({'epoch': last_epoch, 'it': last_step,
@@ -1032,7 +1034,9 @@ class Trainer(AbstractTrainer, ABC):
         """
         # take a batch.
         self._callback.validation_start()
+        tbar_update_rate = self.state.trainer_spec.console_log_rate()
         take_batch = self._batch_loader[model_name][layer_name]
+
         model.eval()
         self.metric.update_bach_estimated(len(self._validation_loader))
         self.metric.on_prediction_batch_start()
@@ -1060,16 +1064,18 @@ class Trainer(AbstractTrainer, ABC):
 
                 self.metric.update(batch_idx, step, all_reduced_loss['loss'], validation=True)
 
-                tqdm_update_dict = {'step': step,
-                                    'loss': all_reduced_loss['loss'],
-                                    'batch_loss': all_reduced_loss['loss'] // max(1, batch_idx + 1),
-                                    'avg loss': self.metric.total_train_mean_loss(),
-                                    'batch': f"{batch_idx}/{current_batch_size}",
-                                    'saved step': self.state.saved_run}
+                if not self.state.is_hp_tunner:
+                    if self.state.rank == 0 and batch_idx % tbar_update_rate == 0:
+                        tqdm_update_dict = {'step': step,
+                                            'loss': all_reduced_loss['loss'],
+                                            'batch_loss': all_reduced_loss['loss'] // max(1, batch_idx + 1),
+                                            'avg loss': self.metric.total_train_mean_loss(),
+                                            'batch': f"{batch_idx}/{current_batch_size}",
+                                            'saved step': self.state.saved_run}
 
-                for k in all_reduced_loss:
-                    tqdm_update_dict[k] = all_reduced_loss[k]
-                self.tqdm_iter.set_postfix(tqdm_update_dict)
+                        for k in all_reduced_loss:
+                            tqdm_update_dict[k] = all_reduced_loss[k]
+                        self.tqdm_iter.set_postfix(tqdm_update_dict)
 
                 # sum each loss term
                 for k in all_reduced_loss:
@@ -1085,7 +1091,7 @@ class Trainer(AbstractTrainer, ABC):
         model.train()
 
         # update tensorboard
-        if self.state.is_hp_tunner is False and self.rank == 0:
+        if self.state.is_hp_tunner is False and self.state.rank == 0:
             # criterions = {
             #     "train_normal_loss": normal_loss,
             #     "train_clipped_loss": grad_norm,
@@ -1257,9 +1263,11 @@ class Trainer(AbstractTrainer, ABC):
         current_grad_norm_loss = 0
 
         current_epoch, current_step = self.current_running_state()
-        self.metric.update_bach_estimated(len(self._train_loader))
+        loader_data_size = len(self._train_loader)
+        self.metric.update_bach_estimated(loader_data_size)
         self._callback.on_loader_begin()
         self.metric.on_batch_start()
+        # ths main for debug for ray if something went very wrong we can check here.
         if self.state.is_hp_tunner:
             print(f"Entering train epoch loop: "
                   f"train loader length: {len(self._train_loader)}, "
@@ -1332,12 +1340,12 @@ class Trainer(AbstractTrainer, ABC):
                 if self.state.rank == 0 and current_step != 0 and current_step % tbar_update_rate == 0:
                     self.tqdm_iter.set_postfix({'step': current_step,
                                                 'loss': normal_loss,
-                                                'batch_loss': current_total_loss // max(1, batch_idx + 1),
-                                                'avg loss': self.metric.total_train_mean_loss(),
+                                                'batch_loss': self.metric.batch_grad_loss.mean(),
+                                                'avg loss': self.metric.epoch_train_gn_loss.mean(),
                                                 'mel_loss': mel_loss.item(),
                                                 'gate_loss': gate_loss.item(),
                                                 'clip_loss': grad_norm.item(),
-                                                'batch': f"{batch_idx}/{self.state.batch_size}",
+                                                'batch': f"{batch_idx}/{loader_data_size}",
                                                 'lr': optimizer.param_groups[0]['lr'],
                                                 'saved step': self.state.saved_run})
             # # run prediction if_needed
@@ -1555,9 +1563,8 @@ class Trainer(AbstractTrainer, ABC):
         for epoch in self.tqdm_iter:
             if self.state.is_hp_tunner:
                 print(f"Training in hyperparameter tunner mode. {epoch} max epoch {len(self.tqdm_iter)}")
-
-            for param_group in self._optimizers[model_name][layer_name].param_groups:
-                print(f"Training lr {param_group['lr']} batch_size {self.state.batch_size}")
+                for param_group in self._optimizers[model_name][layer_name].param_groups:
+                    print(f"Training lr {param_group['lr']} batch_size {self.state.batch_size}")
 
             self.state.epoch = epoch
             self._callback.on_epoch_begin()
