@@ -7,16 +7,17 @@ from torch.distributions.kl import kl_divergence
 from torch.nn import functional as F
 
 
-class Tacotron2Loss(nn.Module):
+class DTSLoss(nn.Module):
     """
 
     """
-
     def __init__(self, filter_length=1024, hop_length=256, win_length=1024,
                  n_mel_channels=80, sampling_rate=22050, mel_fmin=0.0, sr=22050, n_fft=2048, fmax=8000,
                  mel_fmax=8000.0):
-        super(Tacotron2Loss, self).__init__()
+        super(DTSLoss, self).__init__()
         self.reconstruction_loss = nn.BCELoss(reduction='sum')
+
+        print("Created dts loss.")
 
         # self.mel_filters_librosa = self.mel_filters_librosa = librosa.filters.mel(
         #         sr=sampling_rate,
@@ -62,10 +63,13 @@ class Tacotron2Loss(nn.Module):
         print("mel loss ", mel_loss.item())
         print("gate loss ", gate_loss.item())
 
+        print(reconstructed.shape)
+        print(spectral_target.shape)
+
         bce_loss = nn.BCEWithLogitsLoss()(reconstructed, spectral_target)
         spectral_loss = bce_loss + kl_loss
 
-         #  spectral_loss = nn.BCELoss()(reconstructed, spectral_target)
+        #  spectral_loss = nn.BCELoss()(reconstructed, spectral_target)
         #print(reconstructed)
         #print("Spectral loss ", spectral_loss.item())
         print("kl loss", kl_loss.item())
@@ -79,4 +83,6 @@ class Tacotron2Loss(nn.Module):
         # mse = torch.square(mel_filters - mel_filters_librosa).mean().item()
         # print("Mean Square Difference: ", self.mel_filters_librosa.mean().item())
 
-        return total
+        return {'loss': total,
+                'mel_loss': mel_loss,
+                'gate_loss': gate_loss}

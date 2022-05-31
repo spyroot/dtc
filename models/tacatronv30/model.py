@@ -19,13 +19,12 @@ class InferenceEncoder(nn.Module):
     """
 
     """
-    def __init__(self, z_dim, y_dim=0, hidden_dim=120):
+    def __init__(self, z_dim, y_dim=0, hidden_dim=512):
         super(InferenceEncoder, self).__init__()
         self.z_dim = z_dim
-        #self.y_dim = y_dim
         self.net = nn.Sequential(
                 nn.Flatten(),
-                nn.Linear(240, hidden_dim),
+                nn.Linear(z_dim, hidden_dim),
                 nn.ELU(),
                 nn.Linear(hidden_dim, hidden_dim),
                 nn.ELU(),
@@ -61,7 +60,7 @@ class InferenceEncoder(nn.Module):
 
 
 class InferenceDecoder(nn.Module):
-    def __init__(self, z_dim, y_dim=0, hidden_dim=120):
+    def __init__(self, z_dim, y_dim=0, hidden_dim=512):
         super(InferenceDecoder, self).__init__()
         self.z_dim = z_dim
         self.y_dim = y_dim
@@ -70,7 +69,7 @@ class InferenceDecoder(nn.Module):
                 nn.ELU(),
                 nn.Linear(hidden_dim, hidden_dim),
                 nn.ELU(),
-                nn.Linear(hidden_dim, 240)
+                nn.Linear(hidden_dim, 1024)
         )
 
     def forward(self, z, y=None):
@@ -179,10 +178,12 @@ class Tacotron3(nn.Module):
         :param device:
         """
         super(Tacotron3, self).__init__()
+
+        # model specs
         self.experiment_specs = experiment_specs
         self.model_trainer_spec = experiment_specs
         self.model_spec = experiment_specs.get_model_spec()
-        self.encoder_spec = self.model_spec.get_encoder()
+        self.encoder_spec = self.model_spec.get_spectrogram()
         self.device = device
 
         self.mask_padding = self.experiment_specs.mask_padding
@@ -206,8 +207,8 @@ class Tacotron3(nn.Module):
         self.decoder = Decoder(experiment_specs, device=self.device)
         self.postnet = Postnet(experiment_specs, device=self.device)
 
-        self.vae_encode = InferenceEncoder(z_dim=240)
-        self.vae_decode = InferenceDecoder(z_dim=240)
+        self.vae_encode = InferenceEncoder(z_dim=1024)
+        self.vae_decode = InferenceDecoder(z_dim=1024)
 
     def reparameterize(self, mu, logvar, mi=False):
         """
@@ -269,15 +270,14 @@ class Tacotron3(nn.Module):
 
     def forward(self, inputs):
         """
-
-        Args:
-            inputs:
-
-        Returns:
-
+        Forward pass inputs a batch that contains text, mel , spectral data.
+        :param inputs:
+        :return:
         """
         text_inputs, text_lengths, mels, max_len, output_lengths, spectral = inputs
         text_lengths, output_lengths = text_lengths.data, output_lengths.data
+
+        print(spectral.squeeze(1).shape)
 
         embedded_inputs = self.embedding(text_inputs).transpose(1, 2)
         encoder_outputs = self.encoder(embedded_inputs, text_lengths)
@@ -287,10 +287,8 @@ class Tacotron3(nn.Module):
 
         q_mean, q_var = self.vae_encode(spectral)
 
-
         # print("q_mean", q_mean.shape)
         # print("q_var", q_var.shape)
-
         # epsilon = torch.randn_like(v)
         # z = m + torch.sqrt(v) * epsilon
         #

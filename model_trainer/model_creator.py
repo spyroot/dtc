@@ -1,17 +1,22 @@
+from typing import Callable
+
 from .trainer_specs import ExperimentSpecs
 from .model_trainer import GeneratorTrainer
-from model_trainer.utils import fmtl_print
-
+from models.loss_function import Tacotron2Loss
+from models.loss_function3 import DTSLoss
 
 class ModelCreator:
     """
      Create model and model trainer.
     """
 
-    def __init__(self, trainer_spec: ExperimentSpecs, device='cuda', debug=False, verbose=False):
+    def __init__(self, trainer_spec: ExperimentSpecs,
+                 device='cuda', debug=False, verbose=False):
         """
-         Construct model creator,  it take trainer spec object and
-         create model that indicate as active model.
+         Construct model creator,  it takes trainer spec
+         and creates respected model that indicate
+         as active model in specification.
+
         :param trainer_spec: model trainer specification
         :param device:  device used to train a model.
         :param verbose:  output verbose data during model creation
@@ -35,6 +40,49 @@ class ModelCreator:
 
         self.model_dispatch, self.trainer_dispatch = self.create_model_dispatch()
         self.create_model_dispatch()
+
+    def create_model_dispatch(self) -> tuple[dict[str, dict[str: Callable]],
+                                             dict[str, Callable],
+                                             dict[str, dict[str: Callable]]]:
+        """
+        Create two dispatcher,
+        Model dispatcher and trainer dispatcher.
+        The first dispatch model creator, where each key model name
+        as it defined in config.yaml and value is callable creator function,
+
+        method, class etc.
+        Similarly, second dispatch is trainer callable objects.
+
+        :return: model creator Callable , and trainer creator Callable.
+        """
+        model_dispatch = {
+            'tacotron25': {
+                'spectrogram_layer': self.create_tacotron25,
+                'vocoder': self.create_tacotron25,
+                'loss': Tacotron2Loss,
+            },
+            'dts': {
+                'spectrogram_layer': self.create_tacotron30,
+                'vocoder': self.create_tacotron25,
+                'loss':
+            }
+        }
+
+        trainer_dispatch = {
+            # 'GraphGRU': RnnGenerator,
+            # 'GraphLSTM': RnnGenerator,
+        }
+
+        batch_loader = {
+            'tacotron25': {
+                'spectrogram_layer': self.tacotron25_batch,
+            },
+            'dts': {
+                'spectrogram_layer': self.tacotron30_batch,
+            }
+        }
+
+        return model_dispatch, trainer_dispatch, batch_loader
 
     def create_lstm_rnn(self, trainer_spec: ExperimentSpecs):
         """

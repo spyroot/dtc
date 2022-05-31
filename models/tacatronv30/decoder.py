@@ -31,7 +31,7 @@ class Decoder(nn.Module):
         super(Decoder, self).__init__()
         self.experiment_specs = specs
         self.model_spec = specs.get_model_spec()
-        self.encoder_spec = self.model_spec.get_encoder()
+        self.encoder_spec = self.model_spec.get_spectrogram()
         self.device = device
 
         self.n_mel_channels = self.encoder_spec.n_mel_channels()

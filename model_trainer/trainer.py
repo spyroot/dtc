@@ -34,6 +34,7 @@ from model_trainer.trainer_metrics import Metrics
 from model_trainer.trainer_specs import ExperimentSpecs
 # from distributed import apply_gradient_allreduce
 from models.loss_function import Tacotron2Loss
+from models.loss_function3 import DTSLoss
 from models.tacatronv30.model import Tacotron3
 from models.tacotronv25.model import Tacotron25
 from model_trainer.plotting_utils import plot_alignment_to_numpy, plot_spectrogram_to_numpy
@@ -139,23 +140,15 @@ class Trainer(AbstractTrainer, ABC):
             self.state.data_loader = data_loader
             self.state.data_loaders, self.state.collate_fn = self.state.data_loader.get_all()
 
-            print("dataset size", data_loader.get_train_dataset_size())
-            print("dataset size", data_loader.get_val_dataset_size())
-
             self._train_loader = self.state.data_loaders[self._tkey]
             self._validation_loader = self.state.data_loaders[self._vkey]
-            print("dataset size", len(self._train_loader))
-            print("dataset size", len(self._validation_loader))
 
             if len(self._train_loader) == 0:
                 print("dataset size", data_loader.get_train_dataset_size())
-            # print("Training dataset is empty.")
-            # if len(self._validation_loader) == 0:
-            #     print("Training dataset is empty.")
 
-       # sys.exit()
-        # TODO need refactor that, and move to dict and abstract,
-        self.criterion = Tacotron2Loss()
+
+        #
+        self.criterion = None
 
         # dict store all model
         self._models = {}
@@ -228,6 +221,8 @@ class Trainer(AbstractTrainer, ABC):
                                              dict[str, Callable],
                                              dict[str, dict[str: Callable]]]:
         """
+        @TODO for now we keep it here, it will move to Model Creator.
+
         Create two dispatcher,
         Model dispatcher and trainer dispatcher.
         The first dispatch model creator, where each key model name
@@ -241,11 +236,13 @@ class Trainer(AbstractTrainer, ABC):
         model_dispatch = {
             'tacotron25': {
                 'spectrogram_layer': self.create_tacotron25,
-                'vocoder': self.create_tacotron25
+                'vocoder': self.create_tacotron25,
+                'loss': Tacotron2Loss,
             },
             'dts': {
                 'spectrogram_layer': self.create_tacotron30,
-                'vocoder': self.create_tacotron25
+                'vocoder': self.create_tacotron25,
+                'loss': DTSLoss,
             }
         }
 
@@ -288,6 +285,7 @@ class Trainer(AbstractTrainer, ABC):
         self.create_optimizers()
         self.create_lr_schedulers()
 
+        # amp scaler
         self.scaler = torch.cuda.amp.GradScaler(enabled=self.state.is_amp)
 
     def create_tacotron25(self, is_set_cuda=False) -> nn.Module:
@@ -306,7 +304,7 @@ class Trainer(AbstractTrainer, ABC):
             device = self._loop_up_device(is_set_cuda)
             logger.info("Creating DDP on cuda device "
                         "{} torch device {} device received {}".format(self.cuda_device_id, device, self.state.device))
-            model = Tacotron3(self.state.trainer_spec, device).cuda()
+            model = Tacotron25(self.state.trainer_spec, device).cuda()
             model = DistributedDataWrapper(model,
                                            device_ids=[self.cuda_device_id],
                                            output_device=self.cuda_device_id).cuda()
@@ -339,7 +337,7 @@ class Trainer(AbstractTrainer, ABC):
         else:
             model = Tacotron3(self.state.trainer_spec, self.state.device).to(self.state.device)
 
-        if self.state.trainer_spec.state.is_amp():
+        if self.state.trainer_spec.is_amp():
             model.decoder.attention_layer.score_mask_value = finfo('float16').min
 
         return model
@@ -355,6 +353,8 @@ class Trainer(AbstractTrainer, ABC):
         :return: nothing
         :param is_set_cuda: will pin directly
         """
+        print("Creating model", model_name)
+
         logger.info(f"Creating a model {model_name} layer: {layer_name}.")
         if model_name not in self.model_creator:
             raise ValueError("Unknown {} model for a "
@@ -374,9 +374,11 @@ class Trainer(AbstractTrainer, ABC):
         if model_name not in self._last_ckt_epochs:
             self._last_ckt_epochs[model_name] = {}
 
-        # update last epoch
+        # update last epoch and step, initially it 0, during load this state update.
         self._last_ckt_epochs[model_name][layer_name] = 0
         self._last_step[layer_name] = 0
+
+        self.criterion = self.model_creator[model_name]['loss']
 
     def create_models(self):
         """
@@ -420,7 +422,10 @@ class Trainer(AbstractTrainer, ABC):
 
     def load(self):
         """
-        Load all model and model layer.
+        Load all model and model layer to internal state.
+        This method external hence caller can load and save
+        a state of trainer.
+
         :return:
         """
         if self.state.rank > 0:
@@ -1407,7 +1412,7 @@ class Trainer(AbstractTrainer, ABC):
 
     def tacotron25_batch(self, batch, device):
         """
-
+        Batch parser for DTS.
         :param device:
         :param batch:
         :return:
@@ -1434,7 +1439,7 @@ class Trainer(AbstractTrainer, ABC):
 
     def tacotron30_batch(self, batch, device):
         """
-
+        Batch parser for DTS.
         :param device:
         :param batch:
         :return:
@@ -1501,7 +1506,9 @@ class Trainer(AbstractTrainer, ABC):
             device = self.state.device
 
         assert self.criterion is not None
+        self.criterion = self.criterion()
         self.criterion.to(device)
+
         self.tqdm_iter = self.trainer_iterator(model_name, layer_name)
 
         assert model_name in self._optimizers

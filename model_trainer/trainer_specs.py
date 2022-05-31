@@ -855,9 +855,9 @@ class ExperimentSpecs:
 
         return 1234
 
-    def is_amp(self):
+    def is_amp(self) -> False:
         """
-        Return true if active setting set to run in fp16
+        Return true if active setting set to run in mixed precision mode.
         :return:
         """
         if self._setting is None:

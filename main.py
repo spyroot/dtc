@@ -64,6 +64,8 @@ def convert_mel_to_data(encoder_spec: TacotronSpec,
     """
     Convert audio dataset to MEL tensor representation.
 
+    TODO add meta v2/v3 and detect during data loader creation.
+
     :param encoder_spec:  all parameter for SFTS encoder
     :param dataset: list.
     :param meta_file: a meta file used to generate a dataset.
@@ -715,8 +717,8 @@ def main(cmd_args):
     else:
         _device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    trainer_spec = ExperimentSpecs(spec_config=cmd_args.config, verbose=cmd_args._verbose)
-    trainer_spec.set_logger(cmd_args._verbose)
+    trainer_spec = ExperimentSpecs(spec_config=cmd_args.config, verbose=cmd_args.verbose)
+    trainer_spec.set_logger(cmd_args.verbose)
 
     if cmd_args.batch_size is not None:
         trainer_spec.set_batch_size(int(cmd_args.batch_size))
