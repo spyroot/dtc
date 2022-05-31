@@ -41,7 +41,7 @@ class Postnet(nn.Module):
         self.convolutions = nn.ModuleList()
         self.experiment_specs = experiment_specs
         self.model_spec = experiment_specs.get_model_spec()
-        self.encoder_spec = self.model_spec.get_encoder()
+        self.encoder_spec = self.model_spec.get_spectrogram()
 
         self.convolutions.append(
             nn.Sequential(

@@ -1,22 +1,29 @@
-import random
-from typing import Optional, Callable
+# SFTS, Mel dataset
+#
+# It for dataset that outputs only one hot vector and mel spectrogram.
+#
+# Mustafa
 
-import numpy as np
+from abc import ABC
+from typing import Callable, Optional
+
 import torch
 import torch.utils.data
 from loguru import logger
+from torch import Tensor
 
-from .base_stft_dataset import BaseSFTFDataset
+from model_loader.base_stft_dataset import BaseSFTFDataset, DatasetError
+from model_loader.tacotron_stft30 import TacotronSTFT3
 from model_trainer.specs.tacatron_spec import TacotronSpec
-from model_trainer.utils import load_wav_to_torch
-from text import text_to_sequence
-from .tacotron_stft30 import TacotronSTFT3
+from model_trainer.trainer_specs import ExperimentSpecs
+import numpy
 
 
 class SFTF3Dataset(BaseSFTFDataset):
     """
 
     """
+
     def __init__(self, model_spec: TacotronSpec,
                  data=None,
                  root: Optional[str] = "dts",
@@ -29,7 +36,8 @@ class SFTF3Dataset(BaseSFTFDataset):
                  overfit: Optional[bool] = False,
                  transform: Optional[Callable] = None,
                  target_transform: Optional[Callable] = None,
-                 verbose: Optional[bool] = False) -> None:
+                 verbose: Optional[bool] = False,
+                 overwrite: Optional[bool] = False) -> None:
         super(SFTF3Dataset, self).__init__(model_spec,
                                            root=root,
                                            data=data,
@@ -41,9 +49,12 @@ class SFTF3Dataset(BaseSFTFDataset):
                                            in_memory=in_memory,
                                            verbose=verbose,
                                            overfit=overfit,
+                                           overwrite=overwrite,
                                            transform=transform,
                                            target_transform=target_transform)
+        BaseSFTFDataset.set_logger(verbose)
         self.set_logger(verbose)
+
         # if raw we need transcode to stft's
         if self.is_audio:
             logger.debug("Creating TacotronSTFT for raw file processing.")
@@ -52,66 +63,76 @@ class SFTF3Dataset(BaseSFTFDataset):
                     model_spec.n_mel_channels(), model_spec.sampling_rate(), model_spec.mel_fmin(),
                     model_spec.mel_fmax())
 
-    def file_to_mel(self, filename, callback=None):
+    def audiofile_to_mel(self, filename: str, callback: callable = None) -> tuple[Tensor, Tensor]:
         """
+        Take audio file and convert to mel spectrogram.
+        Each audio file normalized.
 
-        :param callback:
+        :param callback: if called pass callback transformed mel passed to callback.
         :param filename:
         :return:
         """
-
-        # logger.debug("Converting file {} to mel", filename)
         normalized_audio, sampling_rate = self.normalize_audio(filename)
         if sampling_rate != self.stft.sampling_rate:
             raise ValueError("{} {} SR doesn't match target {} SR".format(sampling_rate, self.stft.sampling_rate))
+
         self.normalize_audio(filename)
 
         mel_spec, spectral_flatness = self.stft.mel_spectrogram(normalized_audio)
         if callback is not None:
             callback(mel_spec, spectral_flatness)
-        mel_spec = torch.squeeze(mel_spec, 0)
 
+        mel_spec = torch.squeeze(mel_spec, 0)
         return mel_spec, spectral_flatness
 
-    def numpy_to_mel(self, filename):
-        """
-        :param filename:
-        :return:
-        """
-        mel_spec = torch.from_numpy(np.load(filename))
-        assert mel_spec.size(0) == self.stft.n_mel_channels, (
-            'Mel dimension mismatch: given {}, expected {}'.format(
-                    mel_spec.size(0), self.stft.n_mel_channels))
+    # def numpy_to_mel(self, filename):
+    #     """
+    #     :param filename:
+    #     :return:
+    #     """
+    #     mel_spec = torch.from_numpy(np.load(filename))
+    #     assert mel_spec.size(0) == self.stft.n_mel_channels, (
+    #         'Mel dimension mismatch: given {}, expected {}'.format(
+    #                 mel_spec.size(0), self.stft.n_mel_channels))
+    #
+    #     return mel_spec, spectral_flatness
 
-        return mel_spec
+    # def text_to_tensor(self, text):
+    #     """
+    #     One hot encoder for text seq
+    #     :param text:
+    #     :return:
+    #     """
+    #     text_norm = torch.IntTensor(text_to_sequence(text, self.text_cleaners))
+    #     return text_norm
 
-    def text_to_tensor(self, text):
-        """
-        One hot encoder for text seq
-        :param text:
-        :return:
-        """
-        text_norm = torch.IntTensor(text_to_sequence(text, self.text_cleaners))
-        return text_norm
-
-    def __getitem__(self, index):
+    def __getitem__(self, idx):
         """
         :param index:
         :return:
         """
         if self.is_a_tensor:
-            text, mel, = self._data[index]
-            return text, mel
-        if self.is_audio:
-            if 'meta' not in self._data[index]:
-                raise Exception("data must contain meta key")
-            if 'path' not in self._data[index]:
-                raise Exception("data must contain path key")
-            text = self.text_to_tensor(self._data[index]['meta'])
-            mel, spectral_flatness = self.file_to_mel(self._data[index]['path'])
+            text, mel, spectral_flatness = self._data[idx]
             return text, mel, spectral_flatness
 
-        return None, None
+        if self.is_audio:
+            if 'meta' not in self._data[idx]:
+                raise Exception("Each data entry, must contain a meta key.")
+            if 'path' not in self._data[idx]:
+                raise Exception("Each data entry must contain path key.")
+
+            text = self.text_to_tensor(self._data[idx]['meta'])
+            mel, spectral_flatness = self.audiofile_to_mel(self._data[idx]['path'])
+            return text, mel, spectral_flatness
+
+        return None, None, None
+
+    def tensor_data(self, index) -> torch.Tensor:
+        """
+        :param index:
+        :return:
+        """
+        return self._data[index]
 
     def __len__(self):
         return len(self._data)
@@ -129,3 +150,29 @@ class SFTF3Dataset(BaseSFTFDataset):
             logger.disable(__name__)
 
 
+def test_save_and_load(dataset_name=""):
+    """
+
+    :return:
+    """
+    trainer_spec = ExperimentSpecs(spec_config='../config.yaml')
+    model_spec = trainer_spec.get_model_spec().get_spec('spectrogram_layer')
+    pk_dataset = trainer_spec.get_audio_dataset(dataset_name)
+    assert 'train_set' in pk_dataset
+    assert 'validation_set' in pk_dataset
+    assert 'test_set' in pk_dataset
+    # as_list = list(pk_dataset['train_set'].values())
+    train_dataset = SFTF3Dataset(model_spec,
+                                 list(pk_dataset['train_set'].values()),
+                                 data_format='audio_raw', in_memory=False)
+
+
+
+
+if __name__ == '__main__':
+    """
+    """
+    # test_download()
+    # test_create_from_numpy_in_memory()
+    # test_create_from_numpy_and_iterator()
+    test_save_and_load('lj_speech_1k_raw')

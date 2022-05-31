@@ -1,3 +1,5 @@
+import warnings
+
 from loguru import logger
 
 
@@ -51,7 +53,6 @@ models:
         if 'attention' not in self._model_dict:
             return ['attention']
 
-
     def attention(self):
         return ['attention']
 
@@ -68,7 +69,8 @@ models:
 
     def frames_per_step(self):
         if 'frames_per_step' not in self._model_dict:
-            raise TacotronSpecError("Model has no frames_per_step defined.")
+            warnings.warn("frame per step not defined in model spec. return default 1")
+            return 1
         return self._model_dict['frames_per_step']
 
     def hop_length(self):

@@ -3,6 +3,9 @@ from loguru import logger
 
 
 class ModelSpec(ABC, metaclass=ABCMeta):
+    """
+
+    """
     @abstractmethod
     def __init__(self, verbose=False) -> None:
         self.verbose = verbose
@@ -22,6 +25,10 @@ class ModelSpec(ABC, metaclass=ABCMeta):
 
     @abstractmethod
     def get_spec(self, name: str):
+        pass
+
+    @abstractmethod
+    def get_spectrogram(self):
         pass
 
     @staticmethod

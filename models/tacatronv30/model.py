@@ -288,7 +288,6 @@ class Tacotron3(nn.Module):
         q_mean, q_var = self.vae_encode(spectral)
 
 
-
         # print("q_mean", q_mean.shape)
         # print("q_var", q_var.shape)
 

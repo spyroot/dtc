@@ -11,7 +11,7 @@ class InvalidModelSpec(Exception):
 
 
 # @attr.s(frozen = True)
-class ModelSpecDTC(ModelSpec, ABC):
+class ModelSpecDTS(ModelSpec, ABC):
     """
     MODEL SPEC {'spectrogram_layer': {'model': 'tacotron25', 'optimizer': 'tacotron2_optimizer', 'has_input': True,
      'has_output': True, 'max_wav_value': 32768.0, 'frames_per_step': 1, 'sampling_rate': 22050, 'filter_length': 1024,
@@ -25,13 +25,15 @@ class ModelSpecDTC(ModelSpec, ABC):
         :param model_spec:
         :param dataset_spec:
         """
-        super(ModelSpecDTC, self).__init__(verbose=verbose)
+        super(ModelSpecDTS, self).__init__(verbose=verbose)
         self.set_logger(verbose)
 
         logger.debug("Creating model spec dts", model_spec, dataset_spec)
 
         self._model_dict = model_spec
+
         self._generator_param_dict = dataset_spec
+
         # list of sub-models
         self._sub_models = {}
 
@@ -49,7 +51,7 @@ class ModelSpecDTC(ModelSpec, ABC):
         """
         return self._model_dict, self._generator_param_dict
 
-    def get_encoder(self) -> TacotronSpec:
+    def get_spectrogram(self) -> TacotronSpec:
         """
 
         :return:
@@ -72,12 +74,12 @@ class ModelSpecDTC(ModelSpec, ABC):
 
     def get_spec(self, name: str):
         """
-
         :param name:
         :return:
         """
         if name not in self._sub_models:
             raise InvalidModelSpec(f"{name} not found.")
+
         return self._sub_models[name]
 
     @staticmethod

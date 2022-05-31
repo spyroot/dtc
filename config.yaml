@@ -1,8 +1,8 @@
 train: True                 # train or not,  default is True for generation we only need load pre-trained model
 #active: 'grid_small'       # dataset set generated.
 #use_dataset: 'LJSpeechSmallPkl'     # dataset set generated.
-use_dataset: 'LJSpeechPkl'  # dataset set generated.
-use_model: 'tacotron25'      # model to use , it must be defined in models section.
+use_dataset: 'LJSpeechMiniRaw'  # dataset set generated.
+use_model: 'dts'            # model to use , it must be defined in models section.
 draw_prediction: True       # at the of training draw.
 load_model: True            # load model or not, and what
 load_epoch: 500             # load model,  last epoch
@@ -50,7 +50,7 @@ datasets:
     meta: metadata.csv
     recursive: False
     file_type: "torch"
-  LJSpeechSmallRaw:
+  lj_speech_1k_raw:
     ds_type: "audio"
     file_type: "wav"
     format: raw
@@ -129,15 +129,12 @@ settings:
     cudnn_enabled: True
     cudnn_benchmark: False
   small:
-    batch_size: 128
+    batch_size: 4
     grad_clipping: True
     grad_max_norm : 1.0
-    # tensorboard update rate
-    tensorboard_update: 20
-    # early stopping
-    early_stopping: True
-    # when to log to console
-    console_log_rate: 2
+    tensorboard_update: 20        # update rate for tensorboard
+    early_stopping: True          # early stopping
+    console_log_rate: 2           # when to log to console
     # when to start run a test
     start_test: 20
     # predict to start predict , validate
@@ -205,18 +202,18 @@ lr_schedulers:
       patience: 10
       name: dtc_scheduler
 #
-## Training strategy
-#strategy:
-#  tacotron25:
-#    type: sequential
-#    order:
-#     - spectrogram_layer
-#     - wav2vec
-#  dts:
-#    type: sequential
-#    order:
-#     - spectrogram_layer
-#     - wav2vec
+# Training strategy
+strategy:
+  tacotron25:
+    type: sequential
+    order:
+     - spectrogram_layer
+     - wav2vec
+  dts:
+    type: sequential
+    order:
+     - spectrogram_layer
+     - wav2vec
 
 # Model definition
 models:

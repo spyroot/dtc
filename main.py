@@ -24,7 +24,7 @@ from model_loader.dataset_stft30 import SFTF3Dataset
 from model_trainer.internal.call_interface import Callback
 from model_trainer.internal.time_meter import TimeMeter
 from model_trainer.internal.time_tracer import BatchTimer
-from model_trainer.specs.dtc_spec import TacotronSpec, ModelSpecDTC
+from model_trainer.specs.model_tacotron25_spec import TacotronSpec, ModelSpecTacotron25
 from model_trainer.trainer_specs import ExperimentSpecs, TrainerSpecError
 from model_trainer.trainer import Trainer, TrainerError
 import torch.distributed as dist
@@ -160,7 +160,7 @@ def convert(trainer_spec, version=2, dataset_name=None, merge=True, verbose=True
     validation_set = data['validation_set']
     test_set = data['test_set']
 
-    model_spec: ModelSpecDTC = trainer_spec.get_model_spec()
+    model_spec: ModelSpecTacotron25 = trainer_spec.get_model_spec()
     encoder_spec = model_spec.get_encoder()
 
     train_listified = list(training_set.values())
@@ -625,7 +625,7 @@ def dataloader_dry(cmd_args, trainer_specs):
     # TODO add batch size.
     :return:
     """
-    data_loader = SFTFDataloader(trainer_specs, verbose=cmd_args.verbose)
+    data_loader = SFTFDataloader(trainer_specs, verbose=cmd_args._verbose)
     if cmd_args.benchmark:
         data_loader._create()
         data_loader.benchmark_read()
@@ -715,8 +715,8 @@ def main(cmd_args):
     else:
         _device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    trainer_spec = ExperimentSpecs(spec_config=cmd_args.config, verbose=cmd_args.verbose)
-    trainer_spec.set_logger(cmd_args.verbose)
+    trainer_spec = ExperimentSpecs(spec_config=cmd_args.config, verbose=cmd_args._verbose)
+    trainer_spec.set_logger(cmd_args._verbose)
 
     if cmd_args.batch_size is not None:
         trainer_spec.set_batch_size(int(cmd_args.batch_size))
@@ -750,7 +750,7 @@ def main(cmd_args):
         set_random_seeds(trainer_spec.seed())
 
     if cmd_args.convert:
-        convert(trainer_spec, dataset_name=cmd_args.dataset_name, verbose=cmd_args.verbose)
+        convert(trainer_spec, dataset_name=cmd_args.dataset_name, verbose=cmd_args._verbose)
         return
 
     if cmd_args.tune:

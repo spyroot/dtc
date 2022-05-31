@@ -585,6 +585,7 @@ class BaseSFTFDataset(torch.utils.data.Dataset):
                 raise DatasetError("data must contain meta key")
             if 'path' not in self._data[index]:
                 raise DatasetError("data must contain path key")
+
             text = self.text_to_tensor(self._data[index]['meta'])
             mel = self.audiofile_to_mel(self._data[index]['path'])
             return text, mel

@@ -18,9 +18,16 @@ from model_loader.base_stft_dataset import DatasetError, BaseSFTFDataset
 from model_loader.dataset_stft25 import SFTF2Dataset
 from model_loader.dataset_stft30 import SFTF3Dataset
 from model_loader.sfts2_collate import TextMelCollate2
-from model_trainer.specs.dtc_spec import ModelSpecDTC
+from model_loader.sfts3_collate import TextMelCollate3
+from model_trainer.specs.model_tacotron25_spec import ModelSpecTacotron25
+from model_trainer.specs.model_dts_spec import ModelSpecDTS
+
 from model_trainer.trainer_specs import ExperimentSpecs
 from model_trainer.utils import to_gpu
+
+
+class DatasetException(Exception):
+    pass
 
 
 class SFTFDataloader:
@@ -33,7 +40,7 @@ class SFTFDataloader:
     """
 
     def __init__(self,
-                 experiment_specs: ExperimentSpecs,
+                 trainer_spec: ExperimentSpecs,
                  dataset: Optional[BaseSFTFDataset] = None,
                  pin_memory: Optional[bool] = True,
                  rank: Optional[int] = 0,
@@ -41,14 +48,16 @@ class SFTFDataloader:
                  num_worker: Optional[int] = 1,
                  reduction_ration: Optional[int] = 0,
                  batch_size: Optional[int] = 0,
+                 version: Optional[int] = 2,
                  verbose: Optional[bool] = False):
         """
-        :param experiment_specs:
+        :param trainer_spec:
         :param pin_memory: if we need pin to memory.
         :param rank: a rank of node instantiating data loader.
         :param world_size: a world_side ( check torch ddp doc)
         :param num_worker: a number of worker used by internal data loaders.
         :param verbose: enable debug.
+        :param: version: version of dataset to use, by default it will infer from model spec, passed.
         :param:reduction_ration if we need reduce a size of dataset.
         """
         self._reduce_ration = int(reduction_ration)
@@ -58,14 +67,24 @@ class SFTFDataloader:
 
         self._rank = rank
         self._world_size = world_size
-        self._trainer_spec: ExperimentSpecs = experiment_specs
-        model_spec = experiment_specs.get_model_spec()
-        if isinstance(model_spec, ModelSpecDTC):
-            self._model_spec: ModelSpecDTC = experiment_specs.get_model_spec()
-        self._encoder_spec = self._model_spec.get_encoder()
+        self._trainer_spec: ExperimentSpecs = trainer_spec
+        model_spec = trainer_spec.get_model_spec()
 
-        self.verbose = verbose
+        self._version = version
+        if isinstance(model_spec, ModelSpecTacotron25):
+            self._model_spec: ModelSpecTacotron25 = trainer_spec.get_model_spec()
+            self._version = 2
+        if isinstance(model_spec, ModelSpecDTS):
+            self._model_spec: ModelSpecDTS = trainer_spec.get_model_spec()
+            self._version = 3
+
+        # base class return must return spectrogram layer spec
+        self._spectrogram_spec = self._model_spec.get_spectrogram()
+        #
+        self._verbose = verbose
+        # _ping_memory used for data loader, value either pass via init or read form spec
         self._ping_memory = pin_memory
+        # num_worker used for data loader,  value either pass via init or read form spec
         self._num_worker = num_worker
 
         self.collate_fn = None
@@ -78,8 +97,9 @@ class SFTFDataloader:
             else:
                 raise ValueError("Batch size less than zero.")
 
-        # datasets and data loaders
+        # all datasets and data loaders are in dicts
         self._datasets = {}
+        # key for dict read from trainer spec.
         self._data_loaders = {}
         if dataset is not None:
             self.from_dataset(ds=dataset)
@@ -123,9 +143,10 @@ class SFTFDataloader:
 
     def get_loader(self) -> tuple[list[DataLoader], Callable]:
         """
-        Method return all data loaders and collate callback.
-        it will call factor method and create datasets
+        Method return all data loaders and collate callbacks.
+        it will call respected factory method and create datasets
         and data loaders and sampler for DDP case.
+
         :return:
         """
         if not self._initialized_before():
@@ -159,11 +180,10 @@ class SFTFDataloader:
                             else:
                                 warnings.warn(f"Can't find a file {raw_dataset[i][m]}")
 
-    def _create_v2raw(self, version=2, strict=True):
+    def _create_v2raw(self, strict=True):
         """
-        Create dataset for v25 model from raw files.
-        :param version:
-        :param strict:
+        Create dataset for v25 and v30 model from raw audio files.
+        :param strict: will do strict check.
         :return:
         """
         dataset_files = self._trainer_spec.get_audio_dataset()
@@ -186,25 +206,27 @@ class SFTFDataloader:
                 last_index = max(1, round(len(ds) * (self._reduce_ration / 100)))
                 ds = ds[: last_index]
 
-            if version == 2:
-                self._datasets[k] = SFTF2Dataset(model_spec=self._encoder_spec,
+            if self._version == 2:
+                print("Creating v2 dataset.")
+                self._datasets[k] = SFTF2Dataset(model_spec=self._spectrogram_spec,
                                                  data=ds, data_format='audio_raw',
                                                  overfit=self._trainer_spec.is_overfit())
-            elif version == 3:
-                self._datasets[k] = SFTF3Dataset(model_spec=self._encoder_spec,
+            elif self._version == 3:
+                print("Creating v3 dataset.")
+                self._datasets[k] = SFTF3Dataset(model_spec=self._spectrogram_spec,
                                                  data=ds, data_format='audio_raw',
                                                  overfit=self._trainer_spec.is_overfit())
             else:
                 raise ValueError("Unknown version.")
 
-            logger.debug(f"Data loader updated {self._datasets.keys()} ver {version}.")
+            logger.debug(f"Data loader updated {self._datasets.keys()} ver {self._version}.")
 
-        if version == 2:
-            self.collate_fn = TextMelCollate2(nfps=self._encoder_spec.frames_per_step(), device=None)
-        elif version == 3:
-            self.collate_fn = TextMelCollate2(nfps=self._encoder_spec.frames_per_step(), device=None)
+        if self._version == 2:
+            self.collate_fn = TextMelCollate2(nfps=self._spectrogram_spec.frames_per_step(), device=None)
+        elif self._version == 3:
+            self.collate_fn = TextMelCollate3(nfps=self._spectrogram_spec.frames_per_step(), device=None)
 
-    def createv2_from_tensor(self, version=2):
+    def createv2_from_tensor(self):
         """
         Method create datasets.
 
@@ -237,25 +259,27 @@ class SFTFDataloader:
                 last_index = max(1, round(len(ds[data_key]) * (self._reduce_ration / 100)))
                 ds[data_key] = ds[data_key][: last_index]
 
-            if version == 2:
-                self._datasets[k] = SFTF2Dataset(model_spec=self._encoder_spec,
+            if self._version == 2:
+                print("Creating version 2 dataset")
+                self._datasets[k] = SFTF2Dataset(model_spec=self._spectrogram_spec,
                                                  data=ds, data_format='tensor_mel',
                                                  overfit=self._trainer_spec.is_overfit())
-            elif version == 3:
-                self._datasets[k] = SFTF3Dataset(model_spec=self._encoder_spec,
+            elif self._version == 3:
+                print("Creating version 3 dataset")
+                self._datasets[k] = SFTF3Dataset(model_spec=self._spectrogram_spec,
                                                  data=ds, data_format='tensor_mel',
                                                  overfit=self._trainer_spec.is_overfit())
             else:
-                raise ValueError("Unknown version.")
+                raise ValueError("Unknown version of dataset.")
 
-            logger.debug(f"Data loader updated {self._datasets.keys()} ver {version}.")
+            logger.debug(f"Data loader updated {self._datasets.keys()} ver {self._version}.")
 
-        if version == 2:
-            self.collate_fn = TextMelCollate2(nfps=self._encoder_spec.frames_per_step(), device=None)
-        elif version == 3:
-            self.collate_fn = TextMelCollate2(nfps=self._encoder_spec.frames_per_step(), device=None)
+        if self._version == 2:
+            self.collate_fn = TextMelCollate2(nfps=self._spectrogram_spec.frames_per_step(), device=None)
+        elif self._version == 3:
+            self.collate_fn = TextMelCollate3(nfps=self._spectrogram_spec.frames_per_step(), device=None)
 
-    def _createv2_from_tensor(self, version=2):
+    def _createv2_from_tensor(self):
         """
         Method create datasets.
 
@@ -279,7 +303,6 @@ class SFTFDataloader:
             # in case, we have only subset,  (only train set)
             if k not in dataset_files:
                 continue
-
             ds = dataset_files[k]
             logger.debug(f"Dataset contains {len(dataset_files[k])} records")
             if not isinstance(ds, dict):
@@ -288,35 +311,50 @@ class SFTFDataloader:
                 last_index = max(1, round(len(ds[data_key]) * (self._reduce_ration / 100)))
                 ds[data_key] = ds[data_key][: last_index]
 
-            if version == 2:
-                self._datasets[k] = SFTF2Dataset(model_spec=self._encoder_spec,
+            if self._version == 2:
+                self._datasets[k] = SFTF2Dataset(model_spec=self._spectrogram_spec,
                                                  data=ds, data_format='tensor_mel',
                                                  overfit=self._trainer_spec.is_overfit())
-            elif version == 3:
-                self._datasets[k] = SFTF3Dataset(model_spec=self._encoder_spec,
+            elif self._version == 3:
+                self._datasets[k] = SFTF3Dataset(model_spec=self._spectrogram_spec,
                                                  data=ds, data_format='tensor_mel',
                                                  overfit=self._trainer_spec.is_overfit())
             else:
                 raise ValueError("Unknown version.")
 
-            logger.debug(f"Data loader updated {self._datasets.keys()} ver {version}.")
+            logger.debug(f"Data loader updated {self._datasets.keys()} ver {self._version}.")
 
-        if version == 2:
-            self.collate_fn = TextMelCollate2(nfps=self._encoder_spec.frames_per_step(), device=None)
-        elif version == 3:
-            self.collate_fn = TextMelCollate2(nfps=self._encoder_spec.frames_per_step(), device=None)
+        if self._version == 2:
+            self.collate_fn = TextMelCollate2(nfps=self._spectrogram_spec.frames_per_step(), device=None)
+        elif self._version == 3:
+            self.collate_fn = TextMelCollate2(nfps=self._spectrogram_spec.frames_per_step(), device=None)
 
     def get_batch_size(self):
+        """
+        Batch sized used to construct data loader.
+        :return:
+        """
         return self._batch_size
 
     def get_train_dataset_size(self):
-        print(self._datasets.keys())
+        """
+        For dataset that doesn't stream, data in memory we know exact size.
+        :return:
+        """
         if 'train_set' in self._datasets:
             return len(self._datasets['train_set'])
+        warnings.warn("validation dataset is empty.")
+        return 0
 
     def get_val_dataset_size(self):
+        """
+        For dataset that doesn't stream, data in memory we know exact size.
+        :return:
+        """
         if 'validation_set' in self._datasets:
             return len(self._datasets['validation_set'])
+        warnings.warn("validation dataset is empty.")
+        return 0
 
     def _create_loaders(self):
         """
@@ -415,11 +453,13 @@ class SFTFDataloader:
          :return:
         """
         pk_dataset = self._trainer_spec.get_audio_dataset()
-
+        # we do sanity check that trainer return valid keys.
         mandatory_keys = ['train_set', 'validation_set', 'test_set', 'ds_type']
         for k in mandatory_keys:
             if k not in pk_dataset:
-                raise ValueError(f"Dataset spec has no mandatory key {k}.")
+                raise ValueError(f"Trainer spec should return audio dict with "
+                                 f"'train_set', 'validation_set', 'test_set' keys"
+                                 f" spec has no mandatory key {k}.")
 
         if not update:
             if pk_dataset['ds_type'] == 'tensor_mel':
@@ -627,11 +667,38 @@ def test_download_torch_files():
               f"total batches {total_batches} total batches {num_batched}")
 
 
+def v3_dataloader_audio():
+    """
+
+    :return:
+    """
+    spec = ExperimentSpecs(spec_config='../config.yaml')
+    model_spec = spec.get_model_spec().get_spec('spectrogram_layer')
+    dataloader = SFTFDataloader(spec, verbose=True)
+    loaders, collate = dataloader.get_loader()
+
+    # get all
+    data_loaders, collate_fn = dataloader.get_all()
+    print("dataset size", dataloader.get_train_dataset_size())
+    print("dataset size", dataloader.get_val_dataset_size())
+
+    _train_loader = data_loaders['train_set']
+    _train_loader = data_loaders['validation_set']
+
+    take = 2
+    for batch_idx, batch in enumerate(_train_loader):
+        if batch_idx == 2:
+            break
+
+        print(len(batch))
+
+
 if __name__ == '__main__':
     """
     """
-    test_create_data_loader_from_tensor()
-    test_from_subset_data_loader_from_tensor()
-    test_from_subset_data_loader_from_raw()
-    test_download_numpy_files()
-    test_download_torch_files()
+    # test_create_data_loader_from_tensor()
+    # test_from_subset_data_loader_from_tensor()
+    # test_from_subset_data_loader_from_raw()
+    # test_download_numpy_files()
+    # test_download_torch_files()
+    v3_dataloader_audio()

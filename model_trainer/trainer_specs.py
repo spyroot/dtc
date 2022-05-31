@@ -2,20 +2,19 @@ import os
 import sys
 import warnings
 from pathlib import Path
-from typing import List, Callable, Optional
-from typing import Type
+from typing import List, Optional
 
 import torch
 import yaml
 from loguru import logger
 
 import model_loader
+from model_loader.ds_util import check_integrity
 from model_trainer.utils import fmt_print
 from text.symbols import symbols
 from .model_files import ModelFiles
-from .specs.dtc_spec import ModelSpecDTC
+from .spec_dispatcher import SpecsDispatcher
 from .specs.model_spec import ModelSpec
-from model_loader.ds_util import check_integrity
 
 # from torch.utils.tensorboard import SummaryWriter
 
@@ -40,8 +39,11 @@ class ExperimentSpecs:
         :param verbose:
         :param no_dir if true will not build structure directory structures for trainer.
         """
+        self._model_dispatcher = SpecsDispatcher()
         self._overfit = None
-        self.spec_dispatcher = None
+
+        # dispatcher
+        self._model_dispatcher = SpecsDispatcher()
         ExperimentSpecs.set_logger(False)
         self._verbose: bool = False
 
@@ -62,10 +64,13 @@ class ExperimentSpecs:
 
         self._setting = None
 
-        self._model_spec: Type[ModelSpec]
+        self._model_spec: ModelSpec
 
         self._inited: bool = False
+        # for now it disabled , ray has some strange issue with tensorboard.
         self.writer = None
+
+        # reference to active settings
         self._active_setting = None
 
         # list of models
@@ -96,8 +101,6 @@ class ExperimentSpecs:
 
         self.text_cleaners = ['english_cleaners']
 
-        ################################
-        # Model Parameters             #
         ################################
         self.n_symbols = len(symbols)
         self.symbols_embedding_dim = 512
@@ -150,6 +153,7 @@ class ExperimentSpecs:
         self.model_files = ModelFiles(self.config, parent=self, verbose=self._verbose)
         if no_dir:
             self.model_files.build_dir()
+
         self.setup_tensorboard()
         self.initialized()
 
@@ -240,38 +244,13 @@ class ExperimentSpecs:
         """
         return list(self.config['datasets'].keys())
 
-    def create_spec_dispatch(self) -> dict[str, Callable]:
-        """
-        Create spec dispatch.
-        each model might contain many hparam and settings.
-        Method creates  a separate dispatcher, key is string and value to factory callable.
-        we just dispatch entire spec.
-
-        During spec parsing,  we dispatch to respected class.
-
-        :return: model creator Callable , and trainer creator Callable.
-        """
-        model_dispatch = {
-            'tacotron25': self.dts_creator,
-            'dts': self.dts_creator,
-        }
-
-        return model_dispatch
-
-    @staticmethod
-    def dts_creator(model_spec, dataset_spec, verbose: bool):
-        """
-        Create spec, for dts.
-        :return:
-        """
-        return ModelSpecDTC(model_spec, dataset_spec, verbose=verbose)
-
     def set_active_model(self) -> None:
         """
-        Sets active Model
+        Sets active Model.
+
         :return:
         """
-        self.spec_dispatcher = self.create_spec_dispatch()
+        # self.spec_dispatcher = self.create_spec_dispatch()
         if 'models' not in self.config:
             raise TrainerSpecError("config.yaml must contain at least one models list and one model.")
 
@@ -280,13 +259,17 @@ class ExperimentSpecs:
 
         self.active_model = self.config['use_model']
         self.models_specs = self.config['models']
-        if self.active_model not in self.spec_dispatcher:
-            raise ValueError("No dispatcher for model {}", self.active_model)
 
-        # get dispatch and pass to creator and update current
-        # active model spec
-        spec_dispatcher = self.spec_dispatcher[self.active_model]
-        self._model_spec = spec_dispatcher(self.models_specs[self.active_model], self._dataset_specs, self._verbose)
+        self._model_dispatcher.has_creator(self.active_model)
+
+        if not self._model_dispatcher.has_creator(self.active_model):
+            raise TrainerSpecError(f"It looks like model {self.active_model} is unknown.")
+
+        # get dispatch and pass to creator and update current, active model spec.
+        spec_dispatcher = self._model_dispatcher.get_model(self.active_model)
+        self._model_spec = spec_dispatcher(self.models_specs[self.active_model],
+                                           self._dataset_specs, self._verbose)
+
         if self.active_model not in self.models_specs:
             raise TrainerSpecError("config.yaml doesn't contain model {}.".format(self.active_model))
 
@@ -802,12 +785,13 @@ class ExperimentSpecs:
 
         return dataset_specs[dataset_name]
 
-    def get_audio_dataset(self, dataset_name=None):
+    def get_audio_dataset(self, dataset_name: Optional[str] = None):
         """
-        Method return audio dataset spec.
-
-        :param dataset_name:
-        :return:
+        Method return audio dataset spec, by default it uses active dataset.
+        If dataset_name provided by a caller , it will return respected
+        dataset.
+        :param dataset_name: a dataset name
+        :return: a dict
         """
 
         if dataset_name is None or len(dataset_name) == 0:
@@ -832,11 +816,11 @@ class ExperimentSpecs:
         if ds_type.lower().strip() == 'audio':
             if data_format.lower().strip() == 'raw':
                 return self.get_raw_audio_ds_files(spec=dataset_spec)
-            elif data_format.lower().lower().strip() == 'tensor_mel':
+            elif data_format.lower().strip() == 'tensor_mel':
                 logger.debug("Dataset type torch tensor mel.")
                 # todo
                 return self.get_tensor_audio_ds_files()
-            elif data_format.lower().lower().strip() == 'numpy_mel':
+            elif data_format.lower().strip() == 'numpy_mel':
                 logger.debug("Dataset type numpy mel.")
                 # todo
                 return self.get_tensor_audio_ds_files()
@@ -948,7 +932,8 @@ class ExperimentSpecs:
 
     def get_model_spec(self) -> ModelSpec:
         """
-        Return active model spec
+        Return active model spec.
+
         :return:
         """
         return self._model_spec
@@ -962,19 +947,18 @@ class ExperimentSpecs:
 
     def epochs(self) -> int:
         """
-        Return epochs,
-        Note each graph has own total epochs. ( depend on graph size)
+        Return epochs, Note each graph has own total epochs.
+        (Depend on graph size).
+
         :return: number of epochs to run for given dataset, default 100
         """
+        if self._setting is None:
+            raise TrainerSpecError("Initialize settings first")
+
+        if 'epochs' in self._setting:
+            return int(self._setting['epochs'])
+
         return 100
-
-        # if self._setting is None:
-        #     raise TrainerSpecError("Initialize settings first")
-        #
-        # if 'epochs' in self._setting:
-        #     return int(self._setting['epochs'])
-
-       # return 100
 
     def validate_settings(self):
         """
@@ -1306,11 +1290,8 @@ class ExperimentSpecs:
     def lr_rate(self, alias_name):
         """
 
-        Args:
-            alias_name:
-
-        Returns:
-
+        :param alias_name:
+        :return:
         """
         scheduler_spec = self.lr_scheduler(alias_name)
         if scheduler_spec is not None:
@@ -1321,11 +1302,9 @@ class ExperimentSpecs:
         """
          A function which computes a multiplicative factor given an integer parameter epoch,
          or a list of such functions, one for each group in optimizer.param_groups.
-        Args:
-            alias_name:
 
-        Returns:
-
+        :param alias_name:
+        :return:
         """
         scheduler_spec = self.lr_scheduler(alias_name)
         if scheduler_spec is not None:
@@ -1573,7 +1552,6 @@ class ExperimentSpecs:
 
     def initialized(self):
         """
-
         :return:
         """
         self._initialized = True
@@ -1726,6 +1704,11 @@ class ExperimentSpecs:
         pass
 
     def _validate_root_mandatory(self, spec):
+        """
+
+        :param spec:
+        :return:
+        """
         mandatory_root_key = ['train', 'use_dataset', 'use_model', 'draw_prediction', 'load_model',
                               'load_epoch', 'save_model', 'regenerate', 'active_setting', 'evaluate',
                               'root_dir', 'log_dir', 'nil_dir', 'graph_dir', 'results_dir', 'figures_dir',
@@ -1749,8 +1732,8 @@ class ExperimentSpecs:
 
     def get_dataset_format(self, ds_spec):
         """
-        this mainly place holder to move all dataset to separate class.
-
+        this mainly placeholder.
+        i.e I'll move all dataset to separate class.
         :param ds_spec:
         :return:
         """
@@ -1758,7 +1741,8 @@ class ExperimentSpecs:
             return ""
         return ds_spec['format']
 
-    def is_audio_raw(self, spec):
+
+    def is_audio_raw(self, spec: dict):
         """
 
         :param spec:
@@ -1766,6 +1750,7 @@ class ExperimentSpecs:
         """
         if 'format' in spec and 'ds_type' in spec:
             return spec['format'] == 'raw' and spec['ds_type'] == "audio"
+
         return False
 
     def set_epochs(self, epochs: int):
@@ -1867,10 +1852,8 @@ class ExperimentSpecs:
         """
         val = self.get_data_loader_setting(k, 'drop_last')
         if val is None:
-            print(f"no found {k} drop_last")
             return False
 
-        print(f"found {k} drop_last")
         return bool(val)
 
     def num_workers(self, k):
@@ -1881,15 +1864,12 @@ class ExperimentSpecs:
         """
         val = self.get_data_loader_setting(k, 'num_workers')
         if val is None:
-            print(f"no found {k} num_workers")
             return False
 
-        print(f"found {k} num_workers")
         return int(val)
 
     def is_pin_memory(self, k):
         """
-
         :param k:
         :return:
         """
@@ -1897,7 +1877,6 @@ class ExperimentSpecs:
         if val is None:
             return False
 
-        print(f"found {k} is_pin_memory")
         return bool(val)
 
     def is_shuffle(self, k):
@@ -1909,8 +1888,6 @@ class ExperimentSpecs:
         val = self.get_data_loader_setting(k, 'shuffle')
         if val is None:
             return False
-
-        print(f"found {k} is_shuffle")
         return bool(val)
 
 

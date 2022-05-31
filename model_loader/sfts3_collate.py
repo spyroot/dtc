@@ -1,3 +1,22 @@
+# Collate v3 used by data loader.
+#
+# It prepares each batch,  the output of collate
+#
+# pad and encoded text.
+#  - input_lengths,
+#  - padded mel,
+#  - gates padded.
+#  - output_lengths
+#  - spectral_data.  The data size fixed in block , it assumed this block bypass LSTM layer
+#                    hence, we don't need any padding but sorted order must remain the same.
+#
+#  Shape:
+#  text shape: torch.Size([104])
+#  mel shape: torch.Size([80, 624])
+#  spectral: torch.Size([1, 1024])
+# Mustafa
+
+import sys
 import time
 from datetime import timedelta
 from timeit import default_timer as timer
@@ -31,8 +50,11 @@ class TextMelCollate3:
         self.sort_dim = sort_dim
         self.descending = descending
         self.device = None
+
+        # all indexes of data.
         self.txt_id = 1
         self.mel = 2
+        self.spectral_data = 3
 
     def __call__(self, batch):
         """
@@ -80,21 +102,18 @@ class TextMelCollate3:
         mel_padded = torch.FloatTensor(lstm_input_len, num_mels, max_target_len).zero_()
         gate_padded = torch.FloatTensor(lstm_input_len, max_target_len).zero_()
         output_lengths = torch.LongTensor(lstm_input_len)
-        spectrals = torch.FloatTensor(lstm_input_len, num_mels,
-                                      max([x[2].size(1) for x in batch]),
-                                      max([x[2].size(2) for x in batch]))
-        # torch.index_select(batch)
-        # sort batches
-        outputs = []
+
+        # spectral data fixed size.
+        spectral_max = max([x[2].size(1) for x in batch])
+        spectral_data = torch.FloatTensor(lstm_input_len,  1, spectral_max)
         for i in range(len(ids_sorted_decreasing)):
             # idx text , idx 1 mel
             mel = batch[ids_sorted_decreasing[i]][1]
             spectral = batch[ids_sorted_decreasing[i]][2]
-            outputs.append(spectral)
             mel_padded[i, :, :mel.size(1)] = mel
             gate_padded[i, mel.size(1) - 1:] = 1
             output_lengths[i] = mel.size(1)
-            spectrals[i] = spectral
+            spectral_data[i] = spectral
 
         if self.is_trace_time:
             elapsed_time = time.process_time() - t
@@ -103,4 +122,4 @@ class TextMelCollate3:
             logger.info("Collate single pass delta sec {}".format(timedelta(seconds=end - start)))
 
         # print("mel padded", mel_padded.shape)
-        return text_padded, input_lengths, mel_padded, gate_padded, output_lengths, spectrals
+        return text_padded, input_lengths, mel_padded, gate_padded, output_lengths, spectral_data

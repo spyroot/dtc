@@ -1,20 +1,26 @@
+# SFTacotronSTFT3,
+#
+# Create SFT from audio file.  Unlike original MEL,
+# It also extracts additional spectral feature.
+#
+#
+# Mustafa
 import timeit
+from pathlib import Path
 from typing import Tuple
 
 import librosa
+import numpy as np
 import torch
 import torch.utils.data
-
 from librosa.filters import mel as librosa_mel_fn
+from loguru import logger
+from torch import Tensor
+
 from model_loader.audio_processing import dynamic_range_compression, dynamic_range_decompression
 from model_loader.stft_module import STFT
-from torch import Tensor
-from pathlib import Path
-
 from model_trainer.trainer_specs import ExperimentSpecs
 from model_trainer.utils import load_wav_to_torch
-from numba import jit
-from loguru import logger
 
 
 class TacotronSTFT3(torch.nn.Module):
@@ -47,6 +53,7 @@ class TacotronSTFT3(torch.nn.Module):
         self.hop_length = hop_length
         self.win_length = win_length
         self.energy = energy
+        self.mel_fmin = mel_fmin
 
         self.stft_fn = STFT(filter_length, hop_length, win_length)
         mel_basis = librosa_mel_fn(sr=sampling_rate,
@@ -54,6 +61,7 @@ class TacotronSTFT3(torch.nn.Module):
                                    n_mels=n_mel_channels,
                                    fmin=mel_fmin,
                                    fmax=mel_fmax)
+
         mel_basis = torch.from_numpy(mel_basis).float()
         self.register_buffer('mel_basis3', mel_basis)
 
@@ -84,9 +92,11 @@ class TacotronSTFT3(torch.nn.Module):
         output = dynamic_range_decompression(magnitudes)
         return output
 
-    def mel_spectrogram(self, y, filter_length=None) -> Tuple[Tensor, Tensor]:
+    def mel_spectrogram(self, y, filter_length=None, stft=False) -> Tuple[Tensor, Tensor]:
         """
-        Computes spectral flatness and mel spectrogram from a batch
+        Computes spectral flatness and mel spectrogram from a batch.
+
+        :param stft:
         :param filter_length:  n_fft
         :param y: tensor shape (batch, tensor), value normalized in range [-1, 1]
         :return:  torch.FloatTensor of shape (B, n_mel_channels, T)
@@ -94,22 +104,34 @@ class TacotronSTFT3(torch.nn.Module):
         # assert (torch.min(y.data) >= -1)
         # assert (torch.max(y.data) <= 1)
         magnitudes, phases = self.stft_fn.transform(y)
+        # print(magnitudes.shape)
+        # print(phases.shape)
+
         magnitudes = magnitudes.data
         mel_output = torch.matmul(self.mel_basis3, magnitudes)
         mel_output = self.spectral_normalize(mel_output)
         mel_numpy = self.mel_basis3.numpy()
+
         _filter_length = self.filter_length
         if filter_length is not None:
             _filter_length = filter_length
 
-        #print(mel_numpy.reshape(-1).shape)
-        flatness = librosa.feature.spectral_flatness(y=mel_numpy.reshape(-1),
-                                                     # n_fft=_filter_length,
-                                                     hop_length=self.hop_length,
-                                                     win_length=self.win_length,
-                                                     center=True,
-                                                     )
-        flatness = torch.from_numpy(flatness)
+        y_numpy = y.squeeze(0).numpy()
+        flat01 = librosa.feature.spectral_flatness(y=y_numpy,
+                                                   n_fft=_filter_length,
+                                                   hop_length=self.hop_length,
+                                                   win_length=self.win_length,
+                                                   center=True)
+
+        flat01 = librosa.util.pad_center(flat01, size=1024, axis=1)
+
+        if stft:
+            sfts_y = librosa.stft(n_fft=_filter_length,
+                                  hop_length=self.hop_length,
+                                  win_length=self.win_length,
+                                  center=True)
+
+        flatness = torch.from_numpy(flat01)
         return mel_output, flatness
 
 

@@ -138,6 +138,7 @@ class Trainer(AbstractTrainer, ABC):
                 raise TrainerError("Trainer need torch data loader.")
             self.state.data_loader = data_loader
             self.state.data_loaders, self.state.collate_fn = self.state.data_loader.get_all()
+
             print("dataset size", data_loader.get_train_dataset_size())
             print("dataset size", data_loader.get_val_dataset_size())
 
@@ -323,7 +324,7 @@ class Trainer(AbstractTrainer, ABC):
         Factor method, creator for tacotron 3
         :return:
         """
-        if self.is_inference:
+        if self.state.is_inference:
             model = Tacotron3(self.state.trainer_spec, self.state.device).to(self.state.device)
         elif self.state.trainer_spec.is_distributed_run():
             device = self._loop_up_device(is_set_cuda)

@@ -78,6 +78,7 @@ class SFTF2Dataset(BaseSFTFDataset, ABC):
     def audiofile_to_mel(self, filename: str, callback: callable = None) -> Tensor:
         """
         Take audio file and convert to mel spectrogram. Each audio file normalized.
+
         :param callback: if called pass callback transformed mel passed to callback.
         :param filename:
         :return:
@@ -97,6 +98,7 @@ class SFTF2Dataset(BaseSFTFDataset, ABC):
 
     def tensor_data(self, index) -> torch.Tensor:
         """
+
         :param index:
         :return:
         """
@@ -104,18 +106,20 @@ class SFTF2Dataset(BaseSFTFDataset, ABC):
 
     def tensor_from_audio(self, idx: int):
         """
+
         Returns text and mel
         :param idx: index into internal representation.
                if dataset was created form text file. It a dict.
         :return:
         """
         if 'meta' not in self._data[idx]:
-            raise DatasetError("data must contain meta key")
+            raise DatasetError("Tensor data must contain meta key in dictionary.")
         if 'path' not in self._data[idx]:
-            raise DatasetError("data must contain path key")
+            raise DatasetError("Tensor data must contain meta key in dictionary.")
 
         text = self.text_to_tensor(self._data[idx]['meta'])
         mel = self.audiofile_to_mel(self._data[idx]['path'])
+
         return text, mel
 
     @staticmethod
