@@ -277,8 +277,6 @@ class Tacotron3(nn.Module):
         text_inputs, text_lengths, mels, max_len, output_lengths, spectral = inputs
         text_lengths, output_lengths = text_lengths.data, output_lengths.data
 
-        print(spectral.squeeze(1).shape)
-
         embedded_inputs = self.embedding(text_inputs).transpose(1, 2)
         encoder_outputs = self.encoder(embedded_inputs, text_lengths)
 

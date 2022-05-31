@@ -1316,6 +1316,7 @@ class Trainer(AbstractTrainer, ABC):
                 criterion_out = self.criterion(y_pred, y)
                 mel_loss = criterion_out['mel_loss']
                 gate_loss = criterion_out['gate_loss']
+                spectral_loss = criterion_out['spectral_loss']
                 loss = criterion_out['loss']
                 assert loss.dtype is torch.float32
                 normal_loss = loss.item()
@@ -1354,6 +1355,7 @@ class Trainer(AbstractTrainer, ABC):
                                                 'batch mean': self.metric.batch_grad_loss.mean(),
                                                 'loss': normal_loss,
                                                 'epoch': self.metric.epoch_train_gn_loss.mean(),
+                                                'spectral_loss': spectral_loss.item(),
                                                 'mel': mel_loss.item(),
                                                 'gate': gate_loss.item(),
                                                 'batch': f"{batch_idx}/{loader_data_size}",

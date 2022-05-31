@@ -60,11 +60,11 @@ class DTSLoss(nn.Module):
         kl_loss = self.kl_loss(dist).sum()
         # print(reconstructed.type())
         # print(spectral_target.type())
-        print("mel loss ", mel_loss.item())
-        print("gate loss ", gate_loss.item())
-
-        print(reconstructed.shape)
-        print(spectral_target.shape)
+        # print("mel loss ", mel_loss.item())
+        # print("gate loss ", gate_loss.item())
+        #
+        # print(reconstructed.shape)
+        # print(spectral_target.shape)
 
         bce_loss = nn.BCEWithLogitsLoss()(reconstructed, spectral_target)
         spectral_loss = bce_loss + kl_loss
@@ -72,12 +72,12 @@ class DTSLoss(nn.Module):
         #  spectral_loss = nn.BCELoss()(reconstructed, spectral_target)
         #print(reconstructed)
         #print("Spectral loss ", spectral_loss.item())
-        print("kl loss", kl_loss.item())
-        print("bce_loss ", kl_loss.item())
+        # print("kl loss", kl_loss.item())
+        # print("bce_loss ", kl_loss.item())
 
         total = mel_loss + gate_loss + spectral_loss
-        print("Spectral loss ", spectral_loss.item())
-        print("total loss", total.item())
+        # print("Spectral loss ", spectral_loss.item())
+        # print("total loss", total.item())
 
         # plot_mel_fbank(mel_filters_librosa, "Mel Filter Bank - librosa")
         # mse = torch.square(mel_filters - mel_filters_librosa).mean().item()
@@ -85,4 +85,5 @@ class DTSLoss(nn.Module):
 
         return {'loss': total,
                 'mel_loss': mel_loss,
-                'gate_loss': gate_loss}
+                'gate_loss': gate_loss,
+                'spectral_loss': spectral_loss}
