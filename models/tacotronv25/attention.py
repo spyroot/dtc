@@ -9,18 +9,22 @@ from .location import LocationLayer
 class Attention(nn.Module):
 
     #  @autocast()
-    def __init__(self, attention_rnn_dim, embedding_dim, attention_dim,
-                 attention_location_n_filters, attention_location_kernel_size):
+    def __init__(self,
+                 attention_rnn_dim,
+                 embedding_dim,
+                 attention_dim,
+                 attention_location_n_filters,
+                 attention_location_kernel_size,
+                 is_amp=None):
         """
-
         :param attention_rnn_dim:
         :param embedding_dim:
         :param attention_dim:
         :param attention_location_n_filters:
         :param attention_location_kernel_size:
+        :param is_amp:
         """
         super(Attention, self).__init__()
-
         self.query_layer = LinearNorm(attention_rnn_dim, attention_dim, bias=False, w_init_gain='tanh')
         self.memory_layer = LinearNorm(embedding_dim, attention_dim, bias=False, w_init_gain='tanh')
         self.v = LinearNorm(attention_dim, 1, bias=False)
@@ -31,7 +35,11 @@ class Attention(nn.Module):
                                             attention_dim)
         # model.decoder.attention_layer.score_mask_value = finfo('float16').min
         #   self.score_mask_value =  -float("inf")
-        self.score_mask_value = -torch.finfo(torch.float16).min
+
+        if is_amp:
+            self.score_mask_value = -torch.finfo(torch.float16).min
+        else:
+            self.score_mask_value = -float("inf")
 
     def get_alignment_energies(self, query, processed_memory,
                                attention_weights_cat):

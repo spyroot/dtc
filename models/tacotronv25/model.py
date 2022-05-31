@@ -28,7 +28,7 @@ class Tacotron25(nn.Module):
         self.device = device
 
         self.mask_padding = self.experiment_specs.mask_padding
-        self.fp16_run = self.experiment_specs.is_fp16_run()
+        self.fp16_run = self.experiment_specs.is_amp()
         self.n_mel_channels = self.encoder_spec.n_mel_channels()
         self.n_frames_per_step = self.experiment_specs.n_frames_per_step
 

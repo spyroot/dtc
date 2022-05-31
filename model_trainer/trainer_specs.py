@@ -871,7 +871,7 @@ class ExperimentSpecs:
 
         return 1234
 
-    def is_fp16_run(self):
+    def is_amp(self):
         """
         Return true if active setting set to run in fp16
         :return:
@@ -958,7 +958,7 @@ class ExperimentSpecs:
 
         :return:
         """
-        return self.is_fp16_run()
+        return self.is_amp()
 
     def epochs(self) -> int:
         """

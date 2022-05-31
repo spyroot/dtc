@@ -107,6 +107,7 @@ class Trainer(AbstractTrainer, ABC):
 
         self._brake_epoch_loop = 1
         self._brake_epoch_train = False
+        self.state.is_amp = trainer_spec.is_amp()
         self.state.batch_size = data_loader.get_batch_size()
         print("Batch size", self.state.batch_size)
         # end unit test.
@@ -312,7 +313,7 @@ class Trainer(AbstractTrainer, ABC):
         else:
             model = Tacotron25(self.state.trainer_spec, self.state.device).to(self.state.device)
 
-        if self.state.trainer_spec.is_fp16_run():
+        if self.state.trainer_spec.is_amp():
             model.decoder.attention_layer.score_mask_value = finfo('float16').min
 
         return model
@@ -337,7 +338,7 @@ class Trainer(AbstractTrainer, ABC):
         else:
             model = Tacotron3(self.state.trainer_spec, self.state.device).to(self.state.device)
 
-        if self.state.trainer_spec.state.is_fp16_run():
+        if self.state.trainer_spec.state.is_amp():
             model.decoder.attention_layer.score_mask_value = finfo('float16').min
 
         return model
@@ -672,7 +673,7 @@ class Trainer(AbstractTrainer, ABC):
         :param loss:
         :return:
         """
-        if self.state.trainer_spec.is_fp16_run():
+        if self.state.trainer_spec.is_amp():
             reduced_loss = self.split_tensor(loss.data).item()
         else:
             reduced_loss = loss.item()

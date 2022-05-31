@@ -44,7 +44,7 @@ class Decoder(nn.Module):
         self.attention_layer = Attention(
                 specs.attention_rnn_dim, specs.encoder_embedding_dim,
                 specs.attention_dim, specs.attention_location_n_filters,
-                specs.attention_location_kernel_size)
+                specs.attention_location_kernel_size, is_amp=specs.is_amp())
 
         self.decoder_rnn = nn.LSTMCell(
                 specs.attention_rnn_dim + specs.encoder_embedding_dim,
