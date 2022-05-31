@@ -43,6 +43,8 @@ class TrainerState:
         self.data_loaders = None
         self.collate_fn = None
 
+        self.tbar_update_rate = 0
+
         # self.set_logger(verbose)
         #
         # # device

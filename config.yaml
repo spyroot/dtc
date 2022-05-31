@@ -1,7 +1,7 @@
 train: True                 # train or not,  default is True for generation we only need load pre-trained model
 #active: 'grid_small'       # dataset set generated.
 #use_dataset: 'LJSpeechSmallPkl'     # dataset set generated.
-use_dataset: 'LJSpeechMiniRaw'  # dataset set generated.
+use_dataset: 'lj_speech_1k_raw'  # dataset set generated.
 use_model: 'dts'            # model to use , it must be defined in models section.
 draw_prediction: True       # at the of training draw.
 load_model: True            # load model or not, and what
@@ -129,23 +129,23 @@ settings:
     cudnn_enabled: True
     cudnn_benchmark: False
   small:
-    batch_size: 4
+    epochs: 20
+    batch_size: 64
     grad_clipping: True
     grad_max_norm : 1.0
-    tensorboard_update: 20        # update rate for tensorboard
+    tensorboard_update: 10        # update rate for tensorboard
     early_stopping: True          # early stopping
     console_log_rate: 2           # when to log to console
     # when to start run a test
     start_test: 20
     # predict to start predict , validate
-    predict: 10
+    predict: 10                   # will do validation , prediction every 10 iteration .(re-scale based on ds/batch size)
     # use epoch or iteration counter, in large batch size we might want to see progress.
     predict_per_iteration: False
     # when to save
     epochs_save: 5
     save_per_iteration: False
     seed: 1234
-    epochs: 10
     iters_per_checkpoint: 1000
     fp16: False                      # fp16 run
     distributed: False               # what distributed backend uses.

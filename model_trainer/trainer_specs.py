@@ -1065,10 +1065,11 @@ class ExperimentSpecs:
 
     def predict(self) -> int:
         """
-        Save model at epochs , by default trainer will use early stopping
+        Do prediction / validation inside a training loop.
         """
         if 'predict' in self._setting:
             return int(self._setting['predict'])
+
         return 100
 
     def is_train_verbose(self):

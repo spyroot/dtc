@@ -9,14 +9,16 @@ class TensorboardTrainerLogger(SummaryWriter):
     """
 
     """
-    def __init__(self, tensorboard_update_rate=0,  comments="", logdir=None, is_distributed=False):
+
+    def __init__(self, tensorboard_update_rate=0, comments="", logdir=None, is_distributed=False):
         """
 
         :param tensorboard_update_rate:
         :param logdir:
         :param is_distributed:
         """
-        super(TensorboardTrainerLogger, self).__init__("results/tensorboard", comment="dts", flush_secs=2)
+        super(TensorboardTrainerLogger, self).__init__("results/tensorboard/dts", comment="dts", filename_suffix="dts",
+                                                       flush_secs=2)
         self.update_rate = tensorboard_update_rate
 
     def log_training(self, criterions: dict, step, lr, hparams=None, metrics=None, extra_data=None) -> None:
@@ -30,8 +32,6 @@ class TensorboardTrainerLogger(SummaryWriter):
         :param extra_data:  extra data key value pair
         :return: 
         """
-
-        print(f"logging step {step} {criterions.keys()} {self.update_rate}")
         if self.update_rate == 0 or step % self.update_rate != 0:
             return
 
@@ -60,7 +60,7 @@ class TensorboardTrainerLogger(SummaryWriter):
             return
         self.add_hparams(tf_hp_dict)
 
-    def log_validation(self, loss, model: nn.Module, y, y_pred, step=None, mel_filter=True) -> None:
+    def log_validation(self, loss, model: nn.Module, y, y_pred, step=None, mel_filter=True, v3=True) -> None:
         """
         Log validation step.
         :param loss:
@@ -72,9 +72,10 @@ class TensorboardTrainerLogger(SummaryWriter):
         :return:
         """
         self.add_scalar("loss/validation", loss, step)
-
-        _, mel_outputs, gate_outputs, alignments = y_pred
-        mel_targets, gate_targets = y
+        _, mel_outputs, gate_outputs, alignments, reconstructed, spectral = y_pred
+        # mel_out, mel_out_post_net, gate_out, _, reconstructed, dist
+        # mel_targets, gate_targets = y
+        mel_targets, gate_targets, spectral_target = y
 
         # plot distribution of parameters
         for tag, value in model.named_parameters():

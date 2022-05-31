@@ -105,18 +105,22 @@ class Trainer(AbstractTrainer, ABC):
                                       is_inference=is_inference)
 
         # unit testing flags.
-
         self._brake_epoch_loop = 1
+        #
         self._brake_epoch_train = False
+        # read do we run auto precision mode or not
         self.state.is_amp = trainer_spec.is_amp()
+        # set a batch size from spec.
         self.state.batch_size = data_loader.get_batch_size()
         assert self.state.batch_size > 0
         # end unit test.
         if config is not None:
-            self.config = config
+            self.hyper_config = config
 
-        self.state.is_hp_tunner = hp_tunner
+        # if we run hyperparameter tunner, ray need checkpoint dir.
+        self.state.is_hyper_tunner = hp_tunner
         self.checkpoint_dir = checkpoint_dir
+
         self.set_logger(verbose)
 
         # dict that hold all schedulers that trainer need to use. TODO This will be moved.
@@ -146,8 +150,10 @@ class Trainer(AbstractTrainer, ABC):
             if len(self._train_loader) == 0:
                 print("dataset size", data_loader.get_train_dataset_size())
 
+        self.state.tbar_update_rate = self.state.trainer_spec.console_log_rate()
+        assert self.state.tbar_update_rate > 0
 
-        #
+        # initialized based on a model
         self.criterion = None
 
         # dict store all model
@@ -174,8 +180,8 @@ class Trainer(AbstractTrainer, ABC):
             # clip or not grad
             self.clip_grad = trainer_spec.is_grad_clipped()
 
-            if self.state.is_hp_tunner is False:
-                # by default we log model name currently trainer and batch size.
+            if self.state.is_hyper_tunner is False:
+                # by default, we log model name currently trainer and batch size.
                 self.tf_logger = TensorboardTrainerLogger(trainer_spec.tensorboard_update_rate(),
                                                           comments=f"{trainer_spec.get_active_model()}_"
                                                                    f"{trainer_spec.batch_size()}")
@@ -527,7 +533,7 @@ class Trainer(AbstractTrainer, ABC):
                         raise TrainerError("model has no scheduler_state_dict")
 
             # if run hyperparameter tunner we never do resume.
-            if self.state.is_hp_tunner:
+            if self.state.is_hyper_tunner:
                 print(f"Hyperparameter tunner running, loading only states.")
                 self._last_ckt_epochs[model_name][layer_name] = 0
                 self._last_step[layer_name] = 0
@@ -858,7 +864,7 @@ class Trainer(AbstractTrainer, ABC):
             logger.info(f"Skipping saving, node rank {self.state.rank}")
             return
 
-        if self.state.is_hp_tunner:
+        if self.state.is_hyper_tunner:
             logger.info(f"Skipping saving, hyperparameter tunner.")
             return
 
@@ -1002,7 +1008,7 @@ class Trainer(AbstractTrainer, ABC):
         Method called by trainer, to check if model 
         or model layer need to save or not.
         """
-        if self.state.is_hp_tunner:
+        if self.state.is_hyper_tunner:
             print("Hyperparameter tunner, skipping saving.")
             return False
 
@@ -1042,7 +1048,7 @@ class Trainer(AbstractTrainer, ABC):
 
         :param model:  model we are training.
         :param model_name:  model_name a model we are training.
-        :param layer_name: layer in that model we are training.
+        :param layer_name:  layer in that model we are training.
         :param step: optional,  if we do validation in some n step before
                                 end of epoch, we want log and track.
         :param warmup:
@@ -1050,7 +1056,6 @@ class Trainer(AbstractTrainer, ABC):
         """
         # take a batch.
         self._callback.validation_start()
-        tbar_update_rate = self.state.trainer_spec.console_log_rate()
         take_batch = self._batch_loader[model_name][layer_name]
 
         model.eval()
@@ -1081,8 +1086,8 @@ class Trainer(AbstractTrainer, ABC):
 
                 self.metric.update(batch_idx, self.state.step, all_reduced_loss['loss'], validation=True)
 
-                if not self.state.is_hp_tunner:
-                    if self.state.rank == 0 and batch_idx % tbar_update_rate == 0:
+                if not self.state.is_hyper_tunner:
+                    if self.state.rank == 0 and batch_idx % self.state.tbar_update_rate == 0:
                         tqdm_update_dict = {'step': self.state.step,
                                             'loss': all_reduced_loss['loss'],
                                             'batch_loss': all_reduced_loss['loss'] // max(1, batch_idx + 1),
@@ -1108,8 +1113,9 @@ class Trainer(AbstractTrainer, ABC):
 
         model.train()
 
+        print("Here")
         # update tensorboard
-        if self.state.is_hp_tunner is False and self.state.rank == 0:
+        if self.state.is_hyper_tunner is False and self.state.rank == 0:
             # criterions = {
             #     "train_normal_loss": normal_loss,
             #     "train_clipped_loss": grad_norm,
@@ -1117,10 +1123,11 @@ class Trainer(AbstractTrainer, ABC):
             #     "train_gate_loss": mel_loss.item(),
             #     "total_prediction_loss": total_prediction_loss,
             # }
-            if count == 0:
-                print(f"validation step done {count}")
-            if count == 1:
-                self.tf_logger.log_validation(aggregate_loss_term['loss'], model, y, y_pred, step=self.state.step)
+
+            print("Here")
+            if count > 0:
+                self.tf_logger.log_validation(self.metric.total_train_mean_loss(),
+                                              model, y, y_pred, step=self.state.step)
 
         return aggregate_loss_term
 
@@ -1158,19 +1165,6 @@ class Trainer(AbstractTrainer, ABC):
             print("Strange case two")
 
         return last_epoch, last_step
-
-    def plot_data(self, data, figsize=(16, 4)):
-        """
-        :param data:
-        :param figsize:
-        :return:
-        """
-        fig, axes = plt.subplots(1, len(data), figsize=figsize)
-        for i in range(len(data)):
-            axes[i].imshow(data[i],
-                           aspect='auto',
-                           inorigin='bottom',
-                           interpolation='none')
 
     def inference(self, input_seq=None, model_name='encoder', plot=True,
                   mel_output_path="mel_out.png",
@@ -1272,7 +1266,7 @@ class Trainer(AbstractTrainer, ABC):
         """
         device = self.state.device
         take_batch = self._batch_loader[model_name][layer_name]
-        tbar_update_rate = self.state.trainer_spec.console_log_rate()
+        self.state.tbar_update_rate = self.state.trainer_spec.console_log_rate()
 
         # if self.state.trainer_spec.is_distributed_run():
         #     device = torch.device(f"cuda:{dist.get_rank()}")
@@ -1289,7 +1283,7 @@ class Trainer(AbstractTrainer, ABC):
         self._callback.on_loader_begin()
         self.metric.on_batch_start()
         # ths main for debug for ray if something went very wrong we can check here.
-        if self.state.is_hp_tunner:
+        if self.state.is_hyper_tunner:
             print(f"Entering train epoch loop: "
                   f"train loader length: {len(self._train_loader)}, "
                   f"train batch size: {self._train_loader.batch_size}, "
@@ -1348,8 +1342,9 @@ class Trainer(AbstractTrainer, ABC):
                     scheduler.step()
 
             # self.log_if_needed(it, loss, grad_norm, duration)
-            if not self.state.is_hp_tunner:
-                if self.state.rank == 0 and current_step != 0 and current_step % tbar_update_rate == 0:
+            if not self.state.is_hyper_tunner:
+                if self.state.rank == 0 and current_step != 0 and current_step % self.state.tbar_update_rate == 0:
+                    self.state.step = current_step
                     self.tqdm_iter.set_postfix({'step': current_step,
                                                 'grad': grad_norm.item(),
                                                 'batch mean': self.metric.batch_grad_loss.mean(),
@@ -1361,14 +1356,14 @@ class Trainer(AbstractTrainer, ABC):
                                                 'batch': f"{batch_idx}/{loader_data_size}",
                                                 'lr': optimizer.param_groups[0]['lr'],
                                                 'saved': self.state.saved_run})
-            # # run prediction if_needed
-            # if current_step != 0 and current_step % self.state.trainer_spec.predict() == 0:
-            #     prediction_accuracy = self.validate(model, model_name, step)
-            #     total_accuracy += prediction_accuracy
+            # run prediction if_needed
+            if current_step != 0 and current_step % self.state.trainer_spec.predict() == 0:
+                self.state.step = current_step
+                self.validate_epoch(model, model_name, layer_name)
 
             # save model checkpoint if needed
             # ray has issue with torch and tensorboard.
-            if self.state.rank == 0 and self.state.is_hp_tunner is False:
+            if self.state.rank == 0 and self.state.is_hyper_tunner is False:
                 self.save_if_need(step=current_step)
 
                 # dist.barrier()
@@ -1388,22 +1383,12 @@ class Trainer(AbstractTrainer, ABC):
                     "loss/gate_loss": gate_loss,
                 }
 
-                if self.state.is_hp_tunner:
+                if not self.state.is_hyper_tunner:
                     self.tf_logger.log_training(criterions, current_step,
                                                 optimizer.param_groups[0]['lr'],
                                                 hparams=hparams, metrics=metrics)
             current_step += 1
             batch_counter += 1
-
-        if self.clip_grad:
-            if self.state.is_hp_tunner:
-                print(f"Exiting train epoch loop: "
-                      f"total grad norm loss: {current_grad_norm_loss / batch_counter}  "
-                      f"train total loss : {current_total_loss / batch_counter}")
-        else:
-            if self.state.is_hp_tunner:
-                print(f"Exiting train epoch loop: "
-                      f"train total loss : {current_total_loss / batch_counter}")
 
         self.metric.on_batch_end()
         self._callback.on_loader_end()
@@ -1570,12 +1555,12 @@ class Trainer(AbstractTrainer, ABC):
         self._callback.on_begin()
         self.metric.on_begin()
 
-        if self.state.is_hp_tunner:
+        if self.state.is_hyper_tunner:
             print(f"Training in hyperparameter tunner mode.")
 
         epochs_loss_terms = defaultdict(float)
         for epoch in self.tqdm_iter:
-            if self.state.is_hp_tunner:
+            if self.state.is_hyper_tunner:
                 print(f"Training in hyperparameter tunner mode. {epoch} max epoch {len(self.tqdm_iter)}")
                 for param_group in self._optimizers[model_name][layer_name].param_groups:
                     print(f"Training lr {param_group['lr']} batch_size {self.state.batch_size}")
@@ -1594,7 +1579,7 @@ class Trainer(AbstractTrainer, ABC):
             for k in aggregate_loss:
                 epochs_loss_terms[k] += aggregate_loss[k]
             self._callback.on_epoch_end()
-            if self.state.is_hp_tunner:
+            if self.state.is_hyper_tunner and self.hyper_config['epoch'] == epoch:
                 break
 
         self.state.epoch += 1
@@ -1736,3 +1721,16 @@ class Trainer(AbstractTrainer, ABC):
             t_writer.add_histogram(name, weight, epoch)
             t_writer.add_histogram(f'{name}.grad', weight.grad, epoch)
         # tune.report(loss=(val_loss / val_steps), accuracy=correct / total)
+
+    def plot_data(self, data, figsize=(16, 4)):
+        """
+        :param data:
+        :param figsize:
+        :return:
+        """
+        fig, axes = plt.subplots(1, len(data), figsize=figsize)
+        for i in range(len(data)):
+            axes[i].imshow(data[i],
+                           aspect='auto',
+                           inorigin='bottom',
+                           interpolation='none')
