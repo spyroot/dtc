@@ -190,12 +190,12 @@ settings:
       train_set:
         num_workers: 1
         drop_last: True
-        pin_memory: False
+        pin_memory: True
         shuffle: True
       validation_set:
         num_workers: 1
         drop_last: False
-        pin_memory: False
+        pin_memory: True
         shuffle: False
 
 # if you load your samples in the Dataset on CPU and would like to push it during training to the GPU,
@@ -271,6 +271,33 @@ models:
       n_mel_channels: 80
       mel_fmin: 0.0
       mel_fmax: 8000.0
+      encoder:
+        desc: "mel-post processing network parameters"
+        encoder_kernel_size: 5
+        encoder_embedding_dim: 512
+        encoder_n_convolutions: 3
+      decoder:
+        desc: "mel-post processing network parameters"
+        n_frames_per_step: 1
+        decoder_rnn_dim: 1024
+        pre_net_dim: 256
+        max_decoder_steps: 1000
+        gate_threshold: 0.5
+        p_attention_dropout: 0.1
+        p_decoder_dropout: 0.1
+      attention:
+        desc:  "attention parameters"
+        attention_rnn_dim: 1024
+        self.attention_dim: 128
+      attention_location:
+        # Location Layer parameters
+        attention_location_n_filters: = 32
+        attention_location_kernel_size: = 31
+      post_net:
+        desc: "mel-post processing network parameters"
+        post_net_embedding_dim: 512
+        post_net_kernel_size: 5
+        post_net_n_convolutions: 5
     vocoder:
       state: disabled
       name: Test

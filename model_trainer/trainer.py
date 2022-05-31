@@ -109,7 +109,7 @@ class Trainer(AbstractTrainer, ABC):
         self._brake_epoch_train = False
         self.state.is_amp = trainer_spec.is_amp()
         self.state.batch_size = data_loader.get_batch_size()
-        print("Batch size", self.state.batch_size)
+        assert self.state.batch_size > 0
         # end unit test.
         if config is not None:
             self.config = config
@@ -1628,17 +1628,12 @@ class Trainer(AbstractTrainer, ABC):
                 self.state.current_model = model_name
                 self.state.current_layer = layer_name
                 # update whatever we need
-                if config is not None:
-                    if 'batch_size' in config:
-                        self.state.data_loaders.update(config['batch_size'])
-                        # self.data_loader.update_batch(int(config["batch_size"]))
-                        # self._train_loader[self._tkey].update_batch(config["batch_size"])
-                        # self._validation_loader[self._tkey].update_batch(config["batch_size"])
-                        # self._train_loader.up
-                        # self.train_loader, self.validation_loader, self.collate_fn = self.data_loader.get_loader()
-                    if 'lr' in config:
-                        for param_group in self._optimizers[model_name][layer_name].param_groups:
-                            param_group['lr'] = config["lr"]
+                # if config is not None:
+                #     if 'batch_size' in config:
+                #         self.state.data_loaders.update(config['batch_size'])
+                #     if 'lr' in config:
+                #         for param_group in self._optimizers[model_name][layer_name].param_groups:
+                #             param_group['lr'] = config["lr"]
                 # run model
                 self.trainer_sequential(model_name=model_name, layer_name=layer_name)
                 self.save()

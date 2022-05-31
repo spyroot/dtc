@@ -488,7 +488,7 @@ def tune_hyperparam(spec=None, cmd_args=None, device=None, cudnn_bench=False):
         scheduler = ASHAScheduler(
                 metric=metric,
                 mode="min",
-                max_t=spec.epochs(),
+                max_t=100,
                 grace_period=1,
                 reduction_factor=2)
 

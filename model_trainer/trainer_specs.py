@@ -966,13 +966,15 @@ class ExperimentSpecs:
         Note each graph has own total epochs. ( depend on graph size)
         :return: number of epochs to run for given dataset, default 100
         """
-        if self._setting is None:
-            raise TrainerSpecError("Initialize settings first")
-
-        if 'epochs' in self._setting:
-            return int(self._setting['epochs'])
-
         return 100
+
+        # if self._setting is None:
+        #     raise TrainerSpecError("Initialize settings first")
+        #
+        # if 'epochs' in self._setting:
+        #     return int(self._setting['epochs'])
+
+       # return 100
 
     def validate_settings(self):
         """

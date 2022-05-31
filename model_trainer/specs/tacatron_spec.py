@@ -41,6 +41,26 @@ models:
         self._model_dict = model_dict
         self.n_frames_per_step = 1
 
+    def encoder_spec(self):
+        return ['encoder']
+
+    def decoder(self):
+        return ['decoder']
+
+    def attention(self):
+        if 'attention' not in self._model_dict:
+            return ['attention']
+
+
+    def attention(self):
+        return ['attention']
+
+    def attention_location(self):
+        return ['attention_location']
+
+    def post_net(self):
+        return ['post_net']
+
     def filter_length(self):
         if 'filter_length' not in self._model_dict:
             raise TacotronSpecError("Model has no filter_length defined.")
