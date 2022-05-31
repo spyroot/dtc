@@ -108,7 +108,7 @@ class Trainer(AbstractTrainer, ABC):
         self._brake_epoch_loop = 1
         self._brake_epoch_train = False
         self.state.batch_size = data_loader.get_batch_size()
-
+        print("Batch size", self.state.batch_size)
         # end unit test.
         if config is not None:
             self.config = config
@@ -137,14 +137,21 @@ class Trainer(AbstractTrainer, ABC):
                 raise TrainerError("Trainer need torch data loader.")
             self.state.data_loader = data_loader
             self.state.data_loaders, self.state.collate_fn = self.state.data_loader.get_all()
+            print("dataset size", data_loader.get_train_dataset_size())
+            print("dataset size", data_loader.get_val_dataset_size())
+
             self._train_loader = self.state.data_loaders[self._tkey]
             self._validation_loader = self.state.data_loaders[self._vkey]
+            print("dataset size", len(self._train_loader))
+            print("dataset size", len(self._validation_loader))
 
             if len(self._train_loader) == 0:
-                warnings.warn("Training dataset empty")
-            if len(self._validation_loader) == 0:
-                warnings.warn("Training dataset empty")
+                print("dataset size", data_loader.get_train_dataset_size())
+            # print("Training dataset is empty.")
+            # if len(self._validation_loader) == 0:
+            #     print("Training dataset is empty.")
 
+       # sys.exit()
         # TODO need refactor that, and move to dict and abstract,
         self.criterion = Tacotron2Loss()
 
@@ -279,8 +286,7 @@ class Trainer(AbstractTrainer, ABC):
         self.create_optimizers()
         self.create_lr_schedulers()
 
-        if self.state.trainer_spec.fp16_run():
-            self.scaler = torch.cuda.amp.GradScaler()
+        self.scaler = torch.cuda.amp.GradScaler(enabled=self.state.is_amp)
 
     def create_tacotron25(self, is_set_cuda=False) -> nn.Module:
         """
@@ -926,8 +932,8 @@ class Trainer(AbstractTrainer, ABC):
         is_saved = False
         # TODO for not dirty fix/ need check no ops for scaled save, because I need store per mode layer.
         if self.state.is_amp:
-            print(f"Saving model and auto precision state with scheduler state, "
-                  f"last epoch {last_epoch}, last step {last_step}, model file {resolved_path}.")
+            # print(f"Saving model and auto precision state with scheduler state, "
+            #       f"last epoch {last_epoch}, last step {last_step}, model file {resolved_path}.")
             logger.info(f"Saving model and auto precision state with, "
                         f"last epoch {last_epoch}, last step {last_step}, model file {resolved_path}.")
             if model_name in self._schedulers:
@@ -1048,6 +1054,7 @@ class Trainer(AbstractTrainer, ABC):
         else:
             self.tqdm_iter.set_description(f"Validation in progress, device {self.state.device}")
 
+        count = 0
         aggregate_loss_term = defaultdict(float)
         with torch.no_grad():
             current_batch_size = len(self._validation_loader)
@@ -1065,16 +1072,16 @@ class Trainer(AbstractTrainer, ABC):
                     else:
                         all_reduced_loss[loss_term_key] = loss_tensor.item()
 
-                self.metric.update(batch_idx, step, all_reduced_loss['loss'], validation=True)
+                self.metric.update(batch_idx, self.state.step, all_reduced_loss['loss'], validation=True)
 
                 if not self.state.is_hp_tunner:
                     if self.state.rank == 0 and batch_idx % tbar_update_rate == 0:
-                        tqdm_update_dict = {'step': step,
+                        tqdm_update_dict = {'step': self.state.step,
                                             'loss': all_reduced_loss['loss'],
                                             'batch_loss': all_reduced_loss['loss'] // max(1, batch_idx + 1),
                                             'avg loss': self.metric.total_train_mean_loss(),
                                             'batch': f"{batch_idx}/{current_batch_size}",
-                                            'saved step': self.state.saved_run}
+                                            'saved': self.state.saved_run}
 
                         for k in all_reduced_loss:
                             tqdm_update_dict[k] = all_reduced_loss[k]
@@ -1083,6 +1090,7 @@ class Trainer(AbstractTrainer, ABC):
                 # sum each loss term
                 for k in all_reduced_loss:
                     aggregate_loss_term[k] += all_reduced_loss[k]
+                count += 1
 
         # normalize at the end
         for k in aggregate_loss_term:
@@ -1102,7 +1110,10 @@ class Trainer(AbstractTrainer, ABC):
             #     "train_gate_loss": mel_loss.item(),
             #     "total_prediction_loss": total_prediction_loss,
             # }
-            self.tf_logger.log_validation(aggregate_loss_term['loss'], model, y, y_pred, step=self.state.step)
+            if count == 0:
+                print(f"validation step done {count}")
+            if count == 1:
+                self.tf_logger.log_validation(aggregate_loss_term['loss'], model, y, y_pred, step=self.state.step)
 
         return aggregate_loss_term
 
@@ -1211,7 +1222,6 @@ class Trainer(AbstractTrainer, ABC):
 
     # with amp.scale_loss(loss, optimizer) as scaled_loss:
     #     scaled_loss.backward()
-    #     # Gradients are unscaled during context manager exit.
     # # Now it's safe to clip.  Replace
     # # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
     # # with
@@ -1232,7 +1242,7 @@ class Trainer(AbstractTrainer, ABC):
             parameters_to_clip = [p for p in self.model.parameters() if p.grad is not None]
 
         if self.clip_grad:
-            return clip_grad_norm_(parameters_to_clip, self._grad_norm)
+            return clip_grad_norm_(parameters_to_clip, self.state.trainer_spec.grad_clip_thresh())
         else:
             return torch.norm(torch.stack([torch.norm(p.grad.detach()) for p in parameters_to_clip]))
 
@@ -1264,6 +1274,7 @@ class Trainer(AbstractTrainer, ABC):
 
         current_total_loss = 0
         current_grad_norm_loss = 0
+        self.tqdm_iter.set_description(f"Training in progress, {self.state.device}")
 
         current_epoch, current_step = self.current_running_state()
         loader_data_size = len(self._train_loader)
@@ -1286,9 +1297,11 @@ class Trainer(AbstractTrainer, ABC):
             with torch.cuda.amp.autocast(enabled=self.state.is_amp):
 
                 x, y = take_batch(batch, device)
-                # assert output.dtype is torch.float16
-
                 y_pred = model(x)
+                # print(len(y_pred))
+                # for ret in y_pred:
+                #     print(ret.dtype)
+                    # assert ret.dtype is torch.float16
 
                 # if self.state.trainer_spec.is_distributed_run():
                 #     reduced_loss = dist.reduce_tensor(loss.data, n_gpus).item()
@@ -1297,30 +1310,15 @@ class Trainer(AbstractTrainer, ABC):
                 mel_loss = criterion_out['mel_loss']
                 gate_loss = criterion_out['gate_loss']
                 loss = criterion_out['loss']
-
-                # checker
-                # assert mel_loss.dtype is torch.float32
-                # assert gate_loss.dtype is torch.float32
-                # assert loss.dtype is torch.float32
-
+                assert loss.dtype is torch.float32
                 normal_loss = loss.item()
 
-                # output is float16 because linear layers autocast to float16.
-                # assert output.dtype is torch.float16
-                # loss = loss_fn(output, target)
-                # loss is float32 because mse_loss layers autocast to float32.
-                # assert loss.dtype is torch.float32
+            # here we have scaled loss
+            self.scaler.scale(loss).backward()
 
-            # x, y = take_batch(batch, device)
-            # y_pred = model(x)
-            # # if self.state.trainer_spec.is_distributed_run():
-            # #     reduced_loss = dist.reduce_tensor(loss.data, n_gpus).item()
-            # criterion_out = self.criterion(y_pred, y)
-            # mel_loss = criterion_out['mel_loss']
-            # gate_loss = criterion_out['gate_loss']
-            # loss = criterion_out['loss']
+            self.scaler.unscale_(optimizer)
 
-            loss.backward()
+            # loss.backward()
             if self.clip_grad:
                 grad_norm = clip_grad_norm_(model.parameters(), self.state.trainer_spec.grad_clip_thresh())
                 grad_loss = grad_norm.item()
@@ -1331,7 +1329,10 @@ class Trainer(AbstractTrainer, ABC):
                 current_total_loss += normal_loss
                 self.metric.update(batch_idx, current_epoch, normal_loss, grad_norm=None, validation=False)
 
-            optimizer.step()
+            self.scaler.step(optimizer)
+            self.scaler.update()
+
+            # optimizer.step()
             self._callback.on_batch_begin()
             # run lr_scheduler
             if schedulers is not None:
@@ -1352,7 +1353,7 @@ class Trainer(AbstractTrainer, ABC):
                                                 'lr': optimizer.param_groups[0]['lr'],
                                                 'saved': self.state.saved_run})
             # # run prediction if_needed
-            # if step != 0 and step % self.state.trainer_spec.predict() == 0:
+            # if current_step != 0 and current_step % self.state.trainer_spec.predict() == 0:
             #     prediction_accuracy = self.validate(model, model_name, step)
             #     total_accuracy += prediction_accuracy
 

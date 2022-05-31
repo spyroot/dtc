@@ -1,5 +1,5 @@
 import torch
-from torch import nn
+from torch import nn, autocast
 from torch.nn import functional as F
 
 from .layers import LinearNorm
@@ -7,6 +7,8 @@ from .location import LocationLayer
 
 
 class Attention(nn.Module):
+
+    #  @autocast()
     def __init__(self, attention_rnn_dim, embedding_dim, attention_dim,
                  attention_location_n_filters, attention_location_kernel_size):
         """
@@ -27,8 +29,9 @@ class Attention(nn.Module):
         self.location_layer = LocationLayer(attention_location_n_filters,
                                             attention_location_kernel_size,
                                             attention_dim)
-        #
-        self.score_mask_value = -float("inf")
+        # model.decoder.attention_layer.score_mask_value = finfo('float16').min
+        #   self.score_mask_value =  -float("inf")
+        self.score_mask_value = -torch.finfo(torch.float16).min
 
     def get_alignment_energies(self, query, processed_memory,
                                attention_weights_cat):
@@ -52,6 +55,7 @@ class Attention(nn.Module):
         energies = energies.squeeze(-1)
         return energies
 
+    #  @autocast()
     def forward(self, attention_hidden_state, memory, processed_memory,
                 attention_weights_cat, mask):
         """

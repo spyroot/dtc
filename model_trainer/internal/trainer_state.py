@@ -28,7 +28,7 @@ class TrainerState:
         self.batch_size = None
         self.device = None
         self.is_distributed = False
-        self.is_amp = False
+        self.is_amp = True
 
         self.current_model = None
         self.current_layer = None

@@ -310,12 +310,13 @@ class SFTFDataloader:
         return self._batch_size
 
     def get_train_dataset_size(self):
+        print(self._datasets.keys())
         if 'train_set' in self._datasets:
             return len(self._datasets['train_set'])
 
     def get_val_dataset_size(self):
-        if 'validation_end' in self._datasets:
-            return len(self._datasets['validation_end'])
+        if 'validation_set' in self._datasets:
+            return len(self._datasets['validation_set'])
 
     def _create_loaders(self):
         """
@@ -373,13 +374,18 @@ class SFTFDataloader:
                 sampler = samplers[k]
             logger.info(f"Creating dataloader {k} dataset contains "
                         f"{len(self._datasets[k])} batch size {self._batch_size}")
+
+            _shuffle = self._trainer_spec.is_shuffle(k)
+            if self._trainer_spec.is_distributed_run():
+                _shuffle = False
+
             self._data_loaders[k] = DataLoader(self._datasets[k],
-                                               num_workers=self._num_worker,
-                                               shuffle=is_shuffle,
+                                               num_workers=self._trainer_spec.num_workers(k),
+                                               shuffle=_shuffle,
                                                sampler=sampler,
                                                batch_size=self._batch_size,
-                                               pin_memory=True,
-                                               drop_last=True,
+                                               pin_memory=self._trainer_spec.is_pin_memory(k),
+                                               drop_last=self._trainer_spec.is_drop_last(k),
                                                collate_fn=self.collate_fn)
 
     def from_dataset(self, ds: BaseSFTFDataset):

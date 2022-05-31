@@ -1,7 +1,7 @@
 train: True                 # train or not,  default is True for generation we only need load pre-trained model
 #active: 'grid_small'       # dataset set generated.
 #use_dataset: 'LJSpeechSmallPkl'     # dataset set generated.
-use_dataset: 'ljmini'      # dataset set generated.
+use_dataset: 'ljcheep500_tensor'      # dataset set generated.
 use_model: 'tacotron25'            # model to use , it must be defined in models section.
 draw_prediction: True       # at the of training draw.
 load_model: True            # load model or not, and what
@@ -76,6 +76,16 @@ datasets:
 #      - "ljs_audio_text_train_filelist_1000.txt"
 #      - "ljs_audio_text_val_filelist.txt"
 #      - "ljs_audio_text_test_filelist.txt"
+  ljcheep500_tensor:
+    ds_type: "audio"
+    file_type: "torch"
+    format: tensor_mel
+    dir: "~/Dropbox/Datasets/LJSpeech-1.1"
+    training_meta: ljcheep1k_audio_test_num_sam_500_filter_80.pt
+    validation_meta: ljcheep1k_audio_validate_num_sam_100_filter_80.pt
+    test_meta: ljcheep1k_audio_test_num_sam_500_filter_80.pt
+    meta: metadata.csv
+    recursive: False
   ljcheep1k_tensor:
     ds_type: "audio"
     file_type: "torch"
@@ -152,8 +162,8 @@ settings:
     cudnn_enabled: True
     cudnn_benchmark: False
   small:
-    epochs: 500
-    batch_size: 4
+    epochs: 10
+    batch_size: 128
     grad_clipping: True
     grad_max_norm: 1.0                 # grad_max_norm rate
     tensorboard_update: 20             # tensorboard_update update rate iter
@@ -162,10 +172,10 @@ settings:
     start_test: 20                     # when to start run a test
     predict: 10                        # predict to start predict , validate
     predict_per_iteration: False       # use epoch or iteration counter, in large batch size we might want to see progress.
-    epochs_save: 1                     # when to save
-    save_per_iteration: True           # if we want save per iteration
+    epochs_save: 5                     # when to save
+    save_per_iteration: False          # if we want save per iteration
     seed: 1234                         # fix seed
-    fp16: False                        # fp16 run
+    is_amp: True                       # fp16 run
     distributed: False                 # what distributed backend uses.
     backend: "nccl"                    # backend: "gloo"
     url: "tcp://localhost:54321"       # ddp
@@ -173,9 +183,26 @@ settings:
     master_port: 54321
     cudnn_enabled: True
     cudnn_benchmark: False
-    random_sampler: True               # enable random sampler
+    random_sampler: False              # enables random sampler, note you can't shuffle than
     workers:
       - 192.168.254.205
+    dataloader:
+      train_set:
+        num_workers: 1
+        drop_last: True
+        pin_memory: False
+        shuffle: True
+      validation_set:
+        num_workers: 1
+        drop_last: False
+        pin_memory: False
+        shuffle: False
+
+# if you load your samples in the Dataset on CPU and would like to push it during training to the GPU,
+# you can speed up the host to device transfer by enabling pin_memory.
+# This lets your DataLoader allocate the samples in page-locked memory, which speeds-up the transfer.
+# You can find more information on the NVIDIA blo
+# https://developer.nvidia.com/blog/how-optimize-data-transfers-cuda-cc/
 
 optimizers:
   node_optimizer:
@@ -288,7 +315,7 @@ models:
       input_size: 1
 
 ray:
-  batch_size: [1, 2, 4, 8, 16, 32, 64, 128]
+  batch_size: [32, 64, 128]
   lr_min: 0.0001
   lr_max: 0.1
   checkpoint_freq: 4

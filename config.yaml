@@ -83,7 +83,6 @@ datasets:
     recursive: False
     file_type: "wav"
 
-
 settings:
   # debug mode
   debug:
@@ -130,7 +129,7 @@ settings:
     cudnn_enabled: True
     cudnn_benchmark: False
   small:
-    batch_size: 64
+    batch_size: 128
     grad_clipping: True
     grad_max_norm : 1.0
     # tensorboard update rate
@@ -138,18 +137,18 @@ settings:
     # early stopping
     early_stopping: True
     # when to log to console
-    console_log_rate: 5
+    console_log_rate: 2
     # when to start run a test
     start_test: 20
     # predict to start predict , validate
     predict: 10
     # use epoch or iteration counter, in large batch size we might want to see progress.
-    predict_per_iteration: True
+    predict_per_iteration: False
     # when to save
     epochs_save: 5
     save_per_iteration: False
     seed: 1234
-    epochs: 500
+    epochs: 10
     iters_per_checkpoint: 1000
     fp16: False                      # fp16 run
     distributed: False               # what distributed backend uses.
@@ -161,6 +160,17 @@ settings:
     cudnn_benchmark: False
     workers:
       - 192.168.254.205
+    dataloader:
+      train_set:
+        num_workers: 1
+        drop_last: True
+        pin_memory: True
+        shuffle: True
+      validation_set:
+        num_workers: 1
+        drop_last: False
+        pin_memory: True
+        shuffle: False
 
 optimizers:
   node_optimizer:
@@ -301,7 +311,7 @@ models:
 
 
 ray:
-  batch_size: [1, 2, 4, 8, 16, 32, 64, 128]
+  batch_size: [32, 64, 128]
   lr_min: 1e-4
   lr_max: 1e-1
   num_samples: 10

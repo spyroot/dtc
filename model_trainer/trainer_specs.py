@@ -108,7 +108,7 @@ class ExperimentSpecs:
         self.encoder_embedding_dim = 512
 
         # Decoder parameters
-        self.n_frames_per_step = 1  # currently, only 1 is supported
+        self.n_frames_per_step = 1
         self.decoder_rnn_dim = 1024
         self.prenet_dim = 256
         self.max_decoder_steps = 1000
@@ -879,9 +879,9 @@ class ExperimentSpecs:
         if self._setting is None:
             raise TrainerSpecError("Initialize settings first")
 
-        if 'fp16' in self._setting:
-            logger.debug(f"Model uses fp16 {self._setting['fp16']} log level {self._verbose}")
-            return self._setting['fp16']
+        if 'is_amp' in self._setting:
+            logger.debug(f"Model uses is_amp {self._setting['is_amp']} log level {self._verbose}")
+            return self._setting['is_amp']
 
         return False
 
@@ -1777,6 +1777,10 @@ class ExperimentSpecs:
         self._setting['epochs'] = epochs
 
     def is_random_sample(self) -> True:
+        """
+
+        :return:
+        """
         if self._setting is None:
             raise TrainerSpecError("Initialize settings first")
 
@@ -1818,7 +1822,94 @@ class ExperimentSpecs:
 
         self._setting['grad_max_norm'] = float(grad_clip_rate)
 
+    def get_data_loader(self):
+        """
+        :return:
+        """
+        if self._setting is None:
+            raise TrainerSpecError("Initialize settings first")
 
+        if 'dataloader' in self._setting:
+            return self._setting['dataloader']
+
+        return {}
+
+    def get_data_loader_setting(self, loader_name: str, key: str):
+        """
+        Data loader settings.
+
+        dataloader:
+          train_set:
+            num_workers: 1
+            drop_last: True
+            pin_memory: True
+            shuffle: True
+          validation_set:
+            num_workers: 1
+            drop_last: False
+            pin_memory: True
+            shuffle: False
+
+        :return:
+        """
+        data_loader = self.get_data_loader()
+        if loader_name in data_loader:
+            if key in data_loader[loader_name]:
+                return data_loader[loader_name][key]
+        return None
+
+    def is_drop_last(self, k) -> bool:
+        """
+        :param k:
+        :return:
+        """
+        val = self.get_data_loader_setting(k, 'drop_last')
+        if val is None:
+            print(f"no found {k} drop_last")
+            return False
+
+        print(f"found {k} drop_last")
+        return bool(val)
+
+    def num_workers(self, k):
+        """
+
+        :param k:
+        :return:
+        """
+        val = self.get_data_loader_setting(k, 'num_workers')
+        if val is None:
+            print(f"no found {k} num_workers")
+            return False
+
+        print(f"found {k} num_workers")
+        return int(val)
+
+    def is_pin_memory(self, k):
+        """
+
+        :param k:
+        :return:
+        """
+        val = self.get_data_loader_setting(k, 'pin_memory')
+        if val is None:
+            return False
+
+        print(f"found {k} is_pin_memory")
+        return bool(val)
+
+    def is_shuffle(self, k):
+        """
+
+        :param k:
+        :return:
+        """
+        val = self.get_data_loader_setting(k, 'shuffle')
+        if val is None:
+            return False
+
+        print(f"found {k} is_shuffle")
+        return bool(val)
 
 
 def remove_junk(val):
