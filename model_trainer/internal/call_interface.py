@@ -13,12 +13,12 @@ class Callback(object):
         self.metric: Metrics = Optional[None]
         self.trainer: AbstractTrainer = Optional[None]
 
-    def update_trainer(self, trainer):
-        print("Registed trainer")
+    def register_trainer(self, trainer):
+        print("registering trainer")
         self.trainer = trainer
 
-    def update_metric(self, metric):
-        print("Registed metric")
+    def register_metric(self, metric):
+        print("registering metric")
         self.metric = metric
 
     def on_batch_begin(self):
@@ -67,9 +67,13 @@ class BaseCallbacks(Callback):
         super().__init__()
         self.callbacks = listify(callbacks)
 
-    def set_state(self, state):
+    def register_trainer(self, state):
         for callback in self.callbacks:
-            callback.set_state(state)
+            callback.register_trainer(state)
+
+    def register_metric(self, state):
+        for callback in self.callbacks:
+            callback.register_metric(state)
 
     def on_batch_begin(self):
         for callback in self.callbacks:
@@ -114,12 +118,10 @@ class BaseCallbacks(Callback):
     def validation_start(self):
         for callback in self.callbacks:
             callback.validation_start()
-        pass
 
     def validation_end(self):
         for callback in self.callbacks:
             callback.validation_end()
-        pass
 
     def saving_start(self):
         pass

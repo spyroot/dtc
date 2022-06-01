@@ -65,12 +65,13 @@ class CheckpointBest(Callback):
                 logger.info(f"Epoch {ep:2d}: best {self.monitor} improved from {self.best:.4f} to {current:.4f}")
 
             self.best = current
-            save_name = os.path.join(self.save_dir, self.save_name.format(ep=ep, metric=current))
-            self._save_checkpoint(save_name)
+            self.trainer.save()
+
+            # save_name = os.path.join(self.save_dir, self.save_name.format(ep=ep, metric=current))
+            # self._save_checkpoint(save_name)
 
     def _save_checkpoint(self, path):
         """
-
         :param path:
         :return:
         """

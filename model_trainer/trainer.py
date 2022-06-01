@@ -196,8 +196,8 @@ class Trainer(AbstractTrainer, ABC):
 
         print("got")
         self._callback = BaseCallbacks(callbacks=callback)
-        self._callback.update_trainer(self)
-        self._callback.update_trainer(self.metric)
+        self._callback.register_trainer(self)
+        self._callback.register_metric(self.metric)
 
         # self.callbacks.set
         logger.info("Device ID {}".format(self.state.cuda_device_id))
@@ -530,7 +530,7 @@ class Trainer(AbstractTrainer, ABC):
             if layer_name not in self._models[model_name]:
                 raise TrainerError(f"{layer_name} not in model create.")
 
-            self._models[model_name][layer_name].load_state_dict(checkpoint['model_state_dict'])
+            self._models[model_name][layer_name].load_state_dict(checkpoint['model_state_dict'], strict=False)
             if 'model_state_dict' not in checkpoint:
                 raise TrainerError("model has no state dict.")
 

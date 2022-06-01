@@ -309,7 +309,7 @@ models:
 
 
 ray:
-  batch_size: [32, 64, 128]
+  batch_size: [32, 64]
   lr_min: 1e-4
   lr_max: 1e-1
   num_samples: 10
