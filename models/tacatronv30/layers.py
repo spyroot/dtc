@@ -3,9 +3,7 @@ import torch
 
 class LinearNorm(torch.nn.Module):
     """
-
     """
-
     def __init__(self, in_dim, out_dim, bias=True, w_init_gain='linear'):
         """
 

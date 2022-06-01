@@ -1,10 +1,17 @@
 import torch
+from torch.nn import functional as F
+import torch.nn as nn
+from torch import Tensor
+
+
 # https://github.com/AntixK/PyTorch-VAE/blob/master/models/vq_vae.py
+
 class VectorQuantizer(nn.Module):
     """
     Reference:
     [1] https://github.com/deepmind/sonnet/blob/v2/sonnet/src/nets/vqvae.py
     """
+
     def __init__(self,
                  num_embeddings: int,
                  embedding_dim: int,

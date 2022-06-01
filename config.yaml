@@ -1,7 +1,7 @@
 train: True                 # train or not,  default is True for generation we only need load pre-trained model
 #active: 'grid_small'       # dataset set generated.
 #use_dataset: 'LJSpeechSmallPkl'     # dataset set generated.
-use_dataset: 'LJSpeech'  # dataset set generated.
+use_dataset: 'LJSpeechMiniRaw'  # dataset set generated.
 use_model: 'dts'            # model to use , it must be defined in models section.
 draw_prediction: True       # at the of training draw.
 load_model: True            # load model or not, and what
@@ -22,16 +22,6 @@ model_save_dir: "model"                    # where we save model
 metrics_dir: "metrics"                     # metrics dir in case we need store separate metrics
 
 datasets:
-  LJSpeech:
-    ds_type: "audio"
-    file_type: "wav"
-    format: raw
-    dir: "~/src/dtc/dataset/LJSpeech-1.1"
-    training_meta: ljs_audio_text_train_filelist.txt
-    validation_meta:  ljs_audio_text_val_filelist.txt
-    test_meta: ljs_audio_text_test_filelist.txt
-    meta: metadata.csv
-    recursive: False
   LJSpeechPkl:
     format: tensor_mel
     ds_type: "audio"
@@ -142,7 +132,7 @@ settings:
         shuffle: False
   small:
     epochs: 500
-    batch_size: 128
+    batch_size: 32
     grad_clipping: True
     grad_max_norm : 1.0
     tensorboard_update: 100       # update rate for tensorboard

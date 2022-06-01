@@ -26,6 +26,13 @@ def fmt_print(left, *argv):
     else:
         print(f"{str(left) + ':' :<25} {argv}")
 
+def sequence_mask(sequence_length, max_len=None):
+    if max_len is None:
+        max_len = sequence_length.data.max()
+    seq_range = torch.arange(max_len, dtype=sequence_length.dtype,
+                             device=sequence_length.device)
+    # B x T_max
+    return seq_range.unsqueeze(0) < sequence_length.unsqueeze(1)
 
 def get_mask_from_lengths(lengths, device="cuda"):
     """

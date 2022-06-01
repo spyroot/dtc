@@ -1,3 +1,4 @@
+import copy
 import sys
 from math import sqrt
 
@@ -19,6 +20,7 @@ class InferenceEncoder(nn.Module):
     """
 
     """
+
     def __init__(self, z_dim, y_dim=0, hidden_dim=512):
         super(InferenceEncoder, self).__init__()
         self.z_dim = z_dim
@@ -210,6 +212,9 @@ class Tacotron3(nn.Module):
         self.vae_encode = InferenceEncoder(z_dim=1024)
         self.vae_decode = InferenceDecoder(z_dim=1024)
 
+        self.bidirectional_decoder = True
+        self.reverse_decoder = None
+
     def reparameterize(self, mu, logvar, mi=False):
         """
 
@@ -268,12 +273,150 @@ class Tacotron3(nn.Module):
 
         return outputs
 
+    def backward_decoder(self):
+        """
+        :return:
+        """
+        if self.reverse_decoder is None:
+            self.reverse_decoder = copy.deepcopy(self.decoder)
+
+    # def sequence_mask(sequence_length, max_len=None):
+    #     if max_len is None:
+    #         max_len = sequence_length.data.max()
+    #     seq_range = torch.arange(max_len, dtype=sequence_length.dtype,
+    #                              device=sequence_length.device)
+    #     # B x T_max
+    #     return seq_range.unsqueeze(0) < sequence_length.unsqueeze(1)
+
+    def get_mask_from_lengths(self, lengths, max_l=None, device="cuda"):
+        """
+        :param lengths:
+        :param device:
+        :return:
+        """
+        max_len = torch.max(lengths).item()
+        if max_l is None:
+            max_len = max_l
+
+        # max_len = torch.max(lengths).item()
+        ids = torch.arange(0, max_len, out=torch.LongTensor(max_len), device=device)
+        mask = (ids < lengths.unsqueeze(1)).bool(device=device).to(device)
+        return mask
+
+    def compute_masks(self, text_lengths, mel_lengths):
+
+        device = text_lengths.device
+        input_mask = get_mask_from_lengths(text_lengths).to(device)
+        output_mask = None
+        if mel_lengths is not None:
+            max_len = mel_lengths.max()
+            r = self.decoder.r
+            max_len = max_len + (r - (max_len % r)) if max_len % r > 0 else max_len
+            output_mask = get_mask_from_lengths(mel_lengths, max_len=max_len).to(device)
+
+        return input_mask
+
+    def backward_pass(self, encoder_outputs, mels, text_lengths):
+        """
+        Reverse pass
+
+        :param mels:
+        :param encoder_outputs:
+        :param text_lengths:
+        :return:
+        """
+
+        print("mel ", mels.shape)
+        mel_flip = torch.flip(mels, dims=(1,))
+        print("mel ", mels.shape)
+
+        # mel  torch.Size([32, 80, 825])
+        # mel_outputs from backward  torch.Size([32, 80, 825])
+        # gate_outputs from backward  torch.Size([32, 825])
+        # alignments from backward  torch.Size([32, 825, 157])
+        # Dimension out of range (expected to be in range of [-2, 1], but got 2)
+
+        #         memory: Encoder outputs
+        #         decoder_inputs: Decoder inputs for teacher forcing. i.e. mel-specs
+        #         memory_lengths: Encoder output lengths for attention masking.
+        #
+        #         RETURNS
+        #         -------
+        #         mel_outputs: mel outputs from the decoder
+        #         gate_outputs: gate outputs from the decoder
+        #         alignments: sequence of attention weights from the decoder
+
+        mel_outputs, gate_outputs, alignments = self.decoder(
+                encoder_outputs, mel_flip, memory_lengths=text_lengths)
+
+        # print("mel_outputs from backward ", mel_outputs.shape)
+        # print("gate_outputs from backward ", gate_outputs.shape)
+        # print("alignments from backward ", alignments.shape)
+
+        # mel_outputs, gate_outputs, alignments = self.decoder_backward(
+        #         encoder_outputs, torch.flip(mel_specs, dims=(1,)), mask,
+        #         self.speaker_embeddings_projected)
+        #
+
+        # gate_outputs = gate_outputs.transpose(1, 2).contiguous()
+        return mel_outputs, gate_outputs, alignments
+
+    def coarse_decoder_pass(self, mel_specs, encoder_outputs, alignments, input_mask):
+        """
+
+        :param mel_specs:
+        :param encoder_outputs:
+        :param alignments:
+        :param input_mask:
+        :return:
+        """
+        T = mel_specs.shape[1]
+        if T % self.coarse_decoder.r > 0:
+            padding_size = self.coarse_decoder.r - (T % self.coarse_decoder.r)
+            mel_specs = torch.nn.functional.pad(mel_specs, (0, 0, 0, padding_size, 0, 0))
+        decoder_outputs_backward, alignments_backward, _ = self.coarse_decoder(encoder_outputs.detach(), mel_specs,
+                                                                               input_mask)
+
+        # scale_factor = self.decoder.r_init / self.decoder.r
+        alignments_backward = torch.nn.functional.interpolate(
+                alignments_backward.transpose(1, 2),
+                size=alignments.shape[1],
+                mode='nearest').transpose(1, 2)
+
+        decoder_outputs_backward = decoder_outputs_backward.transpose(1, 2)
+        decoder_outputs_backward = decoder_outputs_backward[:, :T, :]
+
+        return decoder_outputs_backward, alignments_backward
+
+    def compute_masks(self, text_lengths, mel_lengths):
+        """
+
+        :param text_lengths:
+        :param mel_lengths:
+        :return:
+        """
+        # B x T_in_max (boolean)
+        device = text_lengths.device
+        input_mask = get_mask_from_lengths(text_lengths).to(device)
+        output_mask = None
+
+        if mel_lengths is not None:
+            max_len = mel_lengths.max()
+            r = self.decoder.r
+            max_len = max_len + (r - (max_len % r)) if max_len % r > 0 else max_len
+            output_mask = get_mask_from_lengths(mel_lengths, max_len=max_len).to(device)
+
+        return input_mask
+
     def forward(self, inputs):
         """
         Forward pass inputs a batch that contains text, mel , spectral data.
         :param inputs:
         :return:
         """
+
+        self.backward_decoder()
+
         text_inputs, text_lengths, mels, max_len, output_lengths, spectral = inputs
         text_lengths, output_lengths = text_lengths.data, output_lengths.data
 
@@ -295,11 +438,9 @@ class Tacotron3(nn.Module):
         # print("q_var", q_dist)
         z_sample = q_dist.rsample()
         # print("z_samep", z_sample.shape)
-        decoding = self.vae_decode(z_sample)
+        vae_decoder_out = self.vae_decode(z_sample)
         # print("gate_out dim", decoding.shape)
-
-
-        # mu_ = self.linear_mu(embedded_inputs)
+        #  mu_ = self.linear_mu(embedded_inputs)
         # alignments
         # logvar_ = self.linear_var(output)
         # mu_ = self.linear_mu(output)
@@ -313,12 +454,33 @@ class Tacotron3(nn.Module):
         mel_outputs_postnet = self.postnet(mel_outputs)
         mel_outputs_postnet = mel_outputs + mel_outputs_postnet
 
+        #    memory: Encoder outputs
+        #         decoder_inputs: Decoder inputs for teacher forcing. i.e. mel-specs
+        #         memory_lengths: Encoder output lengths for attention masking.
+        #
+        #         RETURNS
+        #         -------
+        #         mel_outputs: mel outputs from the decoder
+        #         gate_outputs: gate outputs from the decoder
+        #         alignments: sequence of attention weights from the decoder
+
+        if self.bidirectional_decoder:
+            mel_out_rev, gate_outputs_rev, alignments_rev = self.backward_pass(encoder_outputs, mels, text_lengths)
+            return self.parse_output([mel_outputs,
+                                      mel_outputs_postnet,
+                                      gate_outputs,
+                                      alignments,
+                                      vae_decoder_out,
+                                      q_dist,
+                                      mel_out_rev,
+                                      gate_outputs_rev,
+                                      alignments_rev,
+                                      ],
+                                     output_lengths)
+
         return self.parse_output(
-                [mel_outputs, mel_outputs_postnet, gate_outputs, alignments, decoding, q_dist],
+                [mel_outputs, mel_outputs_postnet, gate_outputs, alignments, vae_decoder_out, q_dist],
                 output_lengths)
-        # return self.parse_output(
-        #         [mel_outputs, mel_outputs_postnet, gate_outputs, alignments],
-        #         output_lengths)
 
     def inference(self, inputs):
         """

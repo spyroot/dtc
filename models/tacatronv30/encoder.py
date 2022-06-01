@@ -76,10 +76,6 @@ class Encoder(nn.Module):
             x = F.dropout(F.relu(conv(x)), self.forward_pass_dropout_rate, self.training)
 
         x = x.transpose(1, 2)
-        # print("Len", input_lengths)
-        # pytorch tensor are not reversible, hence the conversion
-        # input_lengths = input_lengths.cpu().numpy()
-        # flipped = torch.fliplr(input_lengths)
 
         x = nn.utils.rnn.pack_padded_sequence(
             x, input_lengths.cpu().numpy(), batch_first=True)

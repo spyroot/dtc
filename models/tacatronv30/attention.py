@@ -14,11 +14,10 @@ class Attention(nn.Module):
     def __init__(self, attention_rnn_dim, embedding_dim, attention_dim,
                  attention_location_n_filters, attention_location_kernel_size):
         super(Attention, self).__init__()
+
         #
         self.query_layer = LinearNorm(attention_rnn_dim, attention_dim, bias=False, w_init_gain='tanh')
-        #
         self.memory_layer = LinearNorm(embedding_dim, attention_dim, bias=False, w_init_gain='tanh')
-        #
         self.v = LinearNorm(attention_dim, 1, bias=False)
         # location layer
         self.location_layer = LocationLayer(attention_location_n_filters,
@@ -40,34 +39,24 @@ class Attention(nn.Module):
         -------
         alignment (batch, max_time)
         """
-
-        processed_query = self.query_layer(query.unsqueeze(1))
-        processed_attention_weights = self.location_layer(attention_weights_cat)
-        energies = self.v(torch.tanh(
-                processed_query + processed_attention_weights + processed_memory))
+        pquery = self.query_layer(query.unsqueeze(1))
+        p_attention_weights = self.location_layer(attention_weights_cat)
+        energies = self.v(torch.tanh(pquery + p_attention_weights + processed_memory))
 
         energies = energies.squeeze(-1)
         return energies
 
-    def forward(self, attention_hidden_state, memory, processed_memory,
+    def forward(self, attention_state, memory, processed_memory,
                 attention_weights_cat, mask):
         """
-        PARAMS
-        ------
-        attention_hidden_state: attention rnn last output
-        memory: encoder outputs
-        processed_memory: processed encoder outputs
-        attention_weights_cat: previous and cummulative attention weights
-        mask: binary mask for padded data
+        :param attention_state:  attention rnn last output
+        :param memory: encoder memory
+        :param processed_memory: processed encoder output
+        :param attention_weights_cat: previous and cummulative attention weights
+        :param mask:  binary mask for padded data
+        :return:
         """
-
-        # print("Attention hidden", attention_hidden_state.shape)
-        # print("memory ", memory.shape)
-        # print("processed_memory memory", processed_memory.shape)
-        # print("attention_weights_cat memory", processed_memory.shape)
-
-        alignment = self.get_alignment_energies(
-                attention_hidden_state, processed_memory, attention_weights_cat)
+        alignment = self.get_alignment_energies(attention_state, processed_memory, attention_weights_cat)
 
         if mask is not None:
             alignment.data.masked_fill_(mask, self.score_mask_value)

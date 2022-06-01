@@ -3,7 +3,7 @@ import torch.nn as nn
 
 class Reshaper(nn.Module):
     """
-    reshaper as a layer in a sequential model.
+    Reshaper as a layer in a sequential model.
     """
 
     def __init__(self, shape=[]):
