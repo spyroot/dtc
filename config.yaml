@@ -102,31 +102,44 @@ settings:
     epochs_save: 2
     tensorboard_update: 10
   # baseline
-  baseline:
-    early_stopping: True
-    epochs_log:  1000
-    start_test:  100
-    epochs_test: 100
-    epochs_save: 100
-    tensorboard_update: 100
   # baseline
-  medium:
+  baseline:
+    epochs: 500
     batch_size: 128
-    tensorboard_update: 20      # update rate each step mod tensorboard_update
-    early_stopping: True        # early stopping
-    console_log_rate: 10        # when to log to console
-    start_test: 20              # when to start run a validation test.
-    epochs_test: 20             # epoch mod epochs_test_rate to start testing
-    epochs_save: 2              # rate when to save
-    save_per_iteration: False   # if we want save per iteration for large model make sense not to wait
-    seed: 1234                  # fix seed
-    epochs: 500                 # total epochs
-    fp16: False                 # fp16 or fp32
-    distributed: False          # if we distribute
-    backend: "nccl"              # what distributed backend uses.
+    grad_clipping: True
+    grad_max_norm: 1.0
+    tensorboard_update: 100       # update rate for tensorboard
+    early_stopping: True          # early stopping
+    console_log_rate: 20          # when to log to console
+    start_test: 20                # when to start run a test
+    predict: 50                   # will do validation , prediction every 10 iteration .(re-scale based on ds/batch size)
+    # use epoch or iteration counter, in large batch size we might want to see progress.
+    predict_per_iteration: False
+    # when to save
+    epochs_save: 2
+    save_per_iteration: False
+    seed: 1234
+    fp16: False                      # fp16 run
+    distributed: False               # what distributed backend uses.
+    backend: "nccl"                  # backend: "gloo"
     url: "tcp://localhost:54321"
+    master_address: localhost
+    master_port: 54321
     cudnn_enabled: True
     cudnn_benchmark: False
+    workers:
+      - 192.168.254.205
+    dataloader:
+      train_set:
+        num_workers: 1
+        drop_last: True
+        pin_memory: True
+        shuffle: True
+      validation_set:
+        num_workers: 1
+        drop_last: False
+        pin_memory: True
+        shuffle: False
   small:
     epochs: 500
     batch_size: 128

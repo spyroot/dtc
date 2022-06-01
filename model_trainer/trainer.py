@@ -1112,8 +1112,6 @@ class Trainer(AbstractTrainer, ABC):
         self.metric.on_prediction_batch_end()
 
         model.train()
-
-        print("Here")
         # update tensorboard
         if self.state.is_hyper_tunner is False and self.state.rank == 0:
             # criterions = {
