@@ -260,7 +260,34 @@ class Metrics:
         return __name__
 
     def update_batch_size(self, batch_size):
+        """
+
+        :param batch_size:
+        :return:
+        """
         self.batch_size = batch_size
+
+    def epoch_average_loss(self):
+        """
+        Compute average loss
+        :return:
+        """
+        return self.epoch_train_loss.mean()
+
+    def epoch_avg_prediction_loss(self):
+        """
+
+        :return:
+        """
+        return self.epoch_val_loss.mean()
+
+    def get_metric_value(self, monitor):
+        """
+        Should return metric by value
+        :param monitor:
+        :return:
+        """
+        pass
 
 
 def batch_loss_compute():

@@ -194,7 +194,10 @@ class Trainer(AbstractTrainer, ABC):
                                   batch_size=self.state.trainer_spec.batch_size(),
                                   verbose=False)
 
+        print("got")
         self._callback = BaseCallbacks(callbacks=callback)
+        self._callback.update_trainer(self)
+        self._callback.update_trainer(self.metric)
 
         # self.callbacks.set
         logger.info("Device ID {}".format(self.state.cuda_device_id))
@@ -1555,6 +1558,10 @@ class Trainer(AbstractTrainer, ABC):
         assert self.state.current_model == model_name
 
         model, optimizer, scheduler = self.prepare_trainer(model_name, layer_name)
+        self.state.current_model = model
+        self.state.current_optimizer = optimizer
+        self.state.current_schedulers = scheduler
+
         logger.info(f"Last epoch saved {self._last_ckt_epochs[model_name][layer_name]}")
         logger.info(f"Last iteration saved {self._last_step[layer_name]}")
 

@@ -43,7 +43,13 @@ class TrainerState:
         self.data_loaders = None
         self.collate_fn = None
 
+        # update rate for tqdm
         self.tbar_update_rate = 0
+
+        # each de-queue set current model , opt , scheduelr
+        self.current_model = None
+        self.current_optimizer = None
+        self.current_schedulers = None
 
         # self.set_logger(verbose)
         #

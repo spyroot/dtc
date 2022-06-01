@@ -10,11 +10,16 @@ class Callback(object):
     Metric Concrete type , late maybe to abstract
     """
     def __init__(self, *args, **kwargs):
-        self.trainer_state: Metrics = Optional[None]
-        self.metric_state: AbstractTrainer = Optional[None]
+        self.metric: Metrics = Optional[None]
+        self.trainer: AbstractTrainer = Optional[None]
 
-    def set_state(self, state):
-        pass
+    def update_trainer(self, trainer):
+        print("Registed trainer")
+        self.trainer = trainer
+
+    def update_metric(self, metric):
+        print("Registed metric")
+        self.metric = metric
 
     def on_batch_begin(self):
         pass

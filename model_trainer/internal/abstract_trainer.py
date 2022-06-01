@@ -189,3 +189,7 @@ class AbstractTrainer(ABC, metaclass=ABCMeta):
                 rank=self.state.rank)
 
         logger.debug("Done initializing distributed {}".format(dist.get_rank()))
+
+    @abstractmethod
+    def save(self):
+        pass

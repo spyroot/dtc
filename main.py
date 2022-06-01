@@ -22,6 +22,7 @@ from model_loader.ds_util import md5_checksum
 from model_loader.stft_dataloader import SFTFDataloader
 from model_loader.dataset_stft30 import SFTF3Dataset
 from model_trainer.internal.call_interface import Callback
+from model_trainer.internal.save_best import CheckpointBest
 from model_trainer.internal.time_meter import TimeMeter
 from model_trainer.internal.time_tracer import BatchTimer
 from model_trainer.specs.model_tacotron25_spec import TacotronSpec, ModelSpecTacotron25
@@ -606,6 +607,7 @@ def train(spec=None, cmd_args=None, device=None, cudnn_bench=False):
                           rank=int(args.rank),
                           world_size=int(cmd_args.world_size),
                           verbose=args.verbose, device=device,
+                          callback=[CheckpointBest()],
                           hp_tunner=False)
 
         trainer.set_logger(is_enable=True)

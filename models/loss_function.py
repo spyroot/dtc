@@ -32,7 +32,7 @@ class Tacotron2Loss(nn.Module):
         gate_outT = gate_out.view(-1, 1)
 
         mel_loss = nn.MSELoss()(mel_out, mel_target) + nn.MSELoss()(mel_out_post_net, mel_target)
-        gate_loss = nn.BCEWithLogitsLoss()(gate_targeT, gate_outT)
+        gate_loss = nn.BCEWithLogitsLoss()(gate_outT, gate_targeT)
 
         total = mel_loss + gate_loss
         return {'loss': total,
