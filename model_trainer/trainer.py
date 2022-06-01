@@ -486,6 +486,18 @@ class Trainer(AbstractTrainer, ABC):
         logger.info(f"Loading model node rank {self.state.rank} "
                     f"'{model_name}' model {layer_name} fro file {resolved_path}.")
 
+        # original saved file with DataParallel
+       # state_dict = torch.load('myfile.pth.tar')
+        # create new OrderedDict that does not contain `module.`
+
+        # from collections import OrderedDict
+        # new_state_dict = OrderedDict()
+        # for k, v in state_dict.items():
+        #     name = k[7:]  # remove `module.`
+        #     new_state_dict[name] = v
+        # # load params
+        # model.load_state_dict(new_state_dict)
+
         # load trained optimizer state_dict
         try:
             if to_device:
@@ -539,6 +551,7 @@ class Trainer(AbstractTrainer, ABC):
                 self._last_step[layer_name] = 0
                 return 0, 0
 
+          #  ignore_layers = 'reverse_decoder'
             #  ignore layers.
             if ignore_layers is not None and len(ignore_layers) > 0:
                 model_dict = {k: v for k, v in self._models[model_name].items()
@@ -1122,7 +1135,6 @@ class Trainer(AbstractTrainer, ABC):
             #     "total_prediction_loss": total_prediction_loss,
             # }
 
-            print("Here")
             if count > 0:
                 self.tf_logger.log_validation(self.metric.total_train_mean_loss(),
                                               model, y, y_pred, step=self.state.step)

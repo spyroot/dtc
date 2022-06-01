@@ -326,10 +326,7 @@ class Tacotron3(nn.Module):
         :return:
         """
 
-        print("mel ", mels.shape)
         mel_flip = torch.flip(mels, dims=(1,))
-        print("mel ", mels.shape)
-
         # mel  torch.Size([32, 80, 825])
         # mel_outputs from backward  torch.Size([32, 80, 825])
         # gate_outputs from backward  torch.Size([32, 825])

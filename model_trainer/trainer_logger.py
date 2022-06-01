@@ -60,7 +60,7 @@ class TensorboardTrainerLogger(SummaryWriter):
             return
         self.add_hparams(tf_hp_dict)
 
-    def log_validation(self, loss, model: nn.Module, y, y_pred, step=None, mel_filter=True, v3=True) -> None:
+    def log_validation(self, loss, model: nn.Module, y, y_pred, step=None, mel_filter=True, v3=True, is_reversed=True) -> None:
         """
         Log validation step.
         :param loss:
@@ -72,7 +72,7 @@ class TensorboardTrainerLogger(SummaryWriter):
         :return:
         """
         self.add_scalar("loss/validation", loss, step)
-        _, mel_outputs, gate_outputs, alignments, reconstructed, spectral = y_pred
+        _, mel_outputs, gate_outputs, alignments, reconstructed, spectral, mel_out_rev, gate_out_rev, alignments_rev = y_pred
         # mel_out, mel_out_post_net, gate_out, _, reconstructed, dist
         # mel_targets, gate_targets = y
         mel_targets, gate_targets, spectral_target = y
@@ -92,17 +92,32 @@ class TensorboardTrainerLogger(SummaryWriter):
                 "alignment",
                 plot_alignment_to_numpy(alignments[idx].data.cpu().numpy().T),
                 step, dataformats='HWC')
+
+        self.add_image(
+                "alignment_rev",
+                plot_alignment_to_numpy(alignments_rev[idx].data.cpu().numpy().T),
+                step, dataformats='HWC')
+
         self.add_image(
                 "mel_target",
                 plot_spectrogram_to_numpy(mel_targets[idx].data.cpu().numpy()),
                 step, dataformats='HWC')
+
         self.add_image(
                 "mel_predicted",
                 plot_spectrogram_to_numpy(mel_outputs[idx].data.cpu().numpy()),
                 step, dataformats='HWC')
+
         self.add_image(
                 "gate",
                 plot_gate_outputs_to_numpy(
                         gate_targets[idx].data.cpu().numpy(),
                         torch.sigmoid(gate_outputs[idx]).data.cpu().numpy()),
+                step, dataformats='HWC')
+
+        self.add_image(
+                "gate_rev",
+                plot_gate_outputs_to_numpy(
+                        gate_targets[idx].data.cpu().numpy(),
+                        torch.sigmoid(gate_out_rev[idx]).data.cpu().numpy()),
                 step, dataformats='HWC')
