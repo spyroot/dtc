@@ -150,7 +150,7 @@ class SFTF3Dataset(BaseSFTFDataset):
             logger.disable(__name__)
 
 
-def test_save_and_load(dataset_name=""):
+def save_and_load_test(dataset_name=""):
     """
 
     :return:
@@ -168,11 +168,10 @@ def test_save_and_load(dataset_name=""):
 
 
 
-
 if __name__ == '__main__':
     """
     """
     # test_download()
     # test_create_from_numpy_in_memory()
     # test_create_from_numpy_and_iterator()
-    test_save_and_load('lj_speech_1k_raw')
+    save_and_load_test('lj_speech_1k_raw')

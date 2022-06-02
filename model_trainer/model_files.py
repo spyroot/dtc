@@ -217,7 +217,7 @@ class ModelFiles:
         """
         return self._dirs
 
-    def _make_file_dict(self, target_dir, file_ext=None, filter_dict=None):
+    def make_file_dict(self, target_dir, file_ext=None, filter_dict=None):
         """
         Recursively walk and build a dict where key is file name,
         value is dict that store path and metadata.

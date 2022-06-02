@@ -11,6 +11,7 @@ class DTSLoss(nn.Module):
     """
 
     """
+
     def __init__(self, filter_length=1024, hop_length=256, win_length=1024,
                  n_mel_channels=80, sampling_rate=22050, mel_fmin=0.0, sr=22050, n_fft=2048, fmax=8000,
                  mel_fmax=8000.0):
@@ -68,45 +69,60 @@ class DTSLoss(nn.Module):
 
         if not reversed:
             mel_out, mel_out_post_net, gate_out, _, reconstructed, dist = model_output
+            gate_targets = gate_target.view(-1, 1)
+            gate_outs = gate_out.view(-1, 1)
+
+            mel_loss = nn.MSELoss()(mel_out, mel_target) + nn.MSELoss()(mel_out_post_net, mel_target)
+            gate_loss = nn.BCEWithLogitsLoss()(gate_outs, gate_targets)
+            total = mel_loss + gate_loss
+
         else:
             mel_out, mel_out_post_net, gate_out, alignment, reconstructed, \
-            dist, mel_out_rev, gate_out_rev, alignments_rev = model_output
+            dist, rev_mel_out, gate_out_rev, rev_alignments = model_output
 
-        gate_targets = gate_target.view(-1, 1)
-        gate_outs = gate_out.view(-1, 1)
-        gate_out_revs = gate_out_rev.view(-1, 1)
+            gate_targets = gate_target.view(-1, 1)
+            rev_mel_out = gate_out_rev.view(-1, 1)
+            gate_outs = gate_out.view(-1, 1)
 
-        mel_out_rev = torch.flip(mel_out_rev, dims=(1,))
+            rev_mel_out = torch.flip(rev_mel_out, dims=(1,))
 
-        second_gate_loss = nn.BCEWithLogitsLoss()(gate_out_revs, gate_targets)
-        second_mse_loss = nn.MSELoss()(mel_out_rev, mel_target)
-        l1_loss = nn.L1Loss()(mel_out_rev, mel_out)
+            second_gate_loss = nn.BCEWithLogitsLoss()(rev_mel_out, gate_targets)
+            second_mse_loss = nn.MSELoss()(rev_mel_out, mel_target)
+            l1_loss = nn.L1Loss()(rev_mel_out, mel_out)
 
-        alignment_loss = nn.L1Loss()(alignment, alignments_rev)
+            alignment_loss = nn.L1Loss()(alignment, rev_alignments)
+            mel_loss = nn.MSELoss()(mel_out, mel_target) + nn.MSELoss()(mel_out_post_net, mel_target)
+            gate_loss = nn.BCEWithLogitsLoss()(gate_outs, gate_targets)
+            total = mel_loss + gate_loss + second_gate_loss + second_mse_loss + gate_loss + alignment_loss
 
-        mel_loss = nn.MSELoss()(mel_out, mel_target) + nn.MSELoss()(mel_out_post_net, mel_target)
-        gate_loss = nn.BCEWithLogitsLoss()(gate_outs, gate_targets)
-        kl_loss = self.kl_loss(dist).sum()
+            return {'loss': total,
+                    'mel_loss': mel_loss,
+                    'gate_loss': gate_loss}
 
-        bce_loss = nn.BCEWithLogitsLoss()(reconstructed, spectral_target)
-        spectral_loss = bce_loss + kl_loss
-
-        print(f"backward gate: {second_gate_loss.item():.4f} backward mel: {second_mse_loss.item():.4f} "
-              f"l1 a/b: {l1_loss.item():.4f}, alignment: {alignment_loss.item():.4f}, "
-              f"base mel: {mel_loss.item():.4f}, base: gate {gate_loss.item():.4f} "
-              f"spectral: {spectral_loss.item():.4f} bce: {bce_loss.item():.4f}")
-
-        # spectral_loss = nn.BCELoss()(reconstructed, spectral_target)
-        #print(reconstructed)
-        #print("Spectral loss ", spectral_loss.item())
-        # print("kl loss", kl_loss.item())
-        # print("bce_loss ", kl_loss.item())
-
-        total = mel_loss + gate_loss + spectral_loss + second_gate_loss + second_mse_loss + gate_loss + alignment_loss
-        # print("Spectral loss ", spectral_loss.item())
-        # print("total loss", total.item())
-
-        return {'loss': total,
-                'mel_loss': mel_loss,
-                'gate_loss': gate_loss,
-                'spectral_loss': spectral_loss}
+        # # kl_loss = self.kl_loss(dist).sum()
+        #
+        # # bce_loss = nn.BCEWithLogitsLoss()(reconstructed, spectral_target)
+        # # spectral_loss = bce_loss + kl_loss
+        #
+        # # print(f"backward gate: {second_gate_loss.item():.4f} backward mel: {second_mse_loss.item():.4f} "
+        # #       f"l1 a/b: {l1_loss.item():.4f}, alignment: {alignment_loss.item():.4f}, "
+        # #       f"base mel: {mel_loss.item():.4f}, base: gate {gate_loss.item():.4f} "
+        # #       f"spectral: {spectral_loss.item():.4f} bce: {bce_loss.item():.4f}")
+        #
+        # print(f"backward gate: {second_gate_loss.item():.4f} backward mel: {second_mse_loss.item():.4f} "
+        #       f"l1 a/b: {l1_loss.item():.4f}, alignment: {alignment_loss.item():.4f}, "
+        #       f"base mel: {mel_loss.item():.4f}, base: gate {gate_loss.item():.4f} ")
+        # # spectral_loss = nn.BCELoss()(reconstructed, spectral_target)
+        # # print(reconstructed)
+        # # print("Spectral loss ", spectral_loss.item())
+        # # print("kl loss", kl_loss.item())
+        # # print("bce_loss ", kl_loss.item())
+        #
+        # total = mel_loss + gate_loss + second_gate_loss + second_mse_loss + gate_loss + alignment_loss
+        # # print("Spectral loss ", spectral_loss.item())
+        # # print("total loss", total.item())
+        #
+        # return {'loss': total,
+        #         'mel_loss': mel_loss,
+        #         'gate_loss': gate_loss,
+        #         'spectral_loss': spectral_loss}

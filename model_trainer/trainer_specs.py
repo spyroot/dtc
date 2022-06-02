@@ -468,7 +468,7 @@ class ExperimentSpecs:
 
         return path_dir
 
-    def load_text_file(self, file_name, delim="|", _filter='DUMMY/'):
+    def load_text_file(self, file_name: str, delim: Optional[str] = "|", _filter: Optional[str] = 'DUMMY/', ds_dir: Optional[str] = None):
         """Load from text file name and metadata (text)
 
         Args:
@@ -476,13 +476,20 @@ class ExperimentSpecs:
 
         Returns:
             dict where key is file name and value text.
+            :param ds_dir:
             :param _filter:
             :param file_name:
             :param delim:
         """
 
-        target_dir = self.get_dataset_dir()
+        if ds_dir is None:
+            target_dir = self.get_dataset_dir()
+        else:
+            target_dir = ds_dir
+
         file_path = Path(target_dir) / file_name
+        print("filename", file_name)
+        print("filename", target_dir)
 
         file_meta_kv = {}
         with open(file_path, 'r', newline='', encoding='utf8') as meta_file:
@@ -544,10 +551,10 @@ class ExperimentSpecs:
             target_dir = self.get_dataset_dir()
 
         path_to_dir = self.resolve_home(target_dir)
-        file_meta_kv = self.load_text_file(metadata_file)
-        files = self.model_files._make_file_dict(path_to_dir,
-                                                 file_type_filter,
-                                                 filter_dict=file_meta_kv)
+        file_meta_kv = self.load_text_file(metadata_file, ds_dir=path_to_dir)
+        files = self.model_files.make_file_dict(path_to_dir,
+                                                file_type_filter,
+                                                filter_dict=file_meta_kv)
 
         logger.debug("Updating metadata {}", metadata_file)
         for k in file_meta_kv:
@@ -597,9 +604,8 @@ class ExperimentSpecs:
         """
         :return:
         """
-        if spec is not None:
-            if 'training_meta' in spec:
-                return self.update_meta(self.get_training_meta_file(spec=spec))
+        if spec is not None and 'training_meta' in spec:
+            return self.update_meta(self.get_training_meta_file(spec=spec), ds_dir=spec['dir'])
 
         if 'training_meta' in self._dataset_specs:
             return self.update_meta(self.get_training_meta_file())
@@ -672,7 +678,6 @@ class ExperimentSpecs:
         if ds_dir is not None:
             expanded = Path(str(ds_dir)).expanduser()
             resolved_path = expanded.resolve()
-            # print("Resolved dir ", resolved_path)
 
             if resolved_path.is_dir() and resolved_path.is_dir():
                 target_dir = str(resolved_path)
