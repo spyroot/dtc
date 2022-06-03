@@ -8,8 +8,13 @@ import sys
 from pathlib import Path
 import socket
 
+import IPython
+import librosa
+import matplotlib.pyplot as plt
 import numpy as np
 import ray
+import winsound
+from playsound import playsound
 from ray import tune
 from ray.tune import CLIReporter
 from ray.tune.schedulers import ASHAScheduler
@@ -17,6 +22,7 @@ from ray.tune.schedulers import ASHAScheduler
 import torch
 from loguru import logger
 
+from inference_tools import plot_spectrogram
 from model_loader.dataset_stft25 import SFTF2Dataset
 from model_loader.ds_util import md5_checksum
 from model_loader.stft_dataloader import SFTFDataloader
@@ -25,6 +31,7 @@ from model_trainer.internal.call_interface import Callback
 from model_trainer.internal.save_best import CheckpointBest
 from model_trainer.internal.time_meter import TimeMeter
 from model_trainer.internal.time_tracer import BatchTimer
+from model_trainer.plotting_utils import plot_spectrogram_to_numpy
 from model_trainer.specs.model_tacotron25_spec import TacotronSpec, ModelSpecTacotron25
 from model_trainer.trainer_specs import ExperimentSpecs, TrainerSpecError
 from model_trainer.trainer import Trainer, TrainerError
@@ -37,6 +44,8 @@ from ray.tune.schedulers import ASHAScheduler
 from ray import tune
 from ray.tune.suggest.optuna import OptunaSearch
 import warnings
+import matplotlib
+import matplotlib.pyplot as plt
 
 os.environ["NCCL_DEBUG"] = "INFO"
 os.environ["NCCL_IB_DISABLE"] = "1"
@@ -60,6 +69,7 @@ def convert_mel_to_data(encoder_spec: TacotronSpec,
                         meta_file="",
                         dataset_name="default",
                         data_type="all",
+                        version=3,
                         post_check=True,
                         verbose=True):
     """
@@ -67,6 +77,7 @@ def convert_mel_to_data(encoder_spec: TacotronSpec,
 
     TODO add meta v2/v3 and detect during data loader creation.
 
+    :param version:
     :param encoder_spec:  all parameter for SFTS encoder
     :param dataset: list.
     :param meta_file: a meta file used to generate a dataset.
@@ -87,18 +98,24 @@ def convert_mel_to_data(encoder_spec: TacotronSpec,
                 mel_fmax=encoder_spec.mel_fmax())
 
     ds_size = len(dataset)
-
     data = []
     for i in tqdm(range(0, ds_size), desc="Converting"):
         data.append(dataset[i])
 
     meta['data'] = data
     meta['meta_file'] = meta_file
+    meta['version'] = version
     file_name = Path(target_dir) / f'{dataset_name}_{data_type}_num_sam_' \
-                                   f'{len(dataset)}_filter_{encoder_spec.n_mel_channels()}.pt'
+                                   f'{len(dataset)}_filter_{encoder_spec.n_mel_channels()}_{version}.pt'
+    md5_sig = Path(target_dir) / f'{dataset_name}_{data_type}_num_sam_' \
+                                 f'{len(dataset)}_filter_{encoder_spec.n_mel_channels()}_{version}.sig'
+
     print("Saving ", file_name)
     torch.save(meta, str(file_name))
-    print("MD5 checksum", md5_checksum(str(file_name)))
+    md5checksum = md5_checksum(str(file_name))
+    print("MD5 checksum", md5checksum)
+    with open(md5_sig, 'w', encoding='utf-8') as f:
+        f.write(md5checksum)
 
     if not post_check:
         return
@@ -112,8 +129,16 @@ def convert_mel_to_data(encoder_spec: TacotronSpec,
         logger.info(f"Dataset contains records: {len(ds['data'])}")
 
     d = ds['data']
-    for i, (one_hot, mel) in tqdm(enumerate(d), total=len(ds['data']), desc="Validating"):
-        txt_original, mel_from_ds = dataset[i]
+    for i, (data_tuple) in tqdm(enumerate(d), total=len(ds['data']), desc="Validating"):
+        if version == 2:
+            txt_original, mel_from_ds = dataset[i]
+            one_hot, mel = data_tuple
+        if version == 3:
+            txt_original, mel_from_ds, sft_ds = dataset[i]
+            one_hot, mel, stft = data_tuple
+            if not torch.equal(stft, sft_ds):
+                raise ConverterError("data mismatched.")
+
         if not torch.equal(mel, mel_from_ds):
             raise ConverterError("data mismatched.")
         if not torch.equal(one_hot, txt_original):
@@ -122,11 +147,11 @@ def convert_mel_to_data(encoder_spec: TacotronSpec,
     print("Done.")
 
 
-def convert(trainer_spec, version=2, dataset_name=None, merge=True, verbose=True, target_dir=None):
+def plot_example(trainer_spec, version=3, dataset_name=None, verbose=True, target_dir=None):
     """
-    Routine convert dataset to native torch tensor representation.
+    Routine plots dataset for dataset inspection
 
-    :param target_dir:
+    :param target_dir: where to write plots
     :param version: a dataset version.  since we're serializing a tensor or numpy we need know what feature
                     on top of MEL we extract.
     :param trainer_spec: a trainer spec object.
@@ -137,6 +162,117 @@ def convert(trainer_spec, version=2, dataset_name=None, merge=True, verbose=True
     """
 
     # trainer_spec = ExperimentSpecs(verbose=verbose)
+    if dataset_name is None or len(dataset_name) == 0:
+        ds_spec = trainer_spec.get_active_dataset_spec()
+        # if not trainer_spec.is_audio_raw(ds_spec):
+        #     print("Please check configuration, the active dataset not raw audio.")
+        #     return
+
+    if dataset_name is None or len(dataset_name) == 0:
+        data = trainer_spec.get_audio_dataset()
+    else:
+        dataset_names = trainer_spec.get_dataset_names()
+        ds_name = dataset_name.strip()
+        if ds_name in dataset_names:
+            data = trainer_spec.get_audio_dataset(dataset_name=ds_name)
+
+    if data is None:
+        raise ConverterError("Dataset not found.")
+
+    dataloader = SFTFDataloader(trainer_spec, batch_size=2, verbose=True)
+    loaders, collate = dataloader.get_loader()
+
+    # get all
+    start_time = time.time()
+    data_loaders, collate_fn = dataloader.get_all()
+    _train_loader = data_loaders['train_set']
+    print(f"Train datasize {dataloader.get_train_dataset_size()}")
+    print("--- %s load time, seconds ---" % (time.time() - start_time))
+    fig = plt.figure()
+
+    # winsound.PlaySound("SystemExit", winsound.SND_ALIAS)
+
+    start_time = time.time()
+    for bidx, batch in enumerate(_train_loader):
+        text_padded, input_lengths, mel_padded, gate_padded, output_lengths, stft_padded = batch
+        # print(mel_padded.shape)
+        # print(gate_padded.shape)
+        # print(output_lengths.shape)
+        # print(stft_padded.shape)
+
+        plot_spectrogram_to_numpy(mel_padded[0], file_name="default_mel.png")
+        plot_spectrogram(stft_padded[0], title="Spectrogram", ylabel="mel freq", file_name="default_stft.png")
+
+        # print(output_lengths[0].item())
+        # f, ax = plt.subplots()
+        # plt.show()
+        # fig, ax = plt.subplots()
+        # img = librosa.display.specshow(librosa.amplitude_to_db(stft_padded[0],
+        #                                                        ref=np.max),
+        #                                y_axis='log', x_axis='time', ax=ax)
+        # ax.set_title('Power spectrogram')
+        # fig.colorbar(img, ax=ax, format="%+2.0f dB")
+        #
+        #
+
+        # MEL
+
+        # S = librosa.feature.inverse.mel_to_stft(mel_padded[0].numpy())
+        # y = librosa.griffinlim(S)
+        # import soundfile as sf
+        # sf.write('default.wav', y, 22050, 'PCM_24')
+
+        # S = librosa.feature.inverse.mel_to_stft(stft_padded[0].numpy())
+        # y = librosa.griffinlim(S)
+        # import soundfile as sf
+        # sf.write('default.wav', y, 22050, 'PCM_24')
+
+        original_len = output_lengths[0].item()
+        # istf
+
+        print("done")
+        # y_numpy = stft_padded.squeeze(0)
+        y_numpy = stft_padded.numpy()
+        print(y_numpy.shape)
+        # n = ((y_numpy.shape[0] * y_numpy.shape[1]) // 2)
+
+        for i in range(0, y_numpy.shape[0]):
+            n = (y_numpy[bidx].shape[i] * y_numpy[i].shape[1])
+            print("N", n)
+            y_out = librosa.istft(y_numpy[i], length=n)
+            print(y_out.shape, n)
+            import soundfile as sf
+            sf.write(f'default12345_{i}.wav', y_out, 22050, 'PCM_24')
+        # playsound('default.wav')
+        # IPython.display.Audio(data=y, rate=22050)
+        # playsound(y)
+        break
+
+    fig.show()
+    print("--- %s Single batch memory load, load time, seconds ---" % (time.time() - start_time))
+
+
+def convert(trainer_spec, version=3,
+            dataset_name=None, merge=True, verbose=True, target_dir=None,
+            ds_ratio=10, exclude=None):
+    """
+    Routine convert dataset to native torch tensor representation.
+
+    :param exclude:
+    :param ds_ratio:
+    :param target_dir:
+    :param version: a dataset version.  since we're serializing a tensor or numpy we need know what feature
+                    on top of MEL we extract.
+    :param trainer_spec: a trainer spec object.
+    :param verbose: verbose output
+    :param dataset_name: if empty will use current active one. whatever in config use_dataset: 'mydataset'
+    :param merge:  if true merge all datasets to single one.
+    :return:
+    """
+    # trainer_spec = ExperimentSpecs(verbose=verbose)
+    if exclude is None:
+        exclude = ['validation_set']
+
     if dataset_name is None or len(dataset_name) == 0:
         ds_spec = trainer_spec.get_active_dataset_spec()
         if not trainer_spec.is_audio_raw(ds_spec):
@@ -164,11 +300,24 @@ def convert(trainer_spec, version=2, dataset_name=None, merge=True, verbose=True
     test_set = data['test_set']
 
     model_spec: ModelSpecTacotron25 = trainer_spec.get_model_spec()
-    encoder_spec = model_spec.get_encoder()
+    encoder_spec = model_spec.get_spectrogram()
 
     train_listified = list(training_set.values())
     val_listified = list(validation_set.values())
     test_listified = list(test_set.values())
+    if ds_ratio > 0:
+        if 'train_set' not in exclude:
+            old_sz = len(train_listified)
+            train_listified = train_listified[0: int(len(train_listified) * (ds_ratio / 100))]
+            print(f"Train set reduced from {old_sz} to {len(train_listified)}.")
+        if 'validation_set' not in exclude:
+            old_sz = len(val_listified)
+            val_listified = val_listified[0: int(len(val_listified) * (ds_ratio / 100))]
+            print(f"Train set reduced from {old_sz} to {len(val_listified)}.")
+        if 'test_set' not in exclude:
+            old_sz = len(test_listified)
+            test_listified = test_listified[0: int(len(test_listified) * (ds_ratio / 100))]
+            print(f"Test set reduced from {old_sz} to {len(test_listified)}.")
 
     if merge:
         final_list = [*train_listified, *val_listified, *test_listified]
@@ -530,7 +679,7 @@ def tune_hyperparam(spec=None, cmd_args=None, device=None, cudnn_bench=False):
         if 'grad_clip' in ray_spec:
             grad_clip_spec = ray_spec['grad_clip']
             if 'min' in grad_clip_spec and 'max' in grad_clip_spec:
-                config['grad_clip'] = ray.tune.loguniform(float(grad_clip_spec['min']),   float(grad_clip_spec['max']))
+                config['grad_clip'] = ray.tune.loguniform(float(grad_clip_spec['min']), float(grad_clip_spec['max']))
 
         tuner_result = ray.tune.run(Trainable,
                                     resources_per_trial={"cpu": int(resources['cpu']),
@@ -719,8 +868,10 @@ def main(cmd_args):
     else:
         _device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    start_time = time.time()
     trainer_spec = ExperimentSpecs(spec_config=cmd_args.config, verbose=cmd_args.verbose)
     trainer_spec.set_logger(cmd_args.verbose)
+    print("--- %s Parser load time, seconds ---" % (time.time() - start_time))
 
     if cmd_args.batch_size is not None:
         trainer_spec.set_batch_size(int(cmd_args.batch_size))
@@ -747,14 +898,25 @@ def main(cmd_args):
         trainer_spec.set_distributed(False)
     elif cmd_args.mode.strip().upper().lower() == 'distributed':
         trainer_spec.set_distributed(True)
+    elif len(cmd_args.mode) == 0:
+        trainer_spec.set_distributed(False)
     else:
         print("Unknown option supported standalone | distributed, default standalone.")
 
     if trainer_spec.is_distributed_run():
         set_random_seeds(trainer_spec.seed())
 
+    if cmd_args.plot:
+        plot_example(trainer_spec, dataset_name=cmd_args.dataset_name,
+                     version=3, verbose=cmd_args.verbose)
+        return
+
     if cmd_args.convert:
-        convert(trainer_spec, dataset_name=cmd_args.dataset_name, verbose=cmd_args._verbose)
+        if 0 > cmd_args.convert_size > 100:
+            print("Please indicated value between 1...100.")
+            return
+        convert(trainer_spec, dataset_name=cmd_args.dataset_name,
+                version=3, verbose=cmd_args.verbose, ds_ratio=cmd_args.convert_size)
         return
 
     if cmd_args.tune:
@@ -817,7 +979,9 @@ if __name__ == '__main__':
     parser.add_argument('--group_name', type=str, default='group_name',
                         required=False, help='Distributed group name')
     parser.add_argument('--verbose', action="store_true",
-                        required=False, help='set verbose output')
+                        required=False, help='set verbose output.')
+    parser.add_argument('--plot', action="store_true",
+                        required=False, help='plot examples from a dataset.')
     parser.add_argument('--overfit', action='store_true',
                         required=False, help='if set will reduce dataset and set batch 1 and overfit.')
     parser.add_argument('--tune', action='store_true',
@@ -828,8 +992,13 @@ if __name__ == '__main__':
                         required=False, help='set verbose output.')
     parser.add_argument('--convert', action="store_true",
                         required=False, help='convert dataset.')
+    parser.add_argument('--convert_size', type=int, default=0,
+                        required=False, help='convert dataset with specific ration.')
     parser.add_argument('--dataset_name', type=str,
                         required=False, help='by default convert will take active one or we can overwrite.')
+    parser.add_argument('--dataset_version', type=int, default=3,
+                        required=False, help='by default convert will save in version 3. '
+                                             'note that it much bigger since contain sfts.')
     parser.add_argument('--inference', action="store_true",
                         required=False, help='set model in inference model.')
     parser.add_argument('--benchmark', type=bool, default=False,

@@ -468,18 +468,17 @@ class ExperimentSpecs:
 
         return path_dir
 
-    def load_text_file(self, file_name: str, delim: Optional[str] = "|", _filter: Optional[str] = 'DUMMY/', ds_dir: Optional[str] = None):
-        """Load from text file name and metadata (text)
+    def load_text_file(self, file_name: str, delim: Optional[str] = "|",
+                       _filter: Optional[str] = 'DUMMY/', ds_dir: Optional[str] = None):
+        """
+        Load text, parse the file and create dictionary
+        Load from text file name and metadata (text)
 
-        Args:
-             file_name: file name.
-
-        Returns:
-            dict where key is file name and value text.
-            :param ds_dir:
-            :param _filter:
-            :param file_name:
-            :param delim:
+        :param file_name:
+        :param delim: delimiter for each colum space
+        :param _filter:
+        :param ds_dir:  if require indicate dir, by default method that call load_text_file uses active dataset.
+        :return:
         """
 
         if ds_dir is None:
@@ -488,9 +487,6 @@ class ExperimentSpecs:
             target_dir = ds_dir
 
         file_path = Path(target_dir) / file_name
-        print("filename", file_name)
-        print("filename", target_dir)
-
         file_meta_kv = {}
         with open(file_path, 'r', newline='', encoding='utf8') as meta_file:
             lines = meta_file.readlines()

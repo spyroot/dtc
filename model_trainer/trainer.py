@@ -1266,6 +1266,31 @@ class Trainer(AbstractTrainer, ABC):
         """
         return self.state.epoch, self.state.step
 
+    def adjust_learning_rate(self, epoch, optimizer, learning_rate, anneal_steps, anneal_factor):
+        """
+        Adjusts learning rate base on the initial setting.
+
+        :param epoch:
+        :param optimizer:
+        :param learning_rate:
+        :param anneal_steps:
+        :param anneal_factor:
+        :return:
+        """
+        p = 0
+        if anneal_steps is not None:
+            for _, a_step in enumerate(anneal_steps):
+                if epoch >= int(a_step):
+                    p = p + 1
+
+        if anneal_factor == 0.3:
+            lr = learning_rate * ((0.1 ** (p // 2)) * (1.0 if p % 2 == 0 else 0.3))
+        else:
+            lr = learning_rate * (anneal_factor ** p)
+
+        for param_group in optimizer.param_groups:
+            param_group["lr"] = lr
+
     def train_epoch(self, model, model_name: str, layer_name: str, optimizer,
                     schedulers: Optional[list[torch.optim.lr_scheduler._LRScheduler]] = None) -> None:
         """
@@ -1316,14 +1341,13 @@ class Trainer(AbstractTrainer, ABC):
                 # for ret in y_pred:
                 #     print(ret.dtype)
                     # assert ret.dtype is torch.float16
-
                 # if self.state.trainer_spec.is_distributed_run():
                 #     reduced_loss = dist.reduce_tensor(loss.data, n_gpus).item()
 
                 criterion_out = self.criterion(y_pred, y)
                 mel_loss = criterion_out['mel_loss']
                 gate_loss = criterion_out['gate_loss']
-                spectral_loss = criterion_out['spectral_loss']
+                # spectral_loss = criterion_out['spectral_loss']
                 loss = criterion_out['loss']
                 assert loss.dtype is torch.float32
                 normal_loss = loss.item()
@@ -1363,7 +1387,7 @@ class Trainer(AbstractTrainer, ABC):
                                                 'batch mean': self.metric.batch_grad_loss.mean(),
                                                 'loss': normal_loss,
                                                 'epoch': self.metric.epoch_train_gn_loss.mean(),
-                                                'spectral_loss': spectral_loss.item(),
+                                               # 'spectral_loss': spectral_loss.item(),
                                                 'mel': mel_loss.item(),
                                                 'gate': gate_loss.item(),
                                                 'batch': f"{batch_idx}/{loader_data_size}",
@@ -1444,9 +1468,9 @@ class Trainer(AbstractTrainer, ABC):
         :param batch:
         :return:
         """
-        text_padded, input_lengths, mel_padded, gate_padded, output_lengths, spectral = batch
+        text_padded, input_lengths, mel_padded, gate_padded, output_lengths, sfts = batch
         text_padded = to_gpu(text_padded, device).long()
-        spectral = to_gpu(spectral, device).float()
+        # spectral = to_gpu(spectral, device).float()
         input_lengths = to_gpu(input_lengths, device).long()
         max_len = torch.max(input_lengths.data).item()
         mel_padded = to_gpu(mel_padded, device).float()
@@ -1459,8 +1483,16 @@ class Trainer(AbstractTrainer, ABC):
         # assert gate_padded.get_device() == 0
         # assert output_lengths.get_device() == 0
 
-        return (text_padded, input_lengths, mel_padded, max_len, output_lengths, spectral), \
-               (mel_padded, gate_padded, spectral)
+        # we pass for loss computation only
+        for sf in sfts:
+            sf = sf.contiguous()
+            if torch.cuda.is_available():
+                sf = sf.cuda(non_blocking=True)
+                sf.requires_grad = False
+            # return torch.autograd.Variable(x)
+
+        return (text_padded, input_lengths, mel_padded, max_len, output_lengths), \
+               (mel_padded, gate_padded, sfts)
 
     def cleanup(self):
         """
@@ -1506,7 +1538,7 @@ class Trainer(AbstractTrainer, ABC):
             device = self.state.device
 
         assert self.criterion is not None
-        self.criterion = self.criterion()
+        self.criterion = self.criterion(device=device)
         self.criterion.to(device)
 
         self.tqdm_iter = self.trainer_iterator(model_name, layer_name)

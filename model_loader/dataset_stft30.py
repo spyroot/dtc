@@ -83,6 +83,7 @@ class SFTF3Dataset(BaseSFTFDataset):
             callback(mel_spec, spectral_flatness)
 
         mel_spec = torch.squeeze(mel_spec, 0)
+        #  print(spectral_flatness.shape)
         return mel_spec, spectral_flatness
 
     # def numpy_to_mel(self, filename):
@@ -165,7 +166,8 @@ def save_and_load_test(dataset_name=""):
     train_dataset = SFTF3Dataset(model_spec,
                                  list(pk_dataset['train_set'].values()),
                                  data_format='audio_raw', in_memory=False)
-
+    example = train_dataset[0]
+    # example = train_dataset[1]
 
 
 if __name__ == '__main__':

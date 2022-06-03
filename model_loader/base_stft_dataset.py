@@ -252,6 +252,9 @@ class BaseSFTFDataset(torch.utils.data.Dataset):
                                  "where path is path to a file and meta is text seq.")
             if len(data) == 0:
                 warnings.warn("Received empty data.")
+            if not isinstance(data[0], dict):
+                raise ValueError("Audio dataset must contain key 'path'."
+                                 "It looks like you hav different dataset type.")
             if 'path' not in data[0]:
                 raise ValueError("Audio dataset must contain key 'path' that point to audio file.")
             if 'meta' not in data[0]:

@@ -1,4 +1,6 @@
+import librosa
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pylab as plt
 import numpy as np
@@ -141,6 +143,30 @@ def plot_alignment_to_numpy(alignment, file_name=None, info=None):
     return data
 
 
+def plot_sft(spec, title=None, ylabel="freq_bin", aspect="auto", xmax=None):
+    """
+
+    :param spec:
+    :param title:
+    :param ylabel:
+    :param aspect:
+    :param xmax:
+    :return:
+    """
+    fig, axs = plt.subplots(figsize=(12, 3))
+    axs.set_title(title or "Spectrogram (db)")
+    axs.set_ylabel(ylabel)
+    axs.set_xlabel("frame")
+    im = axs.imshow(librosa.power_to_db(spec), origin="lower", aspect=aspect)
+    if xmax:
+        axs.set_xlim((0, xmax))
+    fig.colorbar(im, ax=axs)
+    plt.show(block=False)
+    fig.canvas.draw()
+    data = save_figure_to_numpy(fig)
+    plt.close()
+
+
 def plot_spectrogram_to_numpy(spectrogram, plot_size=(12, 3), file_name=None):
     """
 
@@ -160,8 +186,10 @@ def plot_spectrogram_to_numpy(spectrogram, plot_size=(12, 3), file_name=None):
 
     if file_name:
         plt.savefig(file_name)
-    else:
-        data = save_figure_to_numpy(fig)
+        plt.close()
+        return
+
+    data = save_figure_to_numpy(fig)
     plt.close()
     return data
 

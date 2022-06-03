@@ -31,7 +31,7 @@ class TextMelCollate2:
         self.sort_dim = sort_dim
         self.descending = descending
         self.device = device
-        self.txt_id = 1
+        # self.txt_id = 1
         self.mel = 2
 
     def trace(self):
@@ -75,7 +75,7 @@ class TextMelCollate2:
 
         # zero-pad mel-spec
         num_mels = batch[0][1].size(0)
-        max_target_len = max([x[self.txt_id].size(1) for x in batch])
+        max_target_len = max([x[1].size(1) for x in batch])
 
         if max_target_len % self.n_frames_per_step != 0:
             max_target_len += self.n_frames_per_step - max_target_len % self.n_frames_per_step

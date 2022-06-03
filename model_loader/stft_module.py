@@ -118,7 +118,6 @@ class STFT(torch.nn.Module):
 
     def inverse(self, magnitude, phase):
         """
-
         :param magnitude:
         :param phase:
         :return:

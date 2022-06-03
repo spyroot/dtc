@@ -59,8 +59,8 @@ class Tacotron3(nn.Module):
         self.decoder = Decoder(experiment_specs, device=self.device)
         self.postnet = Postnet(experiment_specs, device=self.device)
 
-        self.vae_encode = InferenceEncoder(z_dim=1024)
-        self.vae_decode = InferenceDecoder(z_dim=1024)
+        # self.vae_encode = InferenceEncoder(z_dim=1024)
+        # self.vae_decode = InferenceDecoder(z_dim=1024)
 
         self.bidirectional_decoder = True
         self.reverse_decoder = None
@@ -196,6 +196,7 @@ class Tacotron3(nn.Module):
         mel_outputs, gate_outputs, alignments = self.decoder(
                 encoder_outputs, mel_flip, memory_lengths=text_lengths)
 
+
         # print("mel_outputs from backward ", mel_outputs.shape)
         # print("gate_outputs from backward ", gate_outputs.shape)
         # print("alignments from backward ", alignments.shape)
@@ -255,16 +256,18 @@ class Tacotron3(nn.Module):
 
         return input_mask
 
-    def forward(self, inputs):
+    def forward(self, inputs, is_reversed=True):
         """
         Forward pass inputs a batch that contains text, mel , spectral data.
+        :param reverse_path:
         :param inputs:
         :return:
         """
 
-        self.backward_decoder()
+        if is_reversed:
+            self.backward_decoder()
 
-        text_inputs, text_lengths, mels, max_len, output_lengths, spectral = inputs
+        text_inputs, text_lengths, mels, max_len, output_lengths = inputs
         text_lengths, output_lengths = text_lengths.data, output_lengths.data
 
         embedded_inputs = self.embedding(text_inputs).transpose(1, 2)
@@ -273,60 +276,39 @@ class Tacotron3(nn.Module):
         mel_outputs, gate_outputs, alignments = self.decoder(
                 encoder_outputs, mels, memory_lengths=text_lengths)
 
-        q_mean, q_var = self.vae_encode(spectral)
-
-        # print("q_mean", q_mean.shape)
-        # print("q_var", q_var.shape)
-        # epsilon = torch.randn_like(v)
-        # z = m + torch.sqrt(v) * epsilon
-        #
-        # S, phase = librosa.magphase(librosa.stft(y))
-        q_dist = Normal(q_mean, q_var)
-        # print("q_var", q_dist)
-        z_sample = q_dist.rsample()
-        # print("z_samep", z_sample.shape)
-        vae_decoder_out = self.vae_decode(z_sample)
-        # print("gate_out dim", decoding.shape)
-        #  mu_ = self.linear_mu(embedded_inputs)
-        # alignments
-        # logvar_ = self.linear_var(output)
-        # mu_ = self.linear_mu(output)
-        # logvar_ = self.linear_var(output)
-        #
-        # if self.z_mode == 'normal':
-        #     mu = mu_[-1]
-        #     logvar = logvar_[-1]
-        #     z = self.reparameterize(mu, logvar)
+        # VAE pass that didn't produce better result
+        # q_mean, q_var = self.vae_encode(spectral)
+        # q_dist = Normal(q_mean, q_var)
+        # z_sample = q_dist.rsample()
+        # vae_decoder_out = self.vae_decode(z_sample)
 
         mel_outputs_postnet = self.postnet(mel_outputs)
         mel_outputs_postnet = mel_outputs + mel_outputs_postnet
 
-        #    memory: Encoder outputs
-        #         decoder_inputs: Decoder inputs for teacher forcing. i.e. mel-specs
-        #         memory_lengths: Encoder output lengths for attention masking.
-        #
-        #         RETURNS
-        #         -------
-        #         mel_outputs: mel outputs from the decoder
-        #         gate_outputs: gate outputs from the decoder
-        #         alignments: sequence of attention weights from the decoder
+        if self.bidirectional_decoder and is_reversed:
+            # mel_out_rev, gate_outputs_rev, alignments_rev = self.backward_pass(encoder_outputs, mels, text_lengths)
+            rev = self.backward_pass(encoder_outputs, mels, text_lengths)
+            # print(mel_out_rev.shape.shape)
+            # print(gate_outputs_rev.shape)
+            # print(alignments_rev.shape)
 
-        if self.bidirectional_decoder:
-            mel_out_rev, gate_outputs_rev, alignments_rev = self.backward_pass(encoder_outputs, mels, text_lengths)
+            # print(mel_out_rev.shape.shape, mel_outputs.shape)
+            # print(gate_outputs_rev.shape, gate_outputs.shape)
+            # print(alignments_rev.shape, alignments.shape)
+
             return self.parse_output([mel_outputs,
                                       mel_outputs_postnet,
                                       gate_outputs,
                                       alignments,
-                                      vae_decoder_out,
-                                      q_dist,
-                                      mel_out_rev,
-                                      gate_outputs_rev,
-                                      alignments_rev,
+                                      rev
+                                      # mel_out_rev,
+                                      # gate_outputs_rev,
+                                      # alignments_rev,
                                       ],
                                      output_lengths)
 
         return self.parse_output(
-                [mel_outputs, mel_outputs_postnet, gate_outputs, alignments, vae_decoder_out, q_dist],
+                [mel_outputs, mel_outputs_postnet, gate_outputs, alignments],
                 output_lengths)
 
     def inference(self, inputs):

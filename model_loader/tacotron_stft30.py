@@ -110,29 +110,77 @@ class TacotronSTFT3(torch.nn.Module):
         magnitudes = magnitudes.data
         mel_output = torch.matmul(self.mel_basis3, magnitudes)
         mel_output = self.spectral_normalize(mel_output)
-        mel_numpy = self.mel_basis3.numpy()
+        # mel_numpy = self.mel_basis3.numpy()
 
         _filter_length = self.filter_length
         if filter_length is not None:
             _filter_length = filter_length
 
         y_numpy = y.squeeze(0).numpy()
-        flat01 = librosa.feature.spectral_flatness(y=y_numpy,
-                                                   n_fft=_filter_length,
-                                                   hop_length=self.hop_length,
-                                                   win_length=self.win_length,
-                                                   center=True)
+        #  print(y_numpy)
 
-        flat01 = librosa.util.pad_center(flat01, size=1024, axis=1)
+        sfts_y = librosa.stft(y_numpy,
+                              n_fft=1024,
+                              hop_length=self.hop_length,
+                              win_length=self.win_length,
+                              center=True)
 
-        if stft:
-            sfts_y = librosa.stft(n_fft=_filter_length,
-                                  hop_length=self.hop_length,
-                                  win_length=self.win_length,
-                                  center=True)
+        n = len(y_numpy)
+        n_fft = 1024
+        y_pad = librosa.util.fix_length(y_numpy, size=n + n_fft // 2)
+        D = librosa.stft(y_pad, n_fft=n_fft)
+        # print("original shape", D.shape, " original n ", n)
+        # y_out = librosa.istft(D, length=n)
 
-        flatness = torch.from_numpy(flat01)
-        return mel_output, flatness
+        # print(np.max(np.abs(y - y_out)))
+        # S = librosa.istft(sfts_y)
+        # y = librosa.griffinlim(S)
+
+        # print("Writting to a file")
+        # import soundfile as sf
+        # sf.write('default1234.wav', y_out, 22050, 'PCM_24')
+
+        # sys.exit(1)
+        # print("s", sfts_y.dtype)
+        # print("mean dleta", magnitudes.mean().item() - sfts_y.mean())
+        # print("FIlter",  self.filter_length)
+        # print(self.hop_length)
+        # print(self.win_length)
+
+        # S = np.abs(sfts_y)
+        # print(sfts_y.shape)
+        # print(S.shape)
+        #
+        # print(self.sampling_rate)
+        # pitches, _ = librosa.piptrack(S=S, sr=self.sampling_rate)
+        # print("Pitch", pitches.shape)
+
+        # S = np.abs(sfts_y)
+        # print("sfts_y shape", sfts_y.shape)
+        # print("sfts_y S", S.shape)
+        # print(S)
+        #
+        # print("sfts_y shape", sfts_y.shape)
+        # print("sfts_y S", S.shape)
+
+        # flat01 = librosa.feature.spectral_flatness(y=y_numpy,
+        #                                            n_fft=_filter_length,
+        #                                            hop_length=self.hop_length,
+        #                                            win_length=self.win_length,
+        #                                            center=True)
+        #
+        #
+        #
+        # flat01 = librosa.util.pad_center(flat01, size=1024, axis=1)
+
+        # if stft:
+        #     sfts_y = librosa.stft(n_fft=_filter_length,
+        #                           hop_length=self.hop_length,
+        #                           win_length=self.win_length,
+        #                           center=True)
+
+        # flatness = torch.from_numpy(flat01)
+        return mel_output, torch.from_numpy(D)
 
 
 def normalize_audio(filename):

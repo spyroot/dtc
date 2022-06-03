@@ -6,10 +6,12 @@
 #
 import sys
 import time
+import timeit
 import warnings
 from pathlib import Path
 from typing import Optional, Callable
 
+import librosa
 import torch
 from loguru import logger
 from torch.utils.data import DataLoader, DistributedSampler, RandomSampler, SequentialSampler
@@ -24,6 +26,10 @@ from model_trainer.specs.model_dts_spec import ModelSpecDTS
 
 from model_trainer.trainer_specs import ExperimentSpecs
 from model_trainer.utils import to_gpu
+from torch.nn import functional as F
+import numpy as np
+
+from tqdm import tqdm, tnrange
 
 
 class DatasetException(Exception):
@@ -77,6 +83,8 @@ class SFTFDataloader:
         if isinstance(model_spec, ModelSpecDTS):
             self._model_spec: ModelSpecDTS = trainer_spec.get_model_spec()
             self._version = 3
+
+        print(f"version {self._version}")
 
         # base class return must return spectrogram layer spec
         self._spectrogram_spec = self._model_spec.get_spectrogram()
@@ -207,12 +215,10 @@ class SFTFDataloader:
                 ds = ds[: last_index]
 
             if self._version == 2:
-                print("Creating v2 dataset.")
                 self._datasets[k] = SFTF2Dataset(model_spec=self._spectrogram_spec,
                                                  data=ds, data_format='audio_raw',
                                                  overfit=self._trainer_spec.is_overfit())
             elif self._version == 3:
-                print("Creating v3 dataset.")
                 self._datasets[k] = SFTF3Dataset(model_spec=self._spectrogram_spec,
                                                  data=ds, data_format='audio_raw',
                                                  overfit=self._trainer_spec.is_overfit())
@@ -260,12 +266,10 @@ class SFTFDataloader:
                 ds[data_key] = ds[data_key][: last_index]
 
             if self._version == 2:
-                print("Creating version 2 dataset")
                 self._datasets[k] = SFTF2Dataset(model_spec=self._spectrogram_spec,
                                                  data=ds, data_format='tensor_mel',
                                                  overfit=self._trainer_spec.is_overfit())
             elif self._version == 3:
-                print("Creating version 3 dataset")
                 self._datasets[k] = SFTF3Dataset(model_spec=self._spectrogram_spec,
                                                  data=ds, data_format='tensor_mel',
                                                  overfit=self._trainer_spec.is_overfit())
@@ -327,7 +331,7 @@ class SFTFDataloader:
         if self._version == 2:
             self.collate_fn = TextMelCollate2(nfps=self._spectrogram_spec.frames_per_step(), device=None)
         elif self._version == 3:
-            self.collate_fn = TextMelCollate2(nfps=self._spectrogram_spec.frames_per_step(), device=None)
+            self.collate_fn = TextMelCollate3(nfps=self._spectrogram_spec.frames_per_step(), device=None)
 
     def get_batch_size(self):
         """
@@ -399,7 +403,6 @@ class SFTFDataloader:
 
         # for DDP we recompute.
         if self._trainer_spec.is_distributed_run():
-            print("adjusting")
             self._batch_size = int(self._trainer_spec.batch_size() / float(self._world_size))
 
         if self._trainer_spec.is_overfit():
@@ -562,109 +565,451 @@ class SFTFDataloader:
         else:
             logger.disable(__name__)
 
+    def first_item(self):
+        """
+        this for testing only
+        :return:
+        """
+        return self._datasets['train_set'][0]
 
-def test_from_subset_data_loader_from_raw():
+
+
+#
+#
+# def test_from_subset_data_loader_from_raw():
+#     """
+#     # Test all basic cases.
+#
+#     :return:
+#     """
+#     # batch
+#     trainer_spec = ExperimentSpecs(spec_config='../config.yaml')
+#     trainer_spec.set_active_dataset('LJSpeechSmallRaw')
+#     data_loader_a = SFTFDataloader(trainer_spec, batch_size=1, verbose=False)
+#     dataloaders, collate = data_loader_a.get_loader()
+#     for i, dataloader in enumerate(dataloaders):
+#         print("Num batches", len(dataloader))
+#
+#     # reduction
+#     data_loader = SFTFDataloader(trainer_spec, batch_size=1, reduction_ration=10, verbose=False)
+#     dataloaders, collate = data_loader.get_loader()
+#     for i, dataloader in enumerate(dataloaders):
+#         print("Num batches", len(dataloader))
+#
+#     batch_size = [1, 8, 16, 32, 64]
+#     for batch_size in batch_size:
+#         dataloader = SFTFDataloader(trainer_spec, batch_size=batch_size, verbose=False)
+#         elapsed, total_batches, num_batched = dataloader.benchmark_read()
+#         print(f"batch_size {batch_size}, time took {elapsed:.10f} sec, "
+#               f"total batches {total_batches} total batches {num_batched}")
+#
+#
+# def test_from_subset_data_loader_from_tensor():
+#     """
+#     # Test all basic cases.
+#
+#     :return:
+#     """
+#     # batch
+#     trainer_spec = ExperimentSpecs(spec_config='../config.yaml')
+#     data_loader_a = SFTFDataloader(trainer_spec, batch_size=1, verbose=False)
+#     dataloaders, collate = data_loader_a.get_loader()
+#     for i, dataloader in enumerate(dataloaders):
+#         print("Num batches", len(dataloader))
+#
+#     # reduction
+#     data_loader = SFTFDataloader(trainer_spec, batch_size=1, reduction_ration=10, verbose=False)
+#     dataloaders, collate = data_loader.get_loader()
+#     for i, dataloader in enumerate(dataloaders):
+#         print("Num batches", len(dataloader))
+#
+#     batch_size = [1, 8, 16, 32, 64]
+#     for batch_size in batch_size:
+#         dataloader = SFTFDataloader(trainer_spec, batch_size=batch_size, verbose=False)
+#         elapsed, total_batches, num_batched = dataloader.benchmark_read()
+#         print(f"batch_size {batch_size}, time took {elapsed:.10f} sec, "
+#               f"total batches {total_batches} total batches {num_batched}")
+#
+#
+# def test_create_data_loader_from_tensor():
+#     """
+#     The most basic one.
+#     :return:
+#     """
+#     trainer_spec = ExperimentSpecs(spec_config='../config.yaml')
+#     data_loader = SFTFDataloader(trainer_spec, verbose=True)
+#     dataloaders, collate = data_loader.get_loader()
+#     for i, dataloader in enumerate(dataloaders):
+#         print("Num batches", len(dataloader))
+#
+#     data_loader.benchmark_read()
+#
+#
+# def test_download_numpy_files():
+#     """
+#
+#     :return:
+#     """
+#     trainer_spec = ExperimentSpecs(spec_config='../config.yaml')
+#     model_spec = trainer_spec.get_model_spec().get_spec('spectrogram_layer')
+#     train_dataset = SFTF2Dataset(model_spec, download=True, overwrite=False)
+#
+#     batch_size = [1, 8, 16, 32, 64]
+#     for batch_size in batch_size:
+#         dataloader = SFTFDataloader(trainer_spec, dataset=train_dataset, batch_size=batch_size, verbose=True)
+#         elapsed, total_batches, num_batched = dataloader.benchmark_read()
+#         print(f"batch_size {batch_size}, time took {elapsed:.10f} sec, "
+#               f"total batches {total_batches} total batches {num_batched}")
+#
+#
+# def test_download_torch_files():
+#     """
+#
+#     :return:
+#     """
+#     trainer_spec = ExperimentSpecs(spec_config='../config.yaml')
+#     model_spec = trainer_spec.get_model_spec().get_spec('spectrogram_layer')
+#     train_dataset = SFTF2Dataset(model_spec, download=True, overwrite=False, data_format='tensor_mel', verbose=True)
+#     train_dataset.set_logger(True)
+#
+#     batch_size = [1, 8, 16, 32, 64]
+#     for batch_size in batch_size:
+#         dataloader = SFTFDataloader(trainer_spec, dataset=train_dataset, batch_size=batch_size, verbose=True)
+#         elapsed, total_batches, num_batched = dataloader.benchmark_read()
+#         print(f"batch_size {batch_size}, time took {elapsed:.10f} sec, "
+#               f"total batches {total_batches} total batches {num_batched}")
+
+
+def tiny(x):
+    return torch.finfo().tiny
+
+
+def np_fft_frequencies(*, sr=22050, n_fft=2048):
+    return np.fft.rfftfreq(n=n_fft, d=1.0 / sr)
+
+
+def fft_frequencies(*, sr=torch.tensor(22050), n_fft=torch.tensor(2048)):
+    return torch.fft.rfftfreq(n=n_fft, d=1.0 / 22050)
+
+
+def rfftfreq(n, d=torch.tensor(1.0)):
+    val = 1.0 / (n * d)
+    N = n // 2 + 1
+    results = torch.arange(0, N, dtype=torch.int)
+    return results * val
+
+
+def localmax_np(x, *, axis=0):
     """
-    # Test all basic cases.
+
+    :param x:
+    :param axis:
+    :return:
+    """
+
+    paddings = [(0, 0)] * x.ndim
+    paddings[axis] = (1, 1)
+
+    x_pad = F.pad(x, paddings, mode="edge")
+
+    inds1 = [slice(None)] * x.ndim
+    inds1[axis] = slice(0, -2)
+
+    inds2 = [slice(None)] * x.ndim
+    inds2[axis] = slice(2, x_pad.shape[axis])
+
+    return (x > x_pad[tuple(inds1)]) & (x >= x_pad[tuple(inds2)])
+
+
+def localmax_torch(x, *, axis=0):
+    paddings = [(0, 0)] * x.ndim
+    paddings[axis] = (1, 1)
+
+    x_pad = F.pad(x, paddings, mode="edge")
+
+    inds1 = [slice(None)] * x.ndim
+    inds1[axis] = slice(0, -2)
+
+    inds2 = [slice(None)] * x.ndim
+    inds2[axis] = slice(2, x_pad.shape[axis])
+
+    return (x > x_pad[tuple(inds1)]) & (x >= x_pad[tuple(inds2)])
+
+
+def expand_to(x, *, ndim, axes):
+    try:
+        axes = tuple(axes)
+    except TypeError:
+        axes = tuple([axes])
+
+    # if len(axes) != x.ndim:
+    #     raise ValueError("Shape mismatch between axes={} and input x.shape={}".format(axes, x.shape))
+    #
+    # if ndim < x.ndim:
+    #     raise ValueError("Cannot expand x.shape={} to fewer dimensions ndim={}".format(x.shape, ndim))
+
+    shape = [1] * ndim
+    for i, axi in enumerate(axes):
+        shape[axi] = x.shape[i]
+
+    return x.reshape(shape)
+
+
+def localmax(x, *, axis=0):
+    """
+
+    :param x:
+    :param axis:
+    :return:
+    """
+    paddings = [(0, 0)] * x.ndim
+    paddings[axis] = (1, 1)
+
+    x_pad = np.pad(x, paddings, mode="edge")
+
+    # print("Xpad shape", x_pad.shape)
+
+    inds1 = [slice(None)] * x.ndim
+    inds1[axis] = slice(0, -2)
+
+    inds2 = [slice(None)] * x.ndim
+    inds2[axis] = slice(2, x_pad.shape[axis])
+
+    return (x > x_pad[tuple(inds1)]) & (x >= x_pad[tuple(inds2)])
+
+
+def localmax_torch(x, *, axis=0, device=None):
+    x_np = x.cpu().clone().detach().requires_grad_(False).numpy()
+
+    paddings = [(0, 0)] * x.ndim
+    paddings[axis] = (1, 1)
+
+    # x_pad = F.pad(x.numpy(), paddings, mode="edge")
+    x_pad = np.pad(x_np, paddings, mode="edge")
+
+    inds1 = [slice(None)] * x.ndim
+    inds1[axis] = slice(0, -2)
+    inds2 = [slice(None)] * x.ndim
+    inds2[axis] = slice(2, x_pad.shape[axis])
+
+    callulated = (x_np > x_pad[tuple(inds1)]) & (x_np >= x_pad[tuple(inds2)])
+    return torch.tensor(callulated, device=device, requires_grad=False)
+
+
+def np_amax(S=None, ref=None, threshold=torch.tensor(0.1)):
+    if ref is None:
+        ref = np.max
+
+    if callable(ref):
+        ref_value = threshold * ref(S, axis=-2)
+        ref_value = np.expand_dims(ref_value, -2)
+    else:
+        ref_value = np.abs(ref)
+
+    return ref_value
+
+
+def piptrack_unit_test(
+    *,
+    y=None,
+    sr=torch.tensor(22050),
+    S=None,
+    n_fft=torch.tensor(2048),
+    hop_length=None,
+    fmin=torch.tensor(150.0),
+    fmax=torch.tensor(4000.0),
+    threshold=torch.tensor(0.1),
+    win_length=None,
+    window="hann",
+    center=True,
+    pad_mode="constant",
+    ref=None,
+):
+    S = torch.abs(S)
+    # if S is not None:
+    #     if n_fft // 2 + 1 != S.shape[-2]:
+    #         new_n_fft = 2 * (S.shape[-2] - 1)
+
+    Snp = np.abs(S.numpy())
+    assert S.shape == Snp.shape
+
+    # Truncate to feasible region
+    fmin = torch.maximum(fmin, torch.tensor(0))
+    fmax = torch.minimum(fmax, sr / 2)
+
+    fft_freqs_np = np_fft_frequencies(sr=sr.item(), n_fft=n_fft.item())
+    fft_freqs = fft_frequencies(sr=sr, n_fft=n_fft)
+
+    assert fft_freqs_np.shape == fft_freqs.shape
+
+    avg = torch.tensor(0.5) * (S[..., 2:, :] - S[..., :-2, :])
+    shift = torch.tensor(2) * S[..., 1:-1, :] - S[..., 2:, :] - S[..., :-2, :]
+    shift = avg / (shift + (torch.abs(shift) < tiny(shift)))
+
+    avgNp = 0.5 * (Snp[..., 2:, :] - Snp[..., :-2, :])
+    shiftNp = 2 * Snp[..., 1:-1, :] - Snp[..., 2:, :] - Snp[..., :-2, :]
+
+    assert avg.shape == avgNp.shape
+    assert shift.shape == shiftNp.shape
+
+    shiftNp = avg / (shift + (torch.abs(shift) < tiny(shift)))
+
+    paddinNp = [(0, 0) for _ in Snp.shape]
+    paddinNp[-2] = (1, 1)
+
+    avgnp = np.pad(avg, paddinNp, mode="constant")
+    shiftnp = np.pad(shift, paddinNp, mode="constant")
+
+    avg = F.pad(avg, (0, 0, 1, 1), mode="constant")
+    shift = F.pad(shift, (0, 0, 1, 1), mode="constant")
+    assert avgnp.shape == avg.shape
+    assert shiftnp.shape == shiftnp.shape
+
+    dskew = 0.5 * avg * shift
+
+    # Pre-allocate output
+    pitches = torch.zeros_like(S)
+    mags = torch.zeros_like(S)
+
+    freq_mask_np = (fmin.numpy() <= fft_freqs.numpy()) & (fft_freqs.numpy() < fmax.numpy())
+    freq_mask_np = expand_to(freq_mask_np, ndim=Snp.ndim, axes=-2)
+
+    # Clip to the viable frequency range
+    freq_mask = (fmin <= fft_freqs) & (fft_freqs < fmax)
+    freq_mask = expand_to(freq_mask, ndim=S.ndim, axes=-2)
+
+    assert freq_mask.shape == freq_mask_np.shape
+
+    # Compute the column-wise local max of S after thresholding
+    # Find the argmax coordinates
+
+    ref_value = threshold * torch.amax(S, dim=-2, keepdim=True)
+    assert ref_value.shape == np_amax(Snp).shape
+
+    # Store pitch and magnitude
+    ref_value_np = np_amax(Snp)
+
+    idxnp = np.nonzero(freq_mask_np & localmax(Snp * (Snp > ref_value_np), axis=-2))
+    idx = torch.nonzero(freq_mask & localmax_torch(S * (S > ref_value), axis=-2), as_tuple=True)
+    assert len(idxnp) == len(idx)
+    for i, tuple_el in enumerate(idx):
+        assert tuple_el.shape == idxnp[i].shape
+
+    pitches[idx] = (idx[-2] + shift[idx]) * sr / n_fft
+    mags[idx] = S[idx] + dskew[idx]
+
+    return pitches, mags
+
+
+def batch_reader(self, batch, device):
+    """
+    Batch parser for DTS.
+    :param device:
+    :param batch:
+    :return:
+    """
+    text_padded, input_lengths, mel_padded, gate_padded, output_lengths, spectral = batch
+    text_padded = to_gpu(text_padded, device).long()
+    spectral = to_gpu(spectral, device).float()
+    input_lengths = to_gpu(input_lengths, device).long()
+    max_len = torch.max(input_lengths.data).item()
+    mel_padded = to_gpu(mel_padded, device).float()
+    gate_padded = to_gpu(gate_padded, device).float()
+    output_lengths = to_gpu(output_lengths, device).long()
+
+    # assert text_padded.get_device() == 0
+    # assert input_lengths.get_device() == 0
+    # assert mel_padded.get_device() == 0
+    # assert gate_padded.get_device() == 0
+    # assert output_lengths.get_device() == 0
+
+    return (text_padded, input_lengths, mel_padded, max_len, output_lengths, spectral), \
+           (mel_padded, gate_padded, spectral)
+
+
+def pitch_correctness():
+    """
 
     :return:
     """
-    # batch
-    trainer_spec = ExperimentSpecs(spec_config='../config.yaml')
-    trainer_spec.set_active_dataset('LJSpeechSmallRaw')
-    data_loader_a = SFTFDataloader(trainer_spec, batch_size=1, verbose=False)
-    dataloaders, collate = data_loader_a.get_loader()
-    for i, dataloader in enumerate(dataloaders):
-        print("Num batches", len(dataloader))
+    spec = ExperimentSpecs(spec_config='../config.yaml')
+    model_spec = spec.get_model_spec().get_spec('spectrogram_layer')
+    dataloader = SFTFDataloader(spec, verbose=True)
+    loaders, collate = dataloader.get_loader()
 
-    # reduction
-    data_loader = SFTFDataloader(trainer_spec, batch_size=1, reduction_ration=10, verbose=False)
-    dataloaders, collate = data_loader.get_loader()
-    for i, dataloader in enumerate(dataloaders):
-        print("Num batches", len(dataloader))
+    # get all
+    data_loaders, collate_fn = dataloader.get_all()
 
-    batch_size = [1, 8, 16, 32, 64]
-    for batch_size in batch_size:
-        dataloader = SFTFDataloader(trainer_spec, batch_size=batch_size, verbose=False)
-        elapsed, total_batches, num_batched = dataloader.benchmark_read()
-        print(f"batch_size {batch_size}, time took {elapsed:.10f} sec, "
-              f"total batches {total_batches} total batches {num_batched}")
+    _train_loader = data_loaders['train_set']
 
+    # take = 0
+    start = timeit.timeit()
+    for _idx, batch in enumerate(tqdm(_train_loader)):
+        text_padded, input_lengths, mel_padded, gate_padded, output_lengths, idx, sfts = batch
+        S = torch.abs(sfts[0])
+        S.requires_grad = False
+        np_pitches, np_mags = librosa.piptrack(S=S.numpy(), sr=22050)
+        pitches, mags = pitch_correctness(S=S, sr=torch.tensor(22050), n_fft=torch.tensor(1024))
 
-def test_from_subset_data_loader_from_tensor():
-    """
-    # Test all basic cases.
+        assert np_pitches.shape == pitches.shape
+        assert np_mags.shape == mags.shape
 
-    :return:
-    """
-    # batch
-    trainer_spec = ExperimentSpecs(spec_config='../config.yaml')
-    data_loader_a = SFTFDataloader(trainer_spec, batch_size=1, verbose=False)
-    dataloaders, collate = data_loader_a.get_loader()
-    for i, dataloader in enumerate(dataloaders):
-        print("Num batches", len(dataloader))
-
-    # reduction
-    data_loader = SFTFDataloader(trainer_spec, batch_size=1, reduction_ration=10, verbose=False)
-    dataloaders, collate = data_loader.get_loader()
-    for i, dataloader in enumerate(dataloaders):
-        print("Num batches", len(dataloader))
-
-    batch_size = [1, 8, 16, 32, 64]
-    for batch_size in batch_size:
-        dataloader = SFTFDataloader(trainer_spec, batch_size=batch_size, verbose=False)
-        elapsed, total_batches, num_batched = dataloader.benchmark_read()
-        print(f"batch_size {batch_size}, time took {elapsed:.10f} sec, "
-              f"total batches {total_batches} total batches {num_batched}")
+    end = timeit.timeit()
+    print(end - start)
 
 
-def test_create_data_loader_from_tensor():
-    """
-    The most basic one.
-    :return:
-    """
-    trainer_spec = ExperimentSpecs(spec_config='../config.yaml')
-    data_loader = SFTFDataloader(trainer_spec, verbose=True)
-    dataloaders, collate = data_loader.get_loader()
-    for i, dataloader in enumerate(dataloaders):
-        print("Num batches", len(dataloader))
+def pitch_track(
+    *,
+    y=None,
+    sr=torch.tensor(22050),
+    S=None,
+    n_fft=torch.tensor(2048),
+    hop_length=None,
+    fmin=torch.tensor(150.0),
+    fmax=torch.tensor(4000.0),
+    threshold=torch.tensor(0.1),
+    win_length=None,
+    window="hann",
+    center=True,
+    pad_mode="constant",
+    ref=None,
+    _device=None,
+):
+    S = torch.abs(S)
+    # Truncate to feasible region
+    fmin = torch.maximum(fmin, torch.tensor(0))
+    fmax = torch.minimum(fmax, sr / 2)
 
-    data_loader.benchmark_read()
+    d = torch.tensor(torch.tensor(1.0, device=_device, requires_grad=False) / sr)
+    fft_freqs = torch.fft.rfftfreq(n=n_fft, d=d, device=_device, requires_grad=False)
+
+    avg = torch.tensor(0.5, device=_device, requires_grad=False) * (S[..., 2:, :] - S[..., :-2, :])
+    shift = torch.tensor(2, device=_device, requires_grad=False) * S[..., 1:-1, :] - S[..., 2:, :] - S[..., :-2, :]
+    shift = avg / (shift + (torch.abs(shift) < tiny(shift)))
+
+    avg = F.pad(avg, (0, 0, 1, 1), mode="constant")
+    shift = F.pad(shift, (0, 0, 1, 1), mode="constant")
+
+    dskew = 0.5 * avg * shift
+
+    # Pre-allocate output
+    pitches = torch.zeros_like(S)
+    mags = torch.zeros_like(S)
+
+    # Clip to the viable frequency range
+    freq_mask = (fmin <= fft_freqs) & (fft_freqs < fmax)
+    freq_mask = expand_to(freq_mask, ndim=S.ndim, axes=-2)
+    ref_value = threshold * torch.amax(S, dim=-2, keepdim=True)
+
+    # Store pitch and magnitude
+
+    idx = torch.nonzero(freq_mask & localmax_torch(S * (S > ref_value), axis=-2, device=_device), as_tuple=True)
+    pitches[idx] = (idx[-2] + shift[idx]) * sr / n_fft
+    mags[idx] = S[idx] + dskew[idx]
+    return pitches, mags
 
 
-def test_download_numpy_files():
-    """
-
-    :return:
-    """
-    trainer_spec = ExperimentSpecs(spec_config='../config.yaml')
-    model_spec = trainer_spec.get_model_spec().get_spec('spectrogram_layer')
-    train_dataset = SFTF2Dataset(model_spec, download=True, overwrite=False)
-
-    batch_size = [1, 8, 16, 32, 64]
-    for batch_size in batch_size:
-        dataloader = SFTFDataloader(trainer_spec, dataset=train_dataset, batch_size=batch_size, verbose=True)
-        elapsed, total_batches, num_batched = dataloader.benchmark_read()
-        print(f"batch_size {batch_size}, time took {elapsed:.10f} sec, "
-              f"total batches {total_batches} total batches {num_batched}")
-
-
-def test_download_torch_files():
-    """
-
-    :return:
-    """
-    trainer_spec = ExperimentSpecs(spec_config='../config.yaml')
-    model_spec = trainer_spec.get_model_spec().get_spec('spectrogram_layer')
-    train_dataset = SFTF2Dataset(model_spec, download=True, overwrite=False, data_format='tensor_mel', verbose=True)
-    train_dataset.set_logger(True)
-
-    batch_size = [1, 8, 16, 32, 64]
-    for batch_size in batch_size:
-        dataloader = SFTFDataloader(trainer_spec, dataset=train_dataset, batch_size=batch_size, verbose=True)
-        elapsed, total_batches, num_batched = dataloader.benchmark_read()
-        print(f"batch_size {batch_size}, time took {elapsed:.10f} sec, "
-              f"total batches {total_batches} total batches {num_batched}")
+from timeit import default_timer as timer
 
 
 def v3_dataloader_audio():
@@ -679,18 +1024,50 @@ def v3_dataloader_audio():
 
     # get all
     data_loaders, collate_fn = dataloader.get_all()
-    print("dataset size", dataloader.get_train_dataset_size())
-    print("dataset size", dataloader.get_val_dataset_size())
 
     _train_loader = data_loaders['train_set']
-    _train_loader = data_loaders['validation_set']
 
-    take = 2
-    for batch_idx, batch in enumerate(_train_loader):
-        if batch_idx == 2:
-            break
+    _device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-        print(len(batch))
+    sr = torch.tensor(22050, device=_device, requires_grad=False)
+    n_fft = torch.tensor(1024, device=_device, requires_grad=False)
+    fmin = torch.tensor(150.0, device=_device, requires_grad=False)
+    fmax = torch.tensor(4000.0, device=_device, requires_grad=False)
+    threshold = torch.tensor(0.1, device=_device, requires_grad=False)
+
+    # full GPU pass
+    start = timer()
+    for _idx, batch in enumerate(tqdm(_train_loader)):
+        text_padded, input_lengths, mel_padded, gate_padded, output_lengths, idx, sfts = batch
+
+        # sfts[0] = sfts[0].contiguous()
+        # if torch.cuda.is_available():
+        #     sfts[0] = sfts[0].cuda(non_blocking=True)
+        #
+        # sfts[0].requires_grad = False
+        S = torch.abs(sfts[0])
+        S.requires_grad = False
+
+        pitches, mags = pitch_track(S=S,
+                                    sr=sr,
+                                    n_fft=n_fft,
+                                    fmin=fmin,
+                                    fmax=fmax,
+                                    threshold=threshold,
+                                    _device=_device)
+
+    end = timer()
+    print(end - start)
+
+    start = timer()
+    for _idx, batch in enumerate(tqdm(_train_loader)):
+        text_padded, input_lengths, mel_padded, gate_padded, output_lengths, sfts = batch
+        sfts[0] = sfts[0].contiguous()
+        if torch.cuda.is_available():
+            sfts[0] = sfts[0].cuda(non_blocking=True)
+
+    end = timer()
+    print(end - start)
 
 
 if __name__ == '__main__':

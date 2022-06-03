@@ -1,4 +1,7 @@
-from model_trainer.plotting_utils import plot_alignment_to_numpy, plot_spectrogram_to_numpy, plot_gate_outputs_to_numpy
+import librosa
+
+from model_trainer.plotting_utils import plot_alignment_to_numpy, plot_spectrogram_to_numpy, plot_gate_outputs_to_numpy, \
+    plot_sft
 import random
 from torch.utils.tensorboard import SummaryWriter
 import torch
@@ -60,7 +63,8 @@ class TensorboardTrainerLogger(SummaryWriter):
             return
         self.add_hparams(tf_hp_dict)
 
-    def log_validation(self, loss, model: nn.Module, y, y_pred, step=None, mel_filter=True, v3=True, is_reversed=True) -> None:
+    def log_validation(self, loss, model: nn.Module, y, y_pred, step=None,
+                       mel_filter=True, v3=True, is_reversed=True) -> None:
         """
         Log validation step.
         :param loss:
@@ -72,10 +76,12 @@ class TensorboardTrainerLogger(SummaryWriter):
         :return:
         """
         self.add_scalar("loss/validation", loss, step)
-        _, mel_outputs, gate_outputs, alignments, reconstructed, spectral, mel_out_rev, gate_out_rev, alignments_rev = y_pred
+        # _, mel_outputs, gate_outputs, alignments, reconstructed, mel_out_rev, gate_out_rev, alignments_rev = y_pred
+        _, mel_outputs, gate_outputs, alignments, rev = y_pred
+        mel_out_rev, gate_out_rev, alignments_rev = rev
         # mel_out, mel_out_post_net, gate_out, _, reconstructed, dist
         # mel_targets, gate_targets = y
-        mel_targets, gate_targets, spectral_target = y
+        mel_targets, gate_targets, stft = y
 
         # plot distribution of parameters
         for tag, value in model.named_parameters():
@@ -89,24 +95,32 @@ class TensorboardTrainerLogger(SummaryWriter):
         # img = librosa.display.specshow(melfb, x_axis='linear', ax=ax)
 
         self.add_image(
-                "alignment",
+                "alignment/a",
                 plot_alignment_to_numpy(alignments[idx].data.cpu().numpy().T),
                 step, dataformats='HWC')
 
         self.add_image(
-                "alignment_rev",
+                "alignment/rev",
                 plot_alignment_to_numpy(alignments_rev[idx].data.cpu().numpy().T),
                 step, dataformats='HWC')
 
         self.add_image(
-                "mel_target",
+                "mel/mel_target",
                 plot_spectrogram_to_numpy(mel_targets[idx].data.cpu().numpy()),
                 step, dataformats='HWC')
 
         self.add_image(
-                "mel_predicted",
-                plot_spectrogram_to_numpy(mel_outputs[idx].data.cpu().numpy()),
-                step, dataformats='HWC')
+                "mel/mel_predicted",
+                plot_spectrogram_to_numpy(mel_outputs[idx].data.cpu().numpy()), step, dataformats='HWC')
+
+        print("got sft", stft[idx].shape)
+        self.add_image(
+                "mel/stft",
+                plot_spectrogram_to_numpy(stft[idx].data.cpu().numpy()), step, dataformats='HWC')
+
+        # self.add_image(
+        #         "stft",
+        #         plot_sft(stft[idx].data.cpu().numpy()), step, dataformats='HWC')
 
         self.add_image(
                 "gate",
