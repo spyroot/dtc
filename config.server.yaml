@@ -234,6 +234,7 @@ models:
   tacotron25:
     spectrogram_layer:
       model: tacotron25
+      reverse_decoder: False
       optimizer: tacotron2_optimizer
 #      lr_scheduler: main_lr_scheduler
       has_input: True
@@ -284,6 +285,7 @@ models:
   dts:
     spectrogram_layer:
       model: tacotron3
+      reverse_decoder: True
       optimizer: tacotron2_optimizer
       #      lr_scheduler: main_lr_scheduler
       has_input: True

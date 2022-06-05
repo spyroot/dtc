@@ -1,11 +1,12 @@
 import random
 from typing import Optional
-
 import torch
 from torch import nn
 from torch.utils.tensorboard import SummaryWriter
 
-from model_trainer.plotting_utils import plot_alignment_to_numpy, plot_spectrogram_to_numpy, plot_gate_outputs_to_numpy
+from model_trainer.plotting_utils import plot_alignment_to_numpy
+from model_trainer.plotting_utils import plot_spectrogram_to_numpy
+from model_trainer.plotting_utils import plot_gate_outputs_to_numpy
 from model_trainer.trainer_specs import ExperimentSpecs
 
 
