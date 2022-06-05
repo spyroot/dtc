@@ -1,6 +1,4 @@
-train: True                 # train or not,  default is True for generation we only need load pre-trained model
-#active: 'grid_small'       # dataset set generated.
-#use_dataset: 'LJSpeechSmallPkl'     # dataset set generated.
+train: True
 use_dataset: 'ljmain'  # dataset set generated.
 use_model: 'dts'            # model to use , it must be defined in models section.
 draw_prediction: True       # at the of training draw.
@@ -28,7 +26,7 @@ datasets:
     format: raw
     dir: "~/src/dtc/dataset/LJSpeech-1.1"
     training_meta: ljs_audio_text_train_filelist.txt
-    validation_meta:  ljs_audio_text_val_filelist.txt
+    validation_meta: ljs_audio_text_val_filelist.txt
     test_meta: ljs_audio_text_test_filelist.txt
     meta: metadata.csv
     recursive: False
@@ -79,8 +77,8 @@ settings:
   # debug mode
   debug:
     early_stopping: True
-    epochs_log:  1000
-    start_test:  10
+    epochs_log: 1000
+    start_test: 10
     epochs_test: 10
     epochs_save: 10
     tensorboard_update: 10
@@ -96,8 +94,8 @@ settings:
   # baseline
   baseline:
     early_stopping: True
-    epochs_log:  1000
-    start_test:  100
+    epochs_log: 1000
+    start_test: 100
     epochs_test: 100
     epochs_save: 100
     tensorboard_update: 100
@@ -123,18 +121,14 @@ settings:
     epochs: 500
     batch_size: 128
     grad_clipping: True
-    grad_max_norm : 1.0
+    grad_max_norm: 1.0
     tensorboard_update: 100       # update rate for tensorboard
     early_stopping: True          # early stopping
     console_log_rate: 20          # when to log to console
-    # when to start run a test
     start_test: 20
-    # predict to start predict , validate
     predict: 50                   # will do validation , prediction every 10 iteration .(re-scale based on ds/batch size)
-    # use epoch or iteration counter, in large batch size we might want to see progress.
-    predict_per_iteration: False
-    # when to save
-    epochs_save: 2
+    predict_per_iteration: True   # use epoch or iteration counter, in large batch size we might want to see progress.
+    epochs_save: 2                # when we save
     save_per_iteration: False
     seed: 1234
     fp16: False                      # fp16 run
@@ -197,13 +191,13 @@ strategy:
   tacotron25:
     type: sequential
     order:
-     - spectrogram_layer
-     - wav2vec
+      - spectrogram_layer
+      - wav2vec
   dts:
     type: sequential
     order:
-     - spectrogram_layer
-     - wav2vec
+      - spectrogram_layer
+      - wav2vec
 
 # Model definition
 models:
