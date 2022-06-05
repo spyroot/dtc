@@ -123,6 +123,7 @@ class DTSLoss(nn.Module):
         self.threshold = torch.tensor(0.1, device=device, requires_grad=False)
         self.device = device
 
+        print("Creating loss with stft term", {self.is_stft_compute})
         # self.transform = InverseMelScale(n_stft=1024, n_mels=80, sample_rate=22050, f_min=0.0, f_max=8000.0)
 
     def kl_loss(self, q_dist):
