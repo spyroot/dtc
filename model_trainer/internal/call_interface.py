@@ -1,4 +1,6 @@
 import collections
+import collections.abc
+
 from typing import Any, Optional
 
 from model_trainer.internal.abstract_trainer import AbstractTrainer
