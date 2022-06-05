@@ -192,7 +192,7 @@ def plot_example(trainer_spec, version=3, dataset_name=None, verbose=True, targe
         text_padded, input_lengths, mel_padded, gate_padded, output_lengths, stft_padded = batch
 
         plot_spectrogram_to_numpy(mel_padded[0], file_name="results/default_mel.png")
-        plot_spectrogram(stft_padded[0], title="Spectrogram", ylabel="mel freq", file_name="results/default_stft.png")
+        plot_spectrogram(stft_padded[0], title="Spectrogram", y_axis_label="mel freq", file_name="results/default_stft.png")
 
         # MEL
         S = librosa.feature.inverse.mel_to_stft(mel_padded[0].numpy())

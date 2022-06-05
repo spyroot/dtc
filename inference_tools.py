@@ -1,83 +1,36 @@
+# Toolingto plot MEL and save to file
+# SFTS, Mel dataset and samples. --plot uses this.
+#
+# Mustafa. B
+#
 import os
+from typing import Optional
 
 import librosa
 import torch
 import torchaudio
 from matplotlib import pyplot as plt
-
 from model_trainer.plotting_utils import save_figure_to_numpy
 
 
-# from IPython.display import Audio, display
-
-
-# def play_audio_file(file_path, is_notebook=False, sample_rate=22050):
-#     """
-#
-#     :param waveform:
-#     :param is_notebook:
-#     :param sample_rate:
-#     :return:
-#     """
-#     # waveform = waveform.numpy(
-#     playsound(file_path)
-
-
-# def play_audio(waveform, is_notebook=False, sample_rate=22050):
-#     """
-#
-#     :param waveform:
-#     :param sample_rate:
-#     :return:
-#     """
-#     waveform = waveform.numpy()
-#     playsound('/path/to/a/sound/file/you/want/to/play.wav')
-#
-#     num_channels, num_frames = waveform.shape
-#     if num_channels == 1:
-#         display(Audio(waveform[0], rate=sample_rate))
-#     elif num_channels == 2:
-#         display(Audio((waveform[0], waveform[1]), rate=sample_rate))
-#     else:
-#         raise ValueError("Waveform with more than 2 channels are not supported.")
-
-
-def inspect_file(path):
-    print("-" * 10)
-    print("Source:", path)
-    print("-" * 10)
-    print(f" - File size: {os.path.getsize(path)} bytes")
-    print(f" - {torchaudio.info(path)}")
-
-
-def show_img(img, title=""):
+def plot_spectrogram(spec, title=None,
+                     y_axis_label: Optional[str] = 'freq_bin',
+                     aspect: Optional[str] = 'auto',
+                     xmax: Optional[float] = None,
+                     file_name="default.png"):
     """
-
-    :param img:
-    :param title:
-    :return:
-    """
-    plt.imshow(img)
-    plt.title(title)
-    thismanager = plt.get_current_fig_manager()
-    thismanager.window.wm_geometry("+100+100")
-    plt.show()
-
-
-def plot_spectrogram(spec, title=None, ylabel='freq_bin', aspect='auto', xmax=None, file_name="default.png"):
-    """
-
+    Plots STFT and save plot to a file.
     :param file_name:
-    :param spec:
-    :param title:
-    :param ylabel:
-    :param aspect:
-    :param xmax:
-    :return:
+    :param spec: librosa STFT mel spec.
+    :param title: plot title
+    :param y_axis_label: y axis lable
+    :param aspect: default aspect ration
+    :param xmax: left and right respectively
+    :return: if filename  will save and return data
     """
     fig, axs = plt.subplots(1, 1)
     axs.set_title(title or 'Spectrogram (db)')
-    axs.set_ylabel(ylabel)
+    axs.set_ylabel(y_axis_label)
     axs.set_xlabel('frame')
     im = axs.imshow(librosa.power_to_db(spec), origin='lower', aspect=aspect)
     if xmax:
@@ -98,7 +51,7 @@ def plot_spectrogram(spec, title=None, ylabel='freq_bin', aspect='auto', xmax=No
 
 def plot_mel_fbank(fbank, title=None):
     """
-
+    Plots Filter bank.
     :param fbank:
     :param title:
     :return:
@@ -111,8 +64,11 @@ def plot_mel_fbank(fbank, title=None):
     plt.show(block=False)
 
 
-def plot_waveform(waveform, sample_rate=22050, title="Spectrogram",
-                  xlim=None, file_name="default_spect.png"):
+def plot_waveform(waveform,
+                  sample_rate: Optional[int] = 22050,
+                  title="Spectrogram",
+                  xlim=None,
+                  file_name="default_spect.png"):
     """
     :param file_name:
     :param waveform:
@@ -183,3 +139,57 @@ def plot_pitch(waveform, pitch, title="Pitch", sample_rate=22050, file_name="def
     data = save_figure_to_numpy(figure)
     plt.close()
     return data
+
+
+# from IPython.display import Audio, display
+# def play_audio_file(file_path, is_notebook=False, sample_rate=22050):
+#     """
+#
+#     :param waveform:
+#     :param is_notebook:
+#     :param sample_rate:
+#     :return:
+#     """
+#     # waveform = waveform.numpy(
+#     playsound(file_path)
+
+
+# def play_audio(waveform, is_notebook=False, sample_rate=22050):
+#     """
+#
+#     :param waveform:
+#     :param sample_rate:
+#     :return:
+#     """
+#     waveform = waveform.numpy()
+#     playsound('/path/to/a/sound/file/you/want/to/play.wav')
+#
+#     num_channels, num_frames = waveform.shape
+#     if num_channels == 1:
+#         display(Audio(waveform[0], rate=sample_rate))
+#     elif num_channels == 2:
+#         display(Audio((waveform[0], waveform[1]), rate=sample_rate))
+#     else:
+#         raise ValueError("Waveform with more than 2 channels are not supported.")
+
+
+def inspect_file(path):
+    print("-" * 10)
+    print("Source:", path)
+    print("-" * 10)
+    print(f" - File size: {os.path.getsize(path)} bytes")
+    print(f" - {torchaudio.info(path)}")
+
+
+def show_img(img, title=""):
+    """
+
+    :param img:
+    :param title:
+    :return:
+    """
+    plt.imshow(img)
+    plt.title(title)
+    thismanager = plt.get_current_fig_manager()
+    thismanager.window.wm_geometry("+100+100")
+    plt.show()

@@ -1,5 +1,5 @@
 train: True                 # train or not,  default is True for generation we only need load pre-trained model
-use_dataset: 'lj_speech_625'      # dataset set generated.
+use_dataset: 'lj_speech_full'      # dataset set generated.
 use_model: 'dts'                    # model to use , it must be defined in models section.
 draw_prediction: True               # at the of training draw.
 load_model: True            # load model or not, and what
@@ -53,7 +53,6 @@ datasets:
     file_type: "wav"
     format: raw
     dir: "~/src/dtc/dataset/LJSpeech-1.1"
-    #    dir: "~/Dropbox/Datasets/LJSpeechSmall"
     training_meta: ljs_audio_text_train_filelist_1000.txt
     validation_meta: ljs_audio_text_val_filelist.txt
     test_meta: ljs_audio_text_test_filelist.txt
