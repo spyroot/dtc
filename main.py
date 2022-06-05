@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch.distributed as dist
 from loguru import logger
+import soundfile as sf
 
 from tunner import Trainable
 
@@ -190,7 +191,6 @@ def plot_example(trainer_spec, version=3, dataset_name=None, verbose=True, targe
         # MEL
         S = librosa.feature.inverse.mel_to_stft(mel_padded[0].numpy())
         y = librosa.griffinlim(S)
-        import soundfile as sf
         sf.write('results/default.wav', y, 22050, 'PCM_24')
 
         # istf
@@ -198,7 +198,6 @@ def plot_example(trainer_spec, version=3, dataset_name=None, verbose=True, targe
         for i in range(0, y_numpy.shape[0]):
             n = (y_numpy[bidx].shape[i] * y_numpy[i].shape[1])
             y_out = librosa.istft(y_numpy[i], length=n)
-            import soundfile as sf
             sf.write(f'results/default_stft_{i}.wav', y_out, 22050, 'PCM_24')
         break
 
