@@ -305,8 +305,8 @@ models:
         attention_dim: 128
       attention_location:
         # Location Layer parameters
-        attention_location_n_filters: = 32
-        attention_location_kernel_size: = 31
+        num_filters: 32
+        kernel_size: 31
       post_net:
         desc: # Mel-post processing network parameters
         post_net_embedding_dim: 512
@@ -339,12 +339,13 @@ models:
       mel_fmax: 8000.0
       symbols_embedding_dim: 512
       encoder:
-        desc: Encoder parameters
+        desc: "Encoder parameters"
         dropout_rate: 0.5
         num_convolutions: 3
         embedding_dim: 512
         kernel_size: 5
       decoder:
+        desc: "Decoder layer and parameters"
         fps: 1
         max_decoder_steps: 1000
         gate_threshold: 0.5
@@ -353,9 +354,13 @@ models:
         rnn_dim: 1024
         pre_net_dim: 256
       attention:
-        # Attention parameters
+        desc:  "Attention layer and parameters"
         rnn_dim: 1024
         attention_dim: 128
+      attention_location:
+        desc: "Location Layer parameters"
+        num_filters: 32
+        kernel_size: 31
     vocoder:
       name: Test
       state: disabled
@@ -363,7 +368,6 @@ models:
       optimizer: edge_optimizer
       lr_scheduler: main_lr_scheduler
       input_size: 1
-
 
 ray:
   batch_size: [32, 64]

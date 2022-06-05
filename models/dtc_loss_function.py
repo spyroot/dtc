@@ -126,10 +126,12 @@ class DTSLoss(nn.Module):
         self.device = device
 
         print("Creating loss with stft term", {self.is_stft_compute})
-        # self.transform = InverseMelScale(n_stft=1024, n_mels=80, sample_rate=22050, f_min=0.0, f_max=8000.0)
+        print("Enabling reverse decoder.", {self.is_reverse_encoder})
 
     def kl_loss(self, q_dist):
         """
+        KL loss used for VAE experiment.  it might be used for more experiments.
+        In original case model out distribution.
         :param q_dist:
         :return:
         """
@@ -138,7 +140,9 @@ class DTSLoss(nn.Module):
 
     def alignment_diagonal_score(self, alignments, binary=False):
         """
-        Computes alignment prediction score.  i.e diagonal alignment.
+        Computes alignment prediction score. diagonal alignment
+        of encoder.
+
         accept shape batch
         :param alignments:
         :param binary:

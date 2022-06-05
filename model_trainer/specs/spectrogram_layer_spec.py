@@ -242,6 +242,34 @@ models:
                                     " Please check configuration.")
         return self._model_dict['attention']
 
+    def get_attention_location(self):
+        """
+        Return attention location specs.
+        :return:
+        """
+        if 'attention_location' not in self._model_dict:
+            raise TacotronSpecError("Model has no attention_location specification,"
+                                    " Please check configuration.")
+        return self._model_dict['attention_location']
+
+    def attention_location_n_filters(self) -> int:
+        """
+        :return: Returns attention location number of filters.
+        """
+        atten_loc = self.get_attention_location()
+        if 'num_filters' in atten_loc:
+            return atten_loc['num_filters']
+        return 32
+
+    def attention_location_kernel_size(self) -> int:
+        """
+        :return: Returns attention location kernel size.
+        """
+        atten_loc = self.get_attention_location()
+        if 'kernel_size' in atten_loc:
+            return atten_loc['kernel_size']
+        return 31
+
     def attention_rnn_dim(self) -> int:
         """
         :return:

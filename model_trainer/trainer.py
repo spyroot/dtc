@@ -1,7 +1,17 @@
+# Main trainer logic. ,
+# The main idea we de-couple a trainer state,
+# model specific trainer logic and model specification.
 #
-#  TODO check shuffle
-#  TODO Metric plot
-#  TODO Loss plot.
+# In current implementation trainer has own dispatcher to factory
+# method. later I'll move that out and trainer logic will completely
+# de-couple.  I.e a factory method will create model, all optimizers.
+# loss function , logic related to loging and metric.
+# Each model specific.
+#
+#
+# Mustafa. B
+#
+#
 # import torch.distributed as dist
 # import queue
 import random

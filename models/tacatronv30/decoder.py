@@ -62,8 +62,8 @@ class Decoder(nn.Module):
                 self.specto_spec.attention_rnn_dim(),
                 self.specto_spec.encoder_embedding_dim(),
                 self.specto_spec.attention_dim(),
-                specs.attention_location_n_filters,
-                specs.attention_location_kernel_size)
+                self.specto_spec.attention_location_n_filters(),
+                self.specto_spec.attention_location_kernel_size())
 
         self.decoder_rnn = nn.LSTMCell(
                 self.specto_spec.attention_rnn_dim() +

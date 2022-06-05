@@ -1,11 +1,10 @@
+from typing import Optional
 import torch
 import numpy as np
 from scipy.signal import get_window
 import librosa.util as librosa_util
 
-
 # from numba import jit
-
 # @jit
 def window_sumsquare(window, n_frames, hop_length=200, win_length=800,
                      n_fft=800, dtype=np.float32, norm=None):
@@ -84,19 +83,23 @@ def griffin_lim(magnitudes, stft_fn, n_iters=30):
     return signal
 
 
-def dynamic_range_compression(x, C=1, clip_val=1e-5):
+def dynamic_range_compression(source, factor=1,
+                              clip_val: Optional[float] = 1e-5):
     """
-    PARAMS
-    ------
-    C: compression factor
+    Compression.
+    :param source:
+    :param factor:
+    :param clip_val:
+    :return: Tensor
     """
-    return torch.log(torch.clamp(x, min=clip_val) * C)
+    return torch.log(torch.clamp(source, min=clip_val) * factor)
 
 
-def dynamic_range_decompression(x, C=1):
+def dynamic_range_decompression(source, factor=1):
     """
-    PARAMS
-    ------
-    C: compression factor used to compress
+    Decompression.
+    :param source:
+    :param factor:
+    :return:  Tensor
     """
-    return torch.exp(x) / C
+    return torch.exp(source) / factor
