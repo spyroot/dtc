@@ -97,11 +97,11 @@ def convert_mel_to_data(encoder_spec: TacotronSpec,
     meta['meta_file'] = meta_file
     meta['version'] = version
     file_name = Path(target_dir) / f'{dataset_name}_{data_type}_num_sam_' \
-                                   f'{len(dataset)}_filter_
-                                   {encoder_spec.n_mel_channels()}_{version}.pt'
+                                   f'{len(dataset)}_filter_' \
+                                   f'{encoder_spec.n_mel_channels()}_{version}.pt'
     md5_sig = Path(target_dir) / f'{dataset_name}_{data_type}_num_sam_' \
-                                 f'{len(dataset)}_filter_
-                                 {encoder_spec.n_mel_channels()}_{version}.sig'
+                                 f'{len(dataset)}_filter_' \
+                                 f'{encoder_spec.n_mel_channels()}_{version}.sig'
 
     print("Saving ", file_name)
     torch.save(meta, str(file_name))
@@ -306,12 +306,12 @@ def convert(trainer_spec, version=3,
     #
     if verbose:
         logging.info(f"filter_length {encoder_spec.filter_length()}")
-        logging.info(f"hop_length {}", encoder_spec.hop_length())
-        logging.info(f"win_length {}", encoder_spec.win_length())
-        logging.info(f"n_mel_channels {}", encoder_spec.n_mel_channels())
-        logging.info(f"sampling_rate {}", encoder_spec.sampling_rate())
-        logging.info(f"mel_fmin {}", encoder_spec.mel_fmin())
-        logging.info(f"mel_fmax {}", encoder_spec.mel_fmax())
+        logging.info(f"hop_length {encoder_spec.hop_length()}")
+        logging.info(f"win_length {encoder_spec.win_length()}")
+        logging.info(f"n_mel_channels {encoder_spec.n_mel_channels()}")
+        logging.info(f"sampling_rate {encoder_spec.sampling_rate()}")
+        logging.info(f"mel_fmin {encoder_spec.mel_fmin()}")
+        logging.info(f"mel_fmax {encoder_spec.mel_fmax()}")
 
     # by default target we read form specs
     if target_dir is not None:
