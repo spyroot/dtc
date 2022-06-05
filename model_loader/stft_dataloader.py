@@ -731,7 +731,7 @@ def v3_dataloader_tensor_test():
     for bidx, batch in enumerate(_train_loader):
         x, y = batch_reader(batch, device=_device)
 
-    print("--- %s Single batch memory load, load time, seconds ---" % (time.time() - start_time))
+    print("--- %s batch memory load, load time, seconds ---" % (time.time() - start_time))
 
 
 def v3_dataloader_audio_test():
@@ -770,3 +770,4 @@ if __name__ == '__main__':
     # test_download_numpy_files()
     # test_download_torch_files()
     v3_dataloader_audio_test()
+    v3_dataloader_tensor_test()
