@@ -1482,6 +1482,7 @@ class Trainer(AbstractTrainer, ABC):
         :return:
         """
         if self.spectogram_spec.is_stft_loss_enabled():
+            print("Parser expect stft")
             text_padded, input_lengths, mel_padded, gate_padded, output_lengths, stft = batch
             sf = stft.contiguous()
             if torch.cuda.is_available():
