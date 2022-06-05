@@ -308,10 +308,10 @@ models:
         num_filters: 32
         kernel_size: 31
       post_net:
-        desc: # Mel-post processing network parameters
-        post_net_embedding_dim: 512
-        post_net_kernel_size: 5
-        post_net_n_convolutions: 5
+        desc: "Mel post-processing network"
+        embedding_dim: 512
+        kernel_size: 5
+        num_convolutions: 5
     vocoder:
       state: disabled
       name: Test
@@ -361,6 +361,11 @@ models:
         desc: "Location Layer parameters"
         num_filters: 32
         kernel_size: 31
+      post_net:
+        desc: "Mel post-processing network"
+        embedding_dim: 512
+        kernel_size: 5
+        num_convolutions: 5
     vocoder:
       name: Test
       state: disabled

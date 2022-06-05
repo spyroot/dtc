@@ -107,14 +107,10 @@ class ExperimentSpecs:
         ################################
         self.n_symbols = len(symbols)
 
-        # Location Layer parameters
-        # self.attention_location_n_filters = 32
-        # self.attention_location_kernel_size = 31
-
         # Mel-post processing network parameters
-        self.postnet_embedding_dim = 512
-        self.postnet_kernel_size = 5
-        self.postnet_n_convolutions = 5
+        # self.postnet_embedding_dim = 512
+        # self.postnet_kernel_size = 5
+        # self.postnet_n_convolutions = 5
 
         ################################
         # Optimization Hyperparameters #

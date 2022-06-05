@@ -242,6 +242,46 @@ models:
                                     " Please check configuration.")
         return self._model_dict['attention']
 
+    def get_post_net(self):
+        """
+        Return attention location specs.
+        :return:
+        """
+        if 'post_net' not in self._model_dict:
+            raise TacotronSpecError("Model has no post_net specification,"
+                                    " Please check configuration.")
+        return self._model_dict['attention_location']
+
+    def postnet_embedding_dim(self):
+        """
+        Return attention location specs.
+        :return:
+        """
+        post_net = self.get_post_net()
+        if 'embedding_dim' in post_net:
+            return post_net['embedding_dim']
+        return 512
+
+    def postnet_kernel_size(self):
+        """
+        Return attention location specs.
+        :return:
+        """
+        post_net = self.get_post_net()
+        if 'kernel_size' in post_net:
+            return post_net['kernel_size']
+        return 5
+
+    def postnet_n_convolutions(self):
+        """
+        Return attention location specs.
+        :return:
+        """
+        post_net = self.get_post_net()
+        if 'num_convolutions' in post_net:
+            return post_net['num_convolutions']
+        return 5
+
     def get_attention_location(self):
         """
         Return attention location specs.
