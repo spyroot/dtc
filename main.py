@@ -11,10 +11,10 @@ from pathlib import Path
 import librosa
 import matplotlib.pyplot as plt
 import numpy as np
-import ray
 import torch.distributed as dist
 from loguru import logger
 try:
+    import ray
     from ray import tune
     from ray.tune import CLIReporter
     from ray.tune.schedulers import ASHAScheduler
