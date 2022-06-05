@@ -3,6 +3,11 @@ from typing import Any, Optional
 
 from model_trainer.internal.abstract_trainer import AbstractTrainer
 from model_trainer.trainer_metrics import Metrics
+import collections
+try:
+    collectionsAbc = collections.abc
+except AttributeError:
+    collectionsAbc = collections
 
 
 class Callback(object):
