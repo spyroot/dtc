@@ -1499,7 +1499,8 @@ class Trainer(AbstractTrainer, ABC):
                    (mel_padded, gate_padded, stft)
 
         else:
-            text_padded, input_lengths, mel_padded, gate_padded, output_lengths = batch
+            return (text_padded, input_lengths, mel_padded, max_len, output_lengths), \
+                   (mel_padded, gate_padded)
 
     def cleanup(self):
         """
