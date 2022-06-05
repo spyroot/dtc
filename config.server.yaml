@@ -1,7 +1,7 @@
 train: True
-use_dataset: 'ljmain'  # dataset set generated.
-use_model: 'dts'            # model to use , it must be defined in models section.
-draw_prediction: True       # at the of training draw.
+use_dataset: 'lj_speech_full:'      # dataset set generated.
+use_model: 'dts'                    # model to use , it must be defined in models section.
+draw_prediction: True               # at the of training draw.
 load_model: True            # load model or not, and what
 load_epoch: 500             # load model,  last epoch
 save_model: True            # save model,
@@ -30,16 +30,24 @@ datasets:
     test_meta: ljs_audio_text_test_filelist.txt
     meta: metadata.csv
     recursive: False
-  ljmain:
+  lj_speech_full:
     format: tensor_mel
     ds_type: "audio"
     dir: "~/src/dtc/dataset/LJSpeech-1.1"
-    training_meta: LLJSpeech_train_num_sam_12500_filter_80_3.pt
-    validation_meta: LJSpeech_validate_num_sam_100_filter_80_3.pt
-    test_meta: LJSpeech_test_num_sam_500_filter_80_3.pt
     meta: metadata.csv
     recursive: False
     file_type: "torch"
+    dataset_files:
+      - "LJSpeech_train_num_sam_12500_filter_80_3.pt"
+      - "LJSpeech_validate_num_sam_100_filter_80_3.pt"
+      - "LJSpeech_test_num_sam_500_filter_80_3.pt"
+    training_meta: LJSpeech_train_num_sam_12500_filter_80_3.pt
+    validation_meta: LJSpeech_validate_num_sam_100_filter_80_3.pt
+    test_meta: LJSpeech_test_num_sam_500_filter_80_3.pt
+    checksums:
+      - "7bc0f1bac289cfd1ba8ea1c390bddf8f"
+      - "5d3b94b131c08afcca993dfbec54c63a"
+      - "3291d802351928da7c5d0d9c917c2663"
   lj_speech_1k_raw:
     ds_type: "audio"
     file_type: "wav"
@@ -227,7 +235,7 @@ models:
         encoder_n_convolutions: 3
         encoder_embedding_dim: 512
       decoder:
-        n_frames_per_step: = 1  # currently, only 1 is supported
+        n_frames_per_step: = 1
         decoder_rnn_dim: 1024
         pre_net_dim: 256
         max_decoder_steps: 1000

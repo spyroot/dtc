@@ -15,7 +15,6 @@ import ray
 import torch.distributed as dist
 from loguru import logger
 from ray import tune
-from ray import tune
 from ray.tune import CLIReporter
 from ray.tune.schedulers import ASHAScheduler
 from tqdm import tqdm
