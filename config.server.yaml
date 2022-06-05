@@ -285,6 +285,7 @@ models:
     spectrogram_layer:
       model: tacotron3
       reverse_decoder: True
+      enable_stft_loss: False
       optimizer: tacotron2_optimizer
       #      lr_scheduler: main_lr_scheduler
       has_input: True

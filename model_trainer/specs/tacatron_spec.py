@@ -53,7 +53,31 @@ models:
 
         return False
 
+    def is_vae_enabled(self) -> bool:
+        """
+        :return:
+        """
+        if 'enable_vae' in self._model_dict:
+            return bool(self._model_dict['enable_vae'])
+
+        return False
+
+    def is_stft_loss_enabled(self) -> bool:
+        """
+        Return true if model need compute loss based on stft.
+        It also dictates what actually uploaded to GPU.
+        :return:
+        """
+        if 'enable_stft_loss' in self._model_dict:
+            return bool(self._model_dict['enable_stft_loss'])
+
+        return False
+
     def encoder_spec(self):
+        """
+
+        :return:
+        """
         return ['encoder']
 
     def decoder(self):

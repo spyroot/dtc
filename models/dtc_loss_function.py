@@ -98,16 +98,26 @@ class DTSLoss(nn.Module):
 
     """
 
-    def __init__(self, filter_length=1024, hop_length=256, win_length=1024,
-                 n_mel_channels=80, sampling_rate=22050, mel_fmin=0.0, sr=22050, n_fft=2048, fmax=8000,
+    def __init__(self,
+                 spec,
+                 filter_length=1024,
+                 hop_length=256,
+                 win_length=1024,
+                 n_mel_channels=80,
+                 sampling_rate=22050,
+                 mel_fmin=0.0,
+                 sr=22050,
+                 n_fft=2048,
+                 fmax=8000,
                  mel_fmax=8000.0, device=None):
         super(DTSLoss, self).__init__()
 
         self.filter_length = filter_length
         self.sample_rate = sampling_rate
+        self.is_stft_compute = spec.is_stft_loss_enabled()
 
-        self.sr = torch.tensor(22050, device=device, requires_grad=False)
-        self.n_fft = torch.tensor(1024, device=device, requires_grad=False)
+        self.sr = torch.tensor(self.sample_rate, device=device, requires_grad=False)
+        self.n_fft = torch.tensor(self.filter_length, device=device, requires_grad=False)
         self.fmin = torch.tensor(150.0, device=device, requires_grad=False)
         self.fmax = torch.tensor(4000.0, device=device, requires_grad=False)
         self.threshold = torch.tensor(0.1, device=device, requires_grad=False)
@@ -138,7 +148,7 @@ class DTSLoss(nn.Module):
 
     def forward(self, model_output, targets, is_validation=False, is_reversed=True):
         """
-        :param is_validation:
+        :param is_validation: reserved for case if want compute STFT during validation or trainingon only.
         :param is_reversed:
         :param model_output:
         :param targets:
@@ -158,7 +168,24 @@ class DTSLoss(nn.Module):
 
             mel_loss = nn.MSELoss()(mel_out, mel_target) + nn.MSELoss()(mel_out_post_net, mel_target)
             gate_loss = nn.BCEWithLogitsLoss()(gate_outs, gate_targets)
+
             total = mel_loss + gate_loss
+
+            if self.is_stft_compute:
+                mel_target_padded = F.pad(mel_target, (1, 1), "constant", 0)
+                # stft complex64, we take abs and it float32
+                S = torch.abs(stft).to(self.device)
+
+                S_inv_target = librosa.feature.inverse.mel_to_stft(
+                        mel_target_padded.detach().cpu().numpy(), n_fft=self.filter_length, sr=self.sample_rate)
+                # S_inv_generated = librosa.feature.inverse.mel_to_stft(
+                #         mel_out_post_net_padded.detach().cpu().numpy(), n_fft=self.filter_length, sr=self.sample_rate)
+                # S_inv_generated2 = librosa.feature.inverse.mel_to_stft(
+                #         mel_out_padded.detach().cpu().numpy(), n_fft=self.filter_length, sr=self.sample_rate)
+
+                sf_loss1 = nn.L1Loss()(torch.from_numpy(S_inv_target).to(self.device), S)
+                total += sf_loss1
+
             return {'loss': total,
                     'mel_loss': mel_loss,
                     'gate_loss': gate_loss}
@@ -181,24 +208,25 @@ class DTSLoss(nn.Module):
             gate_loss = nn.BCEWithLogitsLoss()(gate_outs, gate_targets)
             total = mel_loss + gate_loss + l1_loss
 
-            # # target mel, we padded to match stft dim. it edge padded.
-            mel_target_padded = F.pad(mel_target,  (1, 1), "constant", 0)
+            # target mel, we padded to match stft dim. it edge padded.
             # mel_out_post_net_padded = F.pad(mel_out_post_net,  (1, 1), "constant", 0)
             # mel_out_padded = F.pad(mel_out,  (1, 1), "constant", 0)
 
-            # stft complex64, we take abs and it float32
-            S = torch.abs(stft).to(self.device)
-            S_inv_target = librosa.feature.inverse.mel_to_stft(
-                    mel_target_padded.detach().cpu().numpy(), n_fft=self.filter_length, sr=self.sample_rate)
+            if self.is_stft_compute:
+                mel_target_padded = F.pad(mel_target, (1, 1), "constant", 0)
+                # stft complex64, we take abs and it float32
+                S = torch.abs(stft).to(self.device)
 
-            # S_inv_generated = librosa.feature.inverse.mel_to_stft(
-            #         mel_out_post_net_padded.detach().cpu().numpy(), n_fft=self.filter_length, sr=self.sample_rate)
-            #
-            # S_inv_generated2 = librosa.feature.inverse.mel_to_stft(
-            #         mel_out_padded.detach().cpu().numpy(), n_fft=self.filter_length, sr=self.sample_rate)
+                S_inv_target = librosa.feature.inverse.mel_to_stft(
+                        mel_target_padded.detach().cpu().numpy(), n_fft=self.filter_length, sr=self.sample_rate)
 
-            sf_loss1 = nn.L1Loss()(torch.from_numpy(S_inv_target).to(self.device), S)
-            total += sf_loss1
+                # S_inv_generated = librosa.feature.inverse.mel_to_stft(
+                #         mel_out_post_net_padded.detach().cpu().numpy(), n_fft=self.filter_length, sr=self.sample_rate)
+                # S_inv_generated2 = librosa.feature.inverse.mel_to_stft(
+                #         mel_out_padded.detach().cpu().numpy(), n_fft=self.filter_length, sr=self.sample_rate)
+
+                sf_loss1 = nn.L1Loss()(torch.from_numpy(S_inv_target).to(self.device), S)
+                total += sf_loss1
 
             return {
                 'loss': total,

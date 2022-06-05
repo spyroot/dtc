@@ -22,7 +22,6 @@ class Tacotron3(nn.Module):
     """
 
     """
-
     def __init__(self, experiment_specs: ExperimentSpecs, device) -> None:
         """
 
@@ -35,12 +34,12 @@ class Tacotron3(nn.Module):
         self.experiment_specs = experiment_specs
         self.model_trainer_spec = experiment_specs
         self.model_spec = experiment_specs.get_model_spec()
-        self.encoder_spec = self.model_spec.get_spectrogram()
+        self.spectogram_spec = self.model_spec.get_spectrogram()
         self.device = device
 
         self.mask_padding = self.experiment_specs.mask_padding
         self.fp16_run = self.experiment_specs.is_amp()
-        self.n_mel_channels = self.encoder_spec.n_mel_channels()
+        self.n_mel_channels = self.spectogram_spec.n_mel_channels()
         self.n_frames_per_step = self.experiment_specs.n_frames_per_step
 
         #
@@ -59,15 +58,16 @@ class Tacotron3(nn.Module):
         self.decoder = Decoder(experiment_specs, device=self.device)
         self.postnet = Postnet(experiment_specs, device=self.device)
 
-        # self.vae_encode = InferenceEncoder(z_dim=1024)
-        # self.vae_decode = InferenceDecoder(z_dim=1024)
+        if self.spectogram_spec.is_vae_enabled():
+            self.vae_encode = InferenceEncoder(z_dim=1024)
+            self.vae_decode = InferenceDecoder(z_dim=1024)
 
         self.parallel_decoder = True
         self.reverse_decoder = None
 
     def reparameterize(self, mu, logvar, mi=False):
         """
-
+        Used for VAE re parameterization trick.
         :param mu:
         :param logvar:
         :param mi:
@@ -183,7 +183,6 @@ class Tacotron3(nn.Module):
 
     def coarse_decoder_pass(self, mel_specs, encoder_outputs, alignments, input_mask):
         """
-
         :param mel_specs:
         :param encoder_outputs:
         :param alignments:
@@ -267,8 +266,7 @@ class Tacotron3(nn.Module):
                                      output_len)
 
         return self.parse_output(
-                [mel_out, mel_outputs_postnet, gate_out, alignments],
-                output_len)
+                [mel_out, mel_outputs_postnet, gate_out, alignments], output_len)
 
     def inference(self, inputs):
         """

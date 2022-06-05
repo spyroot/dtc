@@ -38,7 +38,7 @@ from model_trainer.trainer_specs import ExperimentSpecs
 from model_trainer.utils import fmtl_print, to_gpu
 # from distributed import apply_gradient_allreduce
 from models.loss_function import Tacotron2Loss
-from models.loss_function3 import DTSLoss
+from models.dtc_loss_function import DTSLoss
 from models.tacatronv30.model import Tacotron3
 from models.tacotronv25.model import Tacotron25
 from text import text_to_sequence
@@ -106,10 +106,17 @@ class Trainer(AbstractTrainer, ABC):
         self._brake_epoch_loop = 1
         #
         self._brake_epoch_train = False
+
         # read do we run auto precision mode or not
         self.state.is_amp = trainer_spec.is_amp()
+
         # set a batch size from spec.
         self.state.batch_size = data_loader.get_batch_size()
+
+        # this will be to model specific trainer.
+        self.model_spec = trainer_spec.get_model_spec()
+        self.spectogram_spec = self.model_spec.get_spectrogram()
+
         assert self.state.batch_size > 0
         # end unit test.
         if config is not None:
@@ -117,12 +124,14 @@ class Trainer(AbstractTrainer, ABC):
 
         # if we run hyperparameter tunner, ray need checkpoint dir.
         self.state.is_hyper_tunner = hp_tunner
+
         self.checkpoint_dir = checkpoint_dir
 
         self.set_logger(verbose)
 
         # dict that hold all schedulers that trainer need to use. TODO This will be moved.
         self._schedulers = {}
+
         # dict hold all optimizers. ( note trainer can train 2 model like in gan settings)
         self._optimizers = {}
 
@@ -895,7 +904,6 @@ class Trainer(AbstractTrainer, ABC):
                     self.tqdm_iter.set_description(f"Saving in progress, {self.state.device}")
                 self._save_model(model_name=m, layer_name=layer, file_path=model_file)
 
-
     def save_models(self, model_files: list[str], step=0):
         """
         Save's all models.
@@ -1214,7 +1222,6 @@ class Trainer(AbstractTrainer, ABC):
         model.eval()
 
         if isinstance(input_seq, str):
-
             sequence = np.array(text_to_sequence(input_seq, ['english_cleaners']))[None, :]
             sequence = torch.autograd.Variable(
                     torch.from_numpy(sequence)).to(self.state.device).long()
@@ -1395,7 +1402,7 @@ class Trainer(AbstractTrainer, ABC):
                                                 'batch mean': self.metric.batch_grad_loss.mean(),
                                                 'loss': normal_loss,
                                                 'epoch': self.metric.epoch_train_gn_loss.mean(),
-                                                 # 'spectral_loss': spectral_loss.item(),
+                                                # 'spectral_loss': spectral_loss.item(),
                                                 'mel': mel_loss.item(),
                                                 'gate': gate_loss.item(),
                                                 'batch': f"{batch_idx}/{loader_data_size}",
@@ -1443,9 +1450,11 @@ class Trainer(AbstractTrainer, ABC):
         self._last_step[layer_name] = current_step
         self.state.step = current_step
 
-    def tacotron25_batch(self, batch, device):
+    @staticmethod
+    def tacotron25_batch(batch, device):
         """
-        Batch parser for DTS.
+        Batch parser for DTC.
+
         :param device:
         :param batch:
         :return:
@@ -1466,44 +1475,46 @@ class Trainer(AbstractTrainer, ABC):
 
     def tacotron30_batch(self, batch, device):
         """
-        Batch parser for DTS.
+        Batch parse original output from data loader and upload to GPU.
+
         :param device:
         :param batch:
         :return:
         """
-        text_padded, input_lengths, mel_padded, gate_padded, output_lengths, sfts = batch
+        if self.spectogram_spec.is_stft_loss_enabled():
+            text_padded, input_lengths, mel_padded, gate_padded, output_lengths, stft = batch
+            sf = stft.contiguous()
+            if torch.cuda.is_available():
+                sf = sf.cuda(non_blocking=True)
+                sf.requires_grad = False
+
+                text_padded = to_gpu(text_padded, device).long()
+                input_lengths = to_gpu(input_lengths, device).long()
+                max_len = torch.max(input_lengths.data).item()
+                mel_padded = to_gpu(mel_padded, device).float()
+                gate_padded = to_gpu(gate_padded, device).float()
+                output_lengths = to_gpu(output_lengths, device).long()
+
+                if stft is not None:
+                    return (text_padded, input_lengths, mel_padded, max_len, output_lengths), \
+                           (mel_padded, gate_padded, stft)
+
+        else:
+            text_padded, input_lengths, mel_padded, gate_padded, output_lengths = batch
+
         text_padded = to_gpu(text_padded, device).long()
-        # spectral = to_gpu(spectral, device).float()
         input_lengths = to_gpu(input_lengths, device).long()
         max_len = torch.max(input_lengths.data).item()
         mel_padded = to_gpu(mel_padded, device).float()
         gate_padded = to_gpu(gate_padded, device).float()
         output_lengths = to_gpu(output_lengths, device).long()
 
-        # assert text_padded.get_device() == 0
-        # assert input_lengths.get_device() == 0
-        # assert mel_padded.get_device() == 0
-        # assert gate_padded.get_device() == 0
-        # assert output_lengths.get_device() == 0
-        sf = sfts.contiguous()
-        if torch.cuda.is_available():
-            sf = sf.cuda(non_blocking=True)
-            sf.requires_grad = False
-
-        # # we pass for loss computation only
-        # for sf in sfts:
-        #     sf = sf.contiguous()
-        #     if torch.cuda.is_available():
-        #         sf = sf.cuda(non_blocking=True)
-        #         sf.requires_grad = False
-        #     # return torch.autograd.Variable(x)
-
         return (text_padded, input_lengths, mel_padded, max_len, output_lengths), \
-               (mel_padded, gate_padded, sfts)
+               (mel_padded, gate_padded)
 
     def cleanup(self):
         """
-        Cleanup call
+        Cleanup call used only for DDP.
         :return:
         """
         if self.state.trainer_spec.is_distributed_run():
@@ -1545,7 +1556,7 @@ class Trainer(AbstractTrainer, ABC):
             device = self.state.device
 
         assert self.criterion is not None
-        self.criterion = self.criterion(device=device)
+        self.criterion = self.criterion(spec=self.spectogram_spec, device=device)
         self.criterion.to(device)
 
         self.tqdm_iter = self.trainer_iterator(model_name, layer_name)
