@@ -62,7 +62,7 @@ datasets:
   lj_speech_625:
     format: tensor_mel
     ds_type: "audio"
-    dir: "~/Dropbox/Datasets/LJSpeech-1.1"
+    dir: "~/src/dtc/dataset/LJSpeech-1.1"
     dataset_files:
       - "LJSpeech_train_num_sam_625_filter_80_3.pt"
       - "LJSpeech_validate_num_sam_100_filter_80_3.pt"
