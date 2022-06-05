@@ -145,7 +145,7 @@ settings:
     cudnn_benchmark: False
   small:
     epochs: 500
-    batch_size: 128
+    batch_size: 64
     grad_clipping: True
     grad_max_norm: 1.0
     tensorboard_update: 100       # update rate for tensorboard
@@ -164,7 +164,8 @@ settings:
     master_address: localhost
     master_port: 54321
     cudnn_enabled: True
-    cudnn_benchmark: False
+    cudnn_benchmark: True
+    random_sampler: False              # enables random sampler, note you can't shuffle than
     workers:
       - 192.168.254.205
     dataloader:
