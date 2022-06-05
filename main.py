@@ -15,13 +15,13 @@ import torch.distributed as dist
 from loguru import logger
 import soundfile as sf
 
-from tunner import Trainable
 
 try:
     import ray
     from ray import tune
     from ray.tune import CLIReporter
     from ray.tune.schedulers import ASHAScheduler
+    from tunner import Trainable
 except ImportError:
     pass
 
