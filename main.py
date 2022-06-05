@@ -7,6 +7,8 @@ import socket
 import sys
 import warnings
 from pathlib import Path
+from typing import Optional
+import torch, time, gc
 
 import librosa
 import matplotlib.pyplot as plt
@@ -56,13 +58,13 @@ class ConverterError(Exception):
 
 def convert_mel_to_data(encoder_spec: TacotronSpec,
                         dataset: SFTF2Dataset,
-                        target_dir="",
-                        meta_file="",
-                        dataset_name="default",
-                        data_type="all",
-                        version=3,
-                        post_check=True,
-                        verbose=True):
+                        target_dir: Optional[str] = "",
+                        meta_file: Optional[str] = "",
+                        dataset_name: Optional[str] = "default",
+                        data_type: Optional[str] ="all",
+                        version: Optional[int] = 3,
+                        post_check: Optional[bool] = True,
+                        verbose: Optional[bool] = True):
     """
     Convert audio dataset to MEL tensor representation.
 
@@ -126,11 +128,13 @@ def convert_mel_to_data(encoder_spec: TacotronSpec,
         if version == 2:
             txt_original, mel_from_ds = dataset[i]
             one_hot, mel = data_tuple
-        if version == 3:
+        elif version == 3:
             txt_original, mel_from_ds, sft_ds = dataset[i]
             one_hot, mel, stft = data_tuple
             if not torch.equal(stft, sft_ds):
                 raise ConverterError("data mismatched.")
+        else:
+            raise ConverterError("Unknown version.")
 
         if not torch.equal(mel, mel_from_ds):
             raise ConverterError("data mismatched.")
@@ -656,11 +660,8 @@ def set_random_seeds(random_seed=1234):
     np.random.seed(random_seed)
     random.seed(random_seed)
 
-
-import torch, time, gc
-
 # Timing utilities
-start_time = None
+perf_start_time = None
 
 
 def start_timer():

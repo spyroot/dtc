@@ -258,8 +258,6 @@ class ExperimentSpecs:
             if model_name not in self.config['models']:
                 raise TrainerSpecError(f"{self.config_file_name} unknown model.")
             self.config['use_model'] = model_name
-        else:
-            print("Not update model name", model_name)
 
         if 'use_model' not in self.config:
             raise TrainerSpecError("config.yaml must contain use_model "
@@ -1550,7 +1548,7 @@ class ExperimentSpecs:
         if self.batch_size == 1:
             return 1
 
-        return min(self.batch_size, 1)
+        return min(self.batch_size(), 1)
 
     def get_tensorboard_writer(self):
         """
@@ -1714,15 +1712,19 @@ class ExperimentSpecs:
 
     def _validate_root_mandatory(self, spec):
         """
-
         :param spec:
         :return:
         """
-        mandatory_root_key = ['train', 'use_dataset', 'use_model', 'draw_prediction', 'load_model',
-                              'load_epoch', 'save_model', 'regenerate', 'active_setting', 'evaluate',
-                              'root_dir', 'log_dir', 'nil_dir', 'graph_dir', 'results_dir', 'figures_dir',
-                              'prediction_dir', 'model_save_dir', 'metrics_dir', 'datasets', 'settings',
-                              'optimizers', 'lr_schedulers', 'strategy', 'models']
+        mandatory_root_key = ['train', 'use_dataset', 'use_model',
+                              'draw_prediction', 'load_model',
+                              'load_epoch', 'save_model', 'regenerate',
+                              'active_setting', 'evaluate',
+                              'root_dir', 'log_dir', 'nil_dir', 'graph_dir',
+                              'results_dir', 'figures_dir',
+                              'prediction_dir', 'model_save_dir',
+                              'metrics_dir', 'datasets', 'settings',
+                              'optimizers', 'lr_schedulers',
+                              'strategy', 'models']
         for k in mandatory_root_key:
             if k not in spec:
                 raise TrainerSpecError(f"Invalid specification {k} not present.")
