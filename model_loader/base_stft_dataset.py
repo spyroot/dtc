@@ -631,7 +631,6 @@ class BaseSFTFDataset(torch.utils.data.Dataset):
 
     def load_torch_files(self):
         """
-
         :return:
         """
         for f in self._dataset_file:

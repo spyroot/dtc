@@ -18,7 +18,6 @@ import torch.distributed as dist
 from loguru import logger
 import soundfile as sf
 
-
 try:
     import ray
     from ray import tune
@@ -155,7 +154,7 @@ def plot_example(trainer_spec, version=3, dataset_name=None, verbose=True, targe
     :param trainer_spec: a trainer spec object.
     :param verbose: verbose output
     :param dataset_name: if empty will use current active one. whatever in config use_dataset: 'mydataset'
-    :param merge:  if true merge all datasets to single one.
+    :param merge: if true merge all datasets to single one.
     :return:
     """
 
@@ -661,26 +660,27 @@ def set_random_seeds(random_seed=1234):
     np.random.seed(random_seed)
     random.seed(random_seed)
 
-# Timing utilities
-perf_start_time = None
+#
+# # Timing utilities
+# perf_start_time = None
+#
+#
+# def start_timer():
+#     global start_time
+#     gc.collect()
+#     torch.cuda.empty_cache()
+#     torch.cuda.reset_max_memory_allocated()
+#     torch.cuda.synchronize()
+#     start_time = time.time()
 
 
-def start_timer():
-    global start_time
-    gc.collect()
-    torch.cuda.empty_cache()
-    torch.cuda.reset_max_memory_allocated()
-    torch.cuda.synchronize()
-    start_time = time.time()
-
-
-def end_timer_and_print(local_msg):
-    torch.cuda.synchronize()
-    end_time = time.time()
-    print("\n" + local_msg)
-    print("Total execution time = {:.3f} sec".format(end_time - start_time))
-    print("Max memory used by tensors = {} bytes".format(torch.cuda.max_memory_allocated()))
-
+# def end_timer_and_print(local_msg):
+#     torch.cuda.synchronize()
+#     end_time = time.time()
+#     print("\n" + local_msg)
+#     print("Total execution time = {:.3f} sec".format(end_time - start_time))
+#     print("Max memory used by tensors = {} bytes".format(torch.cuda.max_memory_allocated()))
+#
 
 def inference(spec: ExperimentSpecs, cmd_args, device):
     """
