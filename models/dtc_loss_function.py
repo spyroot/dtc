@@ -155,10 +155,9 @@ class DTSLoss(nn.Module):
         :param targets:
         :return:
         """
-        mel_target, gate_target, stft = targets[0], targets[1], targets[2]
+        mel_target, gate_target = targets[0], targets[1]
         mel_target.requires_grad = False
         gate_target.requires_grad = False
-        stft.requires_grad = False
 
         # spectral_target = nn.Flatten()(spectral_target)
 
@@ -173,6 +172,9 @@ class DTSLoss(nn.Module):
             total = mel_loss + gate_loss
 
             if self.is_stft_compute:
+                stft = targets[2]
+                stft.requires_grad = False
+
                 mel_target_padded = F.pad(mel_target, (1, 1), "constant", 0)
                 # stft complex64, we take abs and it float32
                 S = torch.abs(stft).to(self.device)
@@ -214,6 +216,8 @@ class DTSLoss(nn.Module):
             # mel_out_padded = F.pad(mel_out,  (1, 1), "constant", 0)
 
             if self.is_stft_compute:
+                stft = targets[2]
+                stft.requires_grad = False
                 mel_target_padded = F.pad(mel_target, (1, 1), "constant", 0)
                 # stft complex64, we take abs and it float32
                 S = torch.abs(stft).to(self.device)

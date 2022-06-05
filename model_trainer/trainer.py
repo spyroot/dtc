@@ -1281,9 +1281,10 @@ class Trainer(AbstractTrainer, ABC):
         """
         return self.state.epoch, self.state.step
 
-    def adjust_learning_rate(self, epoch, optimizer, learning_rate, anneal_steps, anneal_factor):
+    @staticmethod
+    def adjust_learning_rate(epoch, optimizer, learning_rate, anneal_steps, anneal_factor):
         """
-        Adjusts learning rate base on the initial setting.
+        Adjusts learning rate base on the initial setting anneal step and factor.
 
         :param epoch:
         :param optimizer:
