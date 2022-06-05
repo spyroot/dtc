@@ -194,7 +194,8 @@ optimizers:
     momentum=0:
     betas: [ 0.9, 0.999 ]
     type: Adam
-  tacotron2_optimizer:
+  dtc_optimizer:
+    desc: "main optimizer used by both model with simular decay and lr"
     type: Adam
     weight_decay: 1e-6
     betas: [ 0.9, 0.999 ]
