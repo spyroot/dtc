@@ -13,6 +13,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch.distributed as dist
 from loguru import logger
+
+from tunner import Trainable
+
 try:
     import ray
     from ray import tune
@@ -28,7 +31,6 @@ from model_loader.dataset_stft25 import SFTF2Dataset
 from model_loader.dataset_stft30 import SFTF3Dataset
 from model_loader.ds_util import md5_checksum
 from model_loader.stft_dataloader import SFTFDataloader
-from model_trainer.internal.call_interface import Callback
 from model_trainer.internal.save_best import CheckpointBest
 from model_trainer.plotting_utils import plot_spectrogram_to_numpy
 from model_trainer.specs.model_tacotron25_spec import TacotronSpec, ModelSpecTacotron25
@@ -796,7 +798,12 @@ def main(cmd_args):
         return
 
     if cmd_args.tune:
-        return tune_hyperparam(spec=trainer_spec, cmd_args=cmd_args, device=_device)
+        try:
+            import ray
+            return tune_hyperparam(spec=trainer_spec, cmd_args=cmd_args, device=_device)
+        except ImportError:
+            print("You need install ray first.")
+            return
 
     trainer_spec.model_files.build_dir()
     if cmd_args.train:
