@@ -61,7 +61,7 @@ class Tacotron3(nn.Module):
             self.vae_encode = InferenceEncoder(z_dim=1024)
             self.vae_decode = InferenceDecoder(z_dim=1024)
 
-        self.parallel_decoder = True
+        self.parallel_decoder = self.specto_spec.is_reverse_decoder()
         self.reverse_decoder = None
 
     def reparameterize(self, mu, logvar, mi=False):

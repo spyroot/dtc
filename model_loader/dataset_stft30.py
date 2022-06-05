@@ -13,7 +13,7 @@ from torch import Tensor
 
 from model_loader.base_stft_dataset import BaseSFTFDataset
 from model_loader.tacotron_stft30 import TacotronSTFT3
-from model_trainer.specs.tacatron_spec import TacotronSpec
+from model_trainer.specs.spectrogram_layer_spec import SpectrogramLayerSpec
 from model_trainer.trainer_specs import ExperimentSpecs
 
 
@@ -22,7 +22,7 @@ class SFTF3Dataset(BaseSFTFDataset, ABC):
 
     """
 
-    def __init__(self, model_spec: TacotronSpec,
+    def __init__(self, model_spec: SpectrogramLayerSpec,
                  data=None,
                  root: Optional[str] = "dts",
                  data_format: Optional[str] = "numpy_mel",

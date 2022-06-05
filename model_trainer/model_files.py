@@ -1,5 +1,10 @@
+# The main abstraction used to manipulate files and directories, log, etc.
+# Trainer delegate file management logic.
+#
+#
+# Mustafa
+#
 import os
-import pathlib
 from os.path import join
 from pathlib import Path
 from typing import Optional, Callable
@@ -504,6 +509,8 @@ class ModelFiles:
 
     def update_model_file(self, path: str) -> bool:
         """
+        Update model file,  for example if command line provide
+        a file for pre-trained model.
 
         :param path:
         :return:
@@ -517,5 +524,3 @@ class ModelFiles:
             return True
 
         return False
-
-

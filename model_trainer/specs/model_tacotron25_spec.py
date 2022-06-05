@@ -3,7 +3,7 @@ from abc import ABC
 from loguru import logger
 
 from .model_spec import ModelSpec
-from .tacatron_spec import TacotronSpec
+from .spectrogram_layer_spec import SpectrogramLayerSpec
 
 
 class InvalidModelSpec(Exception):
@@ -40,8 +40,8 @@ class ModelSpecTacotron25(ModelSpec, ABC):
         if 'spectrogram_layer' not in model_spec:
             raise InvalidModelSpec("Model must contains spectrogram_layer.")
 
-        self._spectrogram_spec = TacotronSpec(model_spec['spectrogram_layer'])
-        self._sub_models['spectrogram_layer'] = TacotronSpec(model_spec['spectrogram_layer'])
+        self._spectrogram_spec = SpectrogramLayerSpec(model_spec['spectrogram_layer'])
+        self._sub_models['spectrogram_layer'] = SpectrogramLayerSpec(model_spec['spectrogram_layer'])
 
     def get_model_param(self):
         """
@@ -50,7 +50,7 @@ class ModelSpecTacotron25(ModelSpec, ABC):
         """
         return self._model_dict, self._generator_param_dict
 
-    def get_spectrogram(self) -> TacotronSpec:
+    def get_spectrogram(self) -> SpectrogramLayerSpec:
         """
         Return specification for spectrogram layer.
         :return:

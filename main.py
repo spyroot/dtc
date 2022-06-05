@@ -36,7 +36,7 @@ from model_loader.ds_util import md5_checksum
 from model_loader.stft_dataloader import SFTFDataloader
 from model_trainer.internal.save_best import CheckpointBest
 from model_trainer.plotting_utils import plot_spectrogram_to_numpy
-from model_trainer.specs.model_tacotron25_spec import TacotronSpec, ModelSpecTacotron25
+from model_trainer.specs.model_tacotron25_spec import SpectrogramLayerSpec, ModelSpecTacotron25
 from model_trainer.trainer import Trainer, TrainerError
 from model_trainer.trainer_specs import ExperimentSpecs, TrainerSpecError
 
@@ -56,7 +56,7 @@ class ConverterError(Exception):
     pass
 
 
-def convert_mel_to_data(encoder_spec: TacotronSpec,
+def convert_mel_to_data(encoder_spec: SpectrogramLayerSpec,
                         dataset: SFTF2Dataset,
                         target_dir: Optional[str] = "",
                         meta_file: Optional[str] = "",

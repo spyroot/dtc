@@ -1,6 +1,8 @@
 # STFT25, Mel dataset
 #
-# It base class that does all low level, each class on top can overwrite
+# It base, provide most implementation, child class mainly focus on
+# __getitem__ and constructing actual data.
+#
 # Mustafa. B
 #
 import os
@@ -18,7 +20,7 @@ from loguru import logger
 from tqdm import tqdm
 
 from model_loader import ds_util
-from model_trainer.specs.tacatron_spec import TacotronSpec
+from model_trainer.specs.spectrogram_layer_spec import SpectrogramLayerSpec
 from model_trainer.utils import load_wav_to_torch
 from text import text_to_sequence
 
@@ -87,7 +89,7 @@ class BaseSFTFDataset(torch.utils.data.Dataset):
     """
 
     def __init__(self,
-                 model_spec: TacotronSpec,
+                 model_spec: SpectrogramLayerSpec,
                  data=None,
                  root: Optional[str] = "dtc",
                  data_format: Optional[str] = "numpy_mel",

@@ -7,7 +7,7 @@ class TacotronSpecError(Exception):
     pass
 
 
-class TacotronSpec:
+class SpectrogramLayerSpec:
     """
 
 models:
@@ -43,7 +43,8 @@ models:
 
     def is_reverse_decoder(self) -> bool:
         """
-        Return true if spec contains reverse decoder.
+        Return true if spec contains reverse decoder enabled
+        by default it false.
         :return:
         """
         if 'reverse_decoder' in self._model_dict:

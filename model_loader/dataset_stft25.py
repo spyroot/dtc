@@ -1,9 +1,9 @@
-# SFTS, Mel dataset
+# STFT and Mel dataset
 #
 # It for dataset that outputs only one hot vector and mel spectrogram.
 #
 # Mustafa
-
+#
 from abc import ABC
 from typing import Callable, Optional
 
@@ -14,7 +14,7 @@ from torch import Tensor
 
 from model_loader.base_stft_dataset import BaseSFTFDataset, DatasetError
 from model_loader.tacotron_stft25 import TacotronSTFT25
-from model_trainer.specs.tacatron_spec import TacotronSpec
+from model_trainer.specs.spectrogram_layer_spec import SpectrogramLayerSpec
 from model_trainer.trainer_specs import ExperimentSpecs
 
 
@@ -22,7 +22,7 @@ class SFTF2Dataset(BaseSFTFDataset, ABC):
     """
 
     """
-    def __init__(self, model_spec: TacotronSpec,
+    def __init__(self, model_spec: SpectrogramLayerSpec,
                  data=None,
                  root: Optional[str] = "dts",
                  data_format: Optional[str] = "numpy_mel",

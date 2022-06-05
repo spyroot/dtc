@@ -5,7 +5,7 @@ from torch import nn
 from torch.distributions.kl import kl_divergence
 from torch.distributions.normal import Normal
 from torch.nn import functional as F
-
+from model_trainer.specs.spectrogram_layer_spec import SpectrogramLayerSpec
 
 def tiny(x):
     return torch.finfo().tiny
@@ -99,7 +99,7 @@ class DTSLoss(nn.Module):
     """
 
     def __init__(self,
-                 spec,
+                 spec: SpectrogramLayerSpec,
                  filter_length=1024,
                  hop_length=256,
                  win_length=1024,
@@ -114,7 +114,9 @@ class DTSLoss(nn.Module):
 
         self.filter_length = filter_length
         self.sample_rate = sampling_rate
+
         self.is_stft_compute = spec.is_stft_loss_enabled()
+        self.is_reverse_encoder = spec.is_reverse_decoder()
 
         self.sr = torch.tensor(self.sample_rate, device=device, requires_grad=False)
         self.n_fft = torch.tensor(self.filter_length, device=device, requires_grad=False)
@@ -147,10 +149,10 @@ class DTSLoss(nn.Module):
             maxs[maxs > 0] = 1
         return maxs.mean(dim=1).mean(dim=0).item()
 
-    def forward(self, model_output, targets, is_validation=False, is_reversed=True):
+    def forward(self, model_output, targets, is_validation=False):
         """
-        :param is_validation: reserved for case if want compute STFT during validation or trainingon only.
-        :param is_reversed:
+        :param is_validation: The validation for the case if want need,
+                              computes STFT during validation or training only.
         :param model_output:
         :param targets:
         :return:
@@ -159,9 +161,7 @@ class DTSLoss(nn.Module):
         mel_target.requires_grad = False
         gate_target.requires_grad = False
 
-        # spectral_target = nn.Flatten()(spectral_target)
-
-        if not reversed:
+        if not self.is_reverse_encoder:
             mel_out, mel_out_post_net, gate_out, _, = model_output
             gate_targets = gate_target.view(-1, 1)
             gate_outs = gate_out.view(-1, 1)
