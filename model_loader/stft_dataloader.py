@@ -6,16 +6,12 @@
 #
 import sys
 import time
-import timeit
 import warnings
 from pathlib import Path
 from typing import Optional, Callable
 
-import librosa
-import numpy as np
 import torch
 from loguru import logger
-from torch.nn import functional as F
 from torch.utils.data import DataLoader, DistributedSampler, RandomSampler, SequentialSampler
 from tqdm import tqdm
 
@@ -81,8 +77,6 @@ class SFTFDataloader:
         if isinstance(model_spec, ModelSpecDTS):
             self._model_spec: ModelSpecDTS = trainer_spec.get_model_spec()
             self._version = 3
-
-        print(f"version {self._version}")
 
         # base class return must return spectrogram layer spec
         self._spectrogram_spec = self._model_spec.get_spectrogram()
@@ -345,7 +339,8 @@ class SFTFDataloader:
         """
         if 'train_set' in self._datasets:
             return len(self._datasets['train_set'])
-        warnings.warn("validation dataset is empty.")
+
+        warnings.warn("train dataset is empty.")
         return 0
 
     def get_val_dataset_size(self):
@@ -355,6 +350,7 @@ class SFTFDataloader:
         """
         if 'validation_set' in self._datasets:
             return len(self._datasets['validation_set'])
+
         warnings.warn("validation dataset is empty.")
         return 0
 
@@ -679,7 +675,6 @@ class SFTFDataloader:
 
 def batch_reader(batch, device):
     """
-
     Batch parser for DTS.
     :param device:
     :param batch:
@@ -687,29 +682,25 @@ def batch_reader(batch, device):
     """
     text_padded, input_lengths, mel_padded, gate_padded, output_lengths, stft = batch
     text_padded = to_gpu(text_padded, device).long()
-    stft = to_gpu(stft, device).float()
     input_lengths = to_gpu(input_lengths, device).long()
     max_len = torch.max(input_lengths.data).item()
     mel_padded = to_gpu(mel_padded, device).float()
     gate_padded = to_gpu(gate_padded, device).float()
     output_lengths = to_gpu(output_lengths, device).long()
 
-    # assert text_padded.get_device() == 0
-    # assert input_lengths.get_device() == 0
-    # assert mel_padded.get_device() == 0
-    # assert gate_padded.get_device() == 0
-    # assert output_lengths.get_device() == 0
+    sf = stft.contiguous()
+    if torch.cuda.is_available():
+        sf = sf.cuda(non_blocking=True)
+        sf.requires_grad = False
 
-    return (text_padded, input_lengths, mel_padded, max_len, output_lengths, stft), \
+    return (text_padded, input_lengths,
+            mel_padded, max_len,
+            output_lengths, stft), \
            (mel_padded, gate_padded, stft)
 
 
-from timeit import default_timer as timer
-
-
-def v3_dataloader_tensor_test():
+def v3_dataloader_tensor_test(config="../config.yaml"):
     """
-
     :return:
     """
     spec = ExperimentSpecs(spec_config='../config.yaml')
@@ -722,43 +713,38 @@ def v3_dataloader_tensor_test():
     _train_loader = data_loaders['train_set']
 
     # full GPU pass
-    start = timer()
     start_time = time.time()
-
     print(f"Dataloader datasize {dataloader.get_train_dataset_size()}")
     print("--- %s load time, seconds ---" % (time.time() - start_time))
     start_time = time.time()
-    for bidx, batch in enumerate(_train_loader):
+    for batch_idx, (batch) in tqdm(enumerate(_train_loader)):
         x, y = batch_reader(batch, device=_device)
-
     print("--- %s batch memory load, load time, seconds ---" % (time.time() - start_time))
 
 
-def v3_dataloader_audio_test():
+def v3_dataloader_audio_test(config="../config.yaml"):
     """
 
     :return:
     """
-    spec = ExperimentSpecs(spec_config='../config.yaml')
-    model_spec = spec.get_model_spec().get_spec('spectrogram_layer')
+    spec = ExperimentSpecs(spec_config=config)
+    start_time = time.time()
     dataloader = SFTFDataloader(spec, verbose=True)
-    loaders, collate = dataloader.get_loader()
+    print("--- %s SFTFDataloader create batch , load time, seconds ---" % (time.time() - start_time))
+    _device = torch.device(f"cuda" if torch.cuda.is_available() else "cpu")
 
     # get all
     data_loaders, collate_fn = dataloader.get_all()
     _train_loader = data_loaders['train_set']
 
-    # full GPU pass
-    start = timer()
-    start_time = time.time()
+    iters = dataloader.get_train_dataset_size() // dataloader.get_batch_size()
+    print("Total iters", iters)
 
-    print(f"Dataloader datasize {dataloader.get_train_dataset_size()}")
-    print("--- %s load time, seconds ---" % (time.time() - start_time))
+    # full GPU pass
     start_time = time.time()
-    for bidx, batch in enumerate(_train_loader):
-        text_padded, input_lengths, mel_padded, gate_padded, output_lengths, stft_padded = batch
-        break
-    print("--- %s Single batch memory load, load time, seconds ---" % (time.time() - start_time))
+    for batch_idx, (batch) in tqdm(enumerate(_train_loader), total=iters):
+        x, y = batch_reader(batch, device=_device)
+    print("--- %s SFTFDataloader entire dataset pass, load time, seconds ---" % (time.time() - start_time))
 
 
 if __name__ == '__main__':
@@ -769,5 +755,5 @@ if __name__ == '__main__':
     # test_from_subset_data_loader_from_raw()
     # test_download_numpy_files()
     # test_download_torch_files()
+    # v3_dataloader_audio_test()
     v3_dataloader_audio_test()
-    v3_dataloader_tensor_test()

@@ -1485,14 +1485,18 @@ class Trainer(AbstractTrainer, ABC):
         # assert mel_padded.get_device() == 0
         # assert gate_padded.get_device() == 0
         # assert output_lengths.get_device() == 0
+        sf = sfts.contiguous()
+        if torch.cuda.is_available():
+            sf = sf.cuda(non_blocking=True)
+            sf.requires_grad = False
 
-        # we pass for loss computation only
-        for sf in sfts:
-            sf = sf.contiguous()
-            if torch.cuda.is_available():
-                sf = sf.cuda(non_blocking=True)
-                sf.requires_grad = False
-            # return torch.autograd.Variable(x)
+        # # we pass for loss computation only
+        # for sf in sfts:
+        #     sf = sf.contiguous()
+        #     if torch.cuda.is_available():
+        #         sf = sf.cuda(non_blocking=True)
+        #         sf.requires_grad = False
+        #     # return torch.autograd.Variable(x)
 
         return (text_padded, input_lengths, mel_padded, max_len, output_lengths), \
                (mel_padded, gate_padded, sfts)
