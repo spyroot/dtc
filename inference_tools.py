@@ -1,45 +1,45 @@
 import os
+
 import librosa
-import torchaudio
-from PIL._imaging import display
-from matplotlib import pyplot as plt
 import torch
-# from IPython.display import Audio, display
-from playsound import playsound
-from IPython.display import Audio, display
+import torchaudio
+from matplotlib import pyplot as plt
 
 from model_trainer.plotting_utils import save_figure_to_numpy
 
 
-def play_audio_file(file_path, is_notebook=False, sample_rate=22050):
-    """
-
-    :param waveform:
-    :param is_notebook:
-    :param sample_rate:
-    :return:
-    """
-    # waveform = waveform.numpy(
-    playsound(file_path)
+# from IPython.display import Audio, display
 
 
-def play_audio(waveform, is_notebook=False, sample_rate=22050):
-    """
+# def play_audio_file(file_path, is_notebook=False, sample_rate=22050):
+#     """
+#
+#     :param waveform:
+#     :param is_notebook:
+#     :param sample_rate:
+#     :return:
+#     """
+#     # waveform = waveform.numpy(
+#     playsound(file_path)
 
-    :param waveform:
-    :param sample_rate:
-    :return:
-    """
-    waveform = waveform.numpy()
-    playsound('/path/to/a/sound/file/you/want/to/play.wav')
 
-    num_channels, num_frames = waveform.shape
-    if num_channels == 1:
-        display(Audio(waveform[0], rate=sample_rate))
-    elif num_channels == 2:
-        display(Audio((waveform[0], waveform[1]), rate=sample_rate))
-    else:
-        raise ValueError("Waveform with more than 2 channels are not supported.")
+# def play_audio(waveform, is_notebook=False, sample_rate=22050):
+#     """
+#
+#     :param waveform:
+#     :param sample_rate:
+#     :return:
+#     """
+#     waveform = waveform.numpy()
+#     playsound('/path/to/a/sound/file/you/want/to/play.wav')
+#
+#     num_channels, num_frames = waveform.shape
+#     if num_channels == 1:
+#         display(Audio(waveform[0], rate=sample_rate))
+#     elif num_channels == 2:
+#         display(Audio((waveform[0], waveform[1]), rate=sample_rate))
+#     else:
+#         raise ValueError("Waveform with more than 2 channels are not supported.")
 
 
 def inspect_file(path):
