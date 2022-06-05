@@ -484,7 +484,12 @@ def tune_hyperparam(spec=None, cmd_args=None, device=None, cudnn_bench=False):
     if args.verbose:
         logger.debug(f"Torch allow matmul fp16 {torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction}")
         logger.debug(f"Torch cudnn version, {torch.backends.cudnn.version}")
-        logger.debug(f"Torch backend openmp", {torch.backends.openmp})
+        logger.debug(f"Torch backend openmp {torch.backends.openmp}")
+        logger.debug(f"Torch backend openmp {torch.version.cuda}")
+        logger.debug(f"Torch backend openmp {torch.backends.cudnn.version()}")
+        logger.debug(f"Torch backend openmp {torch.__version__}")
+        logger.debug(f"Torch backend openmp {torch.cuda.get_device_name(0)}")
+        logger.debug(f"Torch backend openmp {torch.cuda.get_device_properties(0)}")
 
     try:
 
