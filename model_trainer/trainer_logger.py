@@ -28,7 +28,10 @@ class TensorboardTrainerLogger(SummaryWriter):
                                                        filename_suffix="dts",
                                                        flush_secs=2)
 
+        self.is_stft_loss = None
         self.trainer_spec = trainer_spec
+        self.model_spec = trainer_spec.get_model_spec()
+        self.spectogram_spec = self.model_spec.get_spectrogram()
         self.update_rate = trainer_spec.tensorboard_update_rate()
         self.spectrogram_spec = trainer_spec.get_model_spec().get_spectrogram()
         self.is_reverse_decoder = self.spectrogram_spec.is_reverse_decoder()
@@ -100,10 +103,13 @@ class TensorboardTrainerLogger(SummaryWriter):
         if self.is_reverse_decoder:
             _, mel_outputs, gate_outputs, alignments, rev = y_pred
             mel_out_rev, gate_out_rev, alignments_rev = rev
-            mel_targets, gate_targets, stft = y
+            mel_targets, gate_targets, = y[0], y[1]
         else:
             _, mel_outputs, gate_outputs, alignments = y_pred
-            mel_targets, gate_targets = y
+            mel_targets, gate_targets = y[0], y[1]
+
+        if self.spectogram_spec.is_stft_loss_enabled():
+            stft = y[2]
 
         # plot distribution of parameters
         for tag, value in model.named_parameters():
