@@ -1,28 +1,26 @@
-import librosa
-
-from inference_tools import plot_spectrogram
-from model_trainer.plotting_utils import plot_alignment_to_numpy, plot_spectrogram_to_numpy, plot_gate_outputs_to_numpy, \
-    plot_sft
 import random
-from torch.utils.tensorboard import SummaryWriter
+
 import torch
 from torch import nn
+from torch.utils.tensorboard import SummaryWriter
 
-from inference_tools import plot_spectrogram
+from model_trainer.plotting_utils import plot_alignment_to_numpy, plot_spectrogram_to_numpy, plot_gate_outputs_to_numpy
 
 
 class TensorboardTrainerLogger(SummaryWriter):
     """
     """
 
-    def __init__(self, tensorboard_update_rate=0, comments="", logdir=None, is_distributed=False):
+    def __init__(self, tensorboard_update_rate=0, model_name="dts", batch_size=32, precision="fp32",
+                 comments="", logdir=None, is_distributed=False):
         """
-
         :param tensorboard_update_rate:
         :param logdir:
         :param is_distributed:
         """
-        super(TensorboardTrainerLogger, self).__init__("results/tensorboard/dts", comment="dts", filename_suffix="dts",
+        super(TensorboardTrainerLogger, self).__init__(f"results/tensorboard/{model_name}/{batch_size}/{precision}",
+                                                       comment="dts",
+                                                       filename_suffix="dts",
                                                        flush_secs=2)
         self.update_rate = tensorboard_update_rate
 
@@ -53,17 +51,18 @@ class TensorboardTrainerLogger(SummaryWriter):
             for k in extra_data:
                 self.add_scalar(k, extra_data[k])
 
-    def log_hparams(self, step, tf_hp_dict) -> None:
+    def log_hparams(self, step, hp_dict, metrics) -> None:
         """
         Log tf hp params.
 
-        :param tf_hp_dict: hyperparameter dict
-        :param step:
+        :param metrics:  hyperparameter metrics
+        :param hp_dict: hyperparameter dict
+        :param step: current step of execution
         :return:
         """
         if self.update_rate == 0 or step % self.update_rate != 0:
             return
-        self.add_hparams(tf_hp_dict)
+        self.add_hparams(hp_dict, metrics)
 
     def log_validation(self, criterions: dict, model: nn.Module, y, y_pred, step=None,
                        mel_filter=True, v3=True, is_reversed=True) -> None:
@@ -81,6 +80,9 @@ class TensorboardTrainerLogger(SummaryWriter):
         """
         if self.update_rate == 0 or step % self.update_rate != 0:
             return
+
+        alignments_rev = None
+        gate_out_rev = None
 
         for k in criterions:
             self.add_scalar(k, criterions[k], step)
@@ -108,7 +110,7 @@ class TensorboardTrainerLogger(SummaryWriter):
                 plot_alignment_to_numpy(alignments[idx].data.cpu().numpy().T),
                 step, dataformats='HWC')
 
-        if is_reversed:
+        if is_reversed and alignments_rev is not None:
             self.add_image(
                     "alignment/alignments_right",
                     plot_alignment_to_numpy(alignments_rev[idx].data.cpu().numpy().T),
@@ -142,10 +144,9 @@ class TensorboardTrainerLogger(SummaryWriter):
                         gate_targets[idx].data.cpu().numpy(),
                         torch.sigmoid(gate_outputs[idx]).data.cpu().numpy()),
                 step, dataformats='HWC')
-
-        self.add_image(
-                "gate_rev",
-                plot_gate_outputs_to_numpy(
-                        gate_targets[idx].data.cpu().numpy(),
-                        torch.sigmoid(gate_out_rev[idx]).data.cpu().numpy()),
-                step, dataformats='HWC')
+        if is_reversed and gate_out_rev is not None:
+            self.add_image(
+                    "gate_rev",
+                    plot_gate_outputs_to_numpy(
+                            gate_targets[idx].data.cpu().numpy(),
+                            torch.sigmoid(gate_out_rev[idx]).data.cpu().numpy()), step, dataformats='HWC')

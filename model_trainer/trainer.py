@@ -180,7 +180,11 @@ class Trainer(AbstractTrainer, ABC):
 
             if self.state.is_hyper_tunner is False:
                 # by default, we log model name currently trainer and batch size.
+                precision = "fp32" if not self.state.is_amp else "fp16"
                 self.tf_logger = TensorboardTrainerLogger(trainer_spec.tensorboard_update_rate(),
+                                                          model_name=trainer_spec.get_active_model(),
+                                                          batch_size=trainer_spec.batch_size(),
+                                                          precision=precision,
                                                           comments=f"{trainer_spec.get_active_model()}_"
                                                                    f"{trainer_spec.batch_size()}")
 
@@ -194,7 +198,6 @@ class Trainer(AbstractTrainer, ABC):
                                   mode=ReduceMode.MIN,
                                   verbose=False)
 
-        print("got")
         self._callback = BaseCallbacks(callbacks=callback)
         self._callback.register_trainer(self)
         self._callback.register_metric(self.metric)
