@@ -8,7 +8,8 @@ import sys
 import warnings
 from pathlib import Path
 from typing import Optional
-import torch, time, gc
+import torch
+import time
 
 import librosa
 import matplotlib.pyplot as plt
@@ -61,7 +62,7 @@ def convert_mel_to_data(encoder_spec: TacotronSpec,
                         target_dir: Optional[str] = "",
                         meta_file: Optional[str] = "",
                         dataset_name: Optional[str] = "default",
-                        data_type: Optional[str] ="all",
+                        data_type: Optional[str] = "all",
                         version: Optional[int] = 3,
                         post_check: Optional[bool] = True,
                         verbose: Optional[bool] = True):
@@ -956,7 +957,7 @@ if __name__ == '__main__':
     try:
         set_logger(args.verbose)
         # trainer_spec = ExperimentSpecs(spec_config=args.config, verbose=args.verbose)
-        main(args)
+         main(args)
         # setup_handler(cleanup(is_distributed))
     except FileNotFoundError as file_error:
         print("File not found ", str(file_error))
