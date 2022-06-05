@@ -2,7 +2,7 @@ train: True                 # train or not,  default is True for generation we o
 #active: 'grid_small'       # dataset set generated.
 #use_dataset: 'LJSpeechSmallPkl'     # dataset set generated.
 use_dataset: 'LJSpeech'     # dataset set generated.
-use_model: 'tacotron25'     # model to use , it must be defined in models section.
+use_model: 'dts'     # model to use , it must be defined in models section.
 draw_prediction: True       # at the of training draw.
 load_model: True            # load model or not, and what
 load_epoch: 500             # load model,  last epoch
@@ -287,9 +287,9 @@ models:
       symbols_embedding_dim: 512
       encoder:
         desc: Encoder parameters
-        encoder_kernel_size: 5
-        encoder_n_convolutions: 3
-        encoder_embedding_dim: 512
+        kernel_size: 5
+        num_convolutions: 3
+        embedding_dim: 512
       decoder:
         n_frames_per_step: = 1  # currently, only 1 is supported
         decoder_rnn_dim: 1024
@@ -335,6 +335,7 @@ models:
       n_mel_channels: 80
       mel_fmin: 0.0
       mel_fmax: 8000.0
+      symbols_embedding_dim: 512
     vocoder:
       name: Test
       state: disabled

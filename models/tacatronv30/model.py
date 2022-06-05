@@ -34,19 +34,19 @@ class Tacotron3(nn.Module):
         self.experiment_specs = experiment_specs
         self.model_trainer_spec = experiment_specs
         self.model_spec = experiment_specs.get_model_spec()
-        self.spectogram_spec = self.model_spec.get_spectrogram()
+        self.specto_spec = self.model_spec.get_spectrogram()
         self.device = device
 
         self.mask_padding = self.experiment_specs.mask_padding
         self.fp16_run = self.experiment_specs.is_amp()
-        self.n_mel_channels = self.spectogram_spec.n_mel_channels()
+        self.n_mel_channels = self.specto_spec.n_mel_channels()
         self.n_frames_per_step = self.experiment_specs.n_frames_per_step
 
         #
         self.embedding = nn.Embedding(self.experiment_specs.n_symbols,
-                                      self.experiment_specs.symbols_embedding_dim)
-        #
-        std = sqrt(2.0 / (self.experiment_specs.n_symbols + self.experiment_specs.symbols_embedding_dim))
+                                      self.specto_spec.symbols_embedding_dim())
+        std = sqrt(2.0 / (self.experiment_specs.n_symbols +
+                          self.specto_spec.symbols_embedding_dim()))
         val = sqrt(3.0) * std  # uniform bounds for std
 
         self.embedding.weight.data.uniform_(-val, val)
@@ -58,7 +58,7 @@ class Tacotron3(nn.Module):
         self.decoder = Decoder(experiment_specs, device=self.device)
         self.postnet = Postnet(experiment_specs, device=self.device)
 
-        if self.spectogram_spec.is_vae_enabled():
+        if self.specto_spec.is_vae_enabled():
             self.vae_encode = InferenceEncoder(z_dim=1024)
             self.vae_decode = InferenceDecoder(z_dim=1024)
 

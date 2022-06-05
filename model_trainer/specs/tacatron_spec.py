@@ -138,9 +138,60 @@ models:
         return self._model_dict['mel_fmax']
 
     def max_wav_value(self) -> float:
+        """
+        :return:
+        """
         if 'max_wav_value' not in self._model_dict:
             raise TacotronSpecError("Model has no max_wav_value defined.")
+
         return self._model_dict['max_wav_value']
+
+    def symbols_embedding_dim(self) -> int:
+        """
+        :return:
+        """
+        if 'symbols_embedding_dim' in self._model_dict:
+            return self._model_dict['symbols_embedding_dim']
+
+        return 512
+
+    def get_encoder(self):
+        """
+        return encoder spec
+        :return:
+        """
+        if 'encoder' not in self._model_dict:
+            raise TacotronSpecError("Model has no encoder specification.")
+        return self._model_dict['encoder']
+
+    def encoder_kernel_size(self) -> int:
+        """
+        :return:
+        """
+        encoder = self.get_encoder()
+        if 'kernel_size' in encoder:
+            return encoder['kernel_size']
+        return 5
+
+    def encoder_n_convolutions(self) -> int:
+        """
+        Encoders number of conv layers.
+        :return:
+        """
+        encoder = self.get_encoder()
+        if 'num_convolutions' in encoder:
+            return encoder['num_convolutions']
+        return 3
+
+    def encoder_embedding_dim(self) -> int:
+        """
+        Encoder embedding dimension.
+        :return:
+        """
+        encoder = self.get_encoder()
+        if 'embedding_dim' in encoder:
+            return encoder['embedding_dim']
+        return 512
 
     def get_text_cleaner(self):
         """

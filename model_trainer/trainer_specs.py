@@ -103,12 +103,12 @@ class ExperimentSpecs:
 
         ################################
         self.n_symbols = len(symbols)
-        self.symbols_embedding_dim = 512
+        #self.symbols_embedding_dim = 512
 
         # Encoder parameters
-        self.encoder_kernel_size = 5
-        self.encoder_n_convolutions = 3
-        self.encoder_embedding_dim = 512
+        # self.encoder_kernel_size = 5
+        # self.encoder_n_convolutions = 3
+        # self.encoder_embedding_dim = 512
 
         # Decoder parameters
         self.n_frames_per_step = 1

@@ -24,18 +24,21 @@ class Tacotron25(nn.Module):
         self.experiment_specs = experiment_specs
         self.model_trainer_spec = experiment_specs
         self.model_spec = experiment_specs.get_model_spec()
-        self.encoder_spec = self.model_spec.get_spectrogram()
+        self.specto_spec = self.model_spec.get_spectrogram()
         self.device = device
 
         self.mask_padding = self.experiment_specs.mask_padding
         self.fp16_run = self.experiment_specs.is_amp()
-        self.n_mel_channels = self.encoder_spec.n_mel_channels()
+        self.n_mel_channels = self.specto_spec.n_mel_channels()
         self.n_frames_per_step = self.experiment_specs.n_frames_per_step
 
         #
-        self.embedding = nn.Embedding(self.experiment_specs.n_symbols, self.experiment_specs.symbols_embedding_dim)
+        self.embedding = nn.Embedding(self.experiment_specs.n_symbols,
+                                      self.specto_spec.symbols_embedding_dim())
         #
-        std = sqrt(2.0 / (self.experiment_specs.n_symbols + self.experiment_specs.symbols_embedding_dim))
+        std = sqrt(2.0 / (self.experiment_specs.n_symbols +
+                          self.specto_spec.symbols_embedding_dim()))
+
         val = sqrt(3.0) * std  # uniform bounds for std
 
         self.embedding.weight.data.uniform_(-val, val)
