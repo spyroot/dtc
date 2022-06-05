@@ -190,62 +190,26 @@ def plot_example(trainer_spec, version=3, dataset_name=None, verbose=True, targe
     print("--- %s load time, seconds ---" % (time.time() - start_time))
     fig = plt.figure()
 
-    # winsound.PlaySound("SystemExit", winsound.SND_ALIAS)
-
     start_time = time.time()
     for bidx, batch in enumerate(_train_loader):
         text_padded, input_lengths, mel_padded, gate_padded, output_lengths, stft_padded = batch
-        # print(mel_padded.shape)
-        # print(gate_padded.shape)
-        # print(output_lengths.shape)
-        # print(stft_padded.shape)
 
-        plot_spectrogram_to_numpy(mel_padded[0], file_name="default_mel.png")
-        plot_spectrogram(stft_padded[0], title="Spectrogram", ylabel="mel freq", file_name="default_stft.png")
-
-        # print(output_lengths[0].item())
-        # f, ax = plt.subplots()
-        # plt.show()
-        # fig, ax = plt.subplots()
-        # img = librosa.display.specshow(librosa.amplitude_to_db(stft_padded[0],
-        #                                                        ref=np.max),
-        #                                y_axis='log', x_axis='time', ax=ax)
-        # ax.set_title('Power spectrogram')
-        # fig.colorbar(img, ax=ax, format="%+2.0f dB")
-        #
-        #
+        plot_spectrogram_to_numpy(mel_padded[0], file_name="results/default_mel.png")
+        plot_spectrogram(stft_padded[0], title="Spectrogram", ylabel="mel freq", file_name="results/default_stft.png")
 
         # MEL
+        S = librosa.feature.inverse.mel_to_stft(mel_padded[0].numpy())
+        y = librosa.griffinlim(S)
+        import soundfile as sf
+        sf.write('results/default.wav', y, 22050, 'PCM_24')
 
-        # S = librosa.feature.inverse.mel_to_stft(mel_padded[0].numpy())
-        # y = librosa.griffinlim(S)
-        # import soundfile as sf
-        # sf.write('default.wav', y, 22050, 'PCM_24')
-
-        # S = librosa.feature.inverse.mel_to_stft(stft_padded[0].numpy())
-        # y = librosa.griffinlim(S)
-        # import soundfile as sf
-        # sf.write('default.wav', y, 22050, 'PCM_24')
-
-        original_len = output_lengths[0].item()
         # istf
-
-        print("done")
-        # y_numpy = stft_padded.squeeze(0)
         y_numpy = stft_padded.numpy()
-        print(y_numpy.shape)
-        # n = ((y_numpy.shape[0] * y_numpy.shape[1]) // 2)
-
         for i in range(0, y_numpy.shape[0]):
             n = (y_numpy[bidx].shape[i] * y_numpy[i].shape[1])
-            print("N", n)
             y_out = librosa.istft(y_numpy[i], length=n)
-            print(y_out.shape, n)
             import soundfile as sf
-            sf.write(f'default12345_{i}.wav', y_out, 22050, 'PCM_24')
-        # playsound('default.wav')
-        # IPython.display.Audio(data=y, rate=22050)
-        # playsound(y)
+            sf.write(f'results/default_stft_{i}.wav', y_out, 22050, 'PCM_24')
         break
 
     fig.show()

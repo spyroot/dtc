@@ -85,7 +85,7 @@ def plot_spectrogram(spec, title=None, ylabel='freq_bin', aspect='auto', xmax=No
     fig.colorbar(im, ax=axs)
     plt.show(block=False)
 
-    if len(file_name) > 0:
+    if file_name is not None and len(file_name) > 0:
         plt.savefig(file_name)
         plt.close()
         return

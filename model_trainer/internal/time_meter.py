@@ -1,47 +1,12 @@
 import time
-
-
-class AverageMeter:
-    """
-    Computes and stores the average and current value.
-
-        Attributes:
-        val - last value
-        avg - true average
-        avg_smooth - smoothed average
-    """
-
-    def __init__(self, name="Meter", avg_mom=0.9):
-        self.avg_mom = avg_mom
-        self.name = name
-        self.reset()
-
-    def reset(self):
-        self.val = 0
-        self.avg = 0
-        self.avg_smooth = 0
-        self.count = 0
-
-    def update(self, val):
-        self.val = val
-        if self.count == 0:
-            self.avg_smooth = val
-        else:
-            self.avg_smooth *= self.avg_mom
-            self.avg_smooth += val * (1 - self.avg_mom)
-        self.count += 1
-        self.avg *= (self.count - 1) / self.count
-        self.avg += val / self.count
-
-    def __call__(self, val):
-        return self.update(val)
-
-    def __repr__(self):
-        return f"AverageMeter(name={self.name}, avg={self.avg:.3f}, count={self.count})"
+from .average_meter import AverageMeter
 
 
 class TimeMeter:
     def __init__(self):
+        self.start = None
+        self.data_time = None
+        self.batch_time = None
         self.reset()
 
     def reset(self):

@@ -87,7 +87,6 @@ def make_image(tensor, rescale=1, rois=None, labels=None):
 
 def save_figure_to_numpy(fig):
     """
-
     :param fig:
     :return:
     """

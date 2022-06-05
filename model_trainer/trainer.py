@@ -5,11 +5,15 @@
 # import torch.distributed as dist
 # import queue
 import random
-import sys
 from abc import ABC
+# from frozendict import frozendict
+from collections import defaultdict
+# from multiprocessing import Queue
+from collections import deque
 from pathlib import Path
 from typing import Callable, Optional
 
+import matplotlib.pylab as plt
 import numpy as np
 import torch
 import torch.distributed as dist
@@ -21,28 +25,22 @@ from torch import nn
 from torch import optim
 from torch.nn.utils import clip_grad_norm_
 from tqdm import tqdm, tnrange
-from yaml import warnings
-# from frozendict import frozendict
-from collections import defaultdict
 
 from model_loader.stft_dataloader import SFTFDataloader
-from model_trainer.internal.abstract_trainer import TrainerError, AbstractTrainer
 from model_trainer.distributed_wrapper import DistributedDataWrapper
+from model_trainer.internal.abstract_trainer import TrainerError, AbstractTrainer
 from model_trainer.internal.call_interface import BaseCallbacks
+from model_trainer.internal.const import ReduceMode, MetricType
+from model_trainer.plotting_utils import plot_alignment_to_numpy, plot_spectrogram_to_numpy
 from model_trainer.trainer_logger import TensorboardTrainerLogger
 from model_trainer.trainer_metrics import Metrics
 from model_trainer.trainer_specs import ExperimentSpecs
+from model_trainer.utils import fmtl_print, to_gpu
 # from distributed import apply_gradient_allreduce
 from models.loss_function import Tacotron2Loss
 from models.loss_function3 import DTSLoss
 from models.tacatronv30.model import Tacotron3
 from models.tacotronv25.model import Tacotron25
-from model_trainer.plotting_utils import plot_alignment_to_numpy, plot_spectrogram_to_numpy
-from model_trainer.utils import fmtl_print, to_gpu
-
-# from multiprocessing import Queue
-from collections import deque
-import matplotlib.pylab as plt
 from text import text_to_sequence
 
 
@@ -192,6 +190,8 @@ class Trainer(AbstractTrainer, ABC):
                                   num_epochs=self.state.trainer_spec.epochs(),
                                   num_batches=self.total_batches,
                                   batch_size=self.state.trainer_spec.batch_size(),
+                                  metric_type=MetricType.MEAN,
+                                  mode=ReduceMode.MIN,
                                   verbose=False)
 
         print("got")
@@ -888,8 +888,9 @@ class Trainer(AbstractTrainer, ABC):
             for layer in self._models[m]:
                 model_file = self.state.trainer_spec.model_files.get_model_file_path(layer)
                 if not self.state.disable_pbar:
-                    self.tqdm_iter.set_description(f"Saving in progress, device {self.state.device}")
+                    self.tqdm_iter.set_description(f"Saving in progress, {self.state.device}")
                 self._save_model(model_name=m, layer_name=layer, file_path=model_file)
+
 
     def save_models(self, model_files: list[str], step=0):
         """
@@ -1078,12 +1079,12 @@ class Trainer(AbstractTrainer, ABC):
         self.metric.update_bach_estimated(len(self._validation_loader))
         self.metric.on_prediction_batch_start()
         if warmup:
-            self.tqdm_iter.set_description(f"Warm up in progress, device {self.state.device}")
+            self.tqdm_iter.set_description(f"Warm up in progress, {self.state.device}")
         else:
-            self.tqdm_iter.set_description(f"Validation in progress, device {self.state.device}")
+            self.tqdm_iter.set_description(f"Validation in progress, {self.state.device}")
 
         count = 0
-        aggregate_loss_term = defaultdict(float)
+        aggregated_loss_term = defaultdict(float)
         with torch.no_grad():
             current_batch_size = len(self._validation_loader)
             for batch_idx, batch in enumerate(self._validation_loader):
@@ -1117,12 +1118,12 @@ class Trainer(AbstractTrainer, ABC):
 
                 # sum each loss term
                 for k in all_reduced_loss:
-                    aggregate_loss_term[k] += all_reduced_loss[k]
+                    aggregated_loss_term[k] += all_reduced_loss[k]
                 count += 1
 
-        # normalize at the end
-        for k in aggregate_loss_term:
-            aggregate_loss_term[k] = (aggregate_loss_term[k] / (batch_idx + 1))
+        # normalize at the update key
+        for k in aggregated_loss_term:
+            aggregated_loss_term[k] = (aggregated_loss_term[k] / (batch_idx + 1))
 
         self._callback.validation_end()
         self.metric.on_prediction_batch_end()
@@ -1139,10 +1140,15 @@ class Trainer(AbstractTrainer, ABC):
             # }
 
             if count > 0:
-                self.tf_logger.log_validation(self.metric.total_train_mean_loss(),
+                criterions = {
+                    "loss/validation": aggregated_loss_term['loss'],
+                    "validation/validation_mel_loss": aggregated_loss_term['mel_loss'],
+                    "validation/validation_gate_loss": aggregated_loss_term['gate_loss'],
+                }
+                self.tf_logger.log_validation(criterions,
                                               model, y, y_pred, step=self.state.step)
 
-        return aggregate_loss_term
+        return aggregated_loss_term
 
     def update_running_state(self, model_name: str, layer_name: str) -> tuple[int, int]:
         """
@@ -1202,8 +1208,7 @@ class Trainer(AbstractTrainer, ABC):
         model.eval()
 
         if isinstance(input_seq, str):
-            # input_seq = np.array(text_to_sequence(input_seq, ['english_cleaners']))[None, :]
-            # print(input_seq.shape)
+
             sequence = np.array(text_to_sequence(input_seq, ['english_cleaners']))[None, :]
             sequence = torch.autograd.Variable(
                     torch.from_numpy(sequence)).to(self.state.device).long()
@@ -1212,9 +1217,6 @@ class Trainer(AbstractTrainer, ABC):
 
         with torch.no_grad():
             mel_outputs, mel_outputs_postnet, _, alignments = model.inference(sequence)
-            print(mel_outputs.shape)
-            print(mel_outputs_postnet.shape)
-            print(alignments.shape)
 
             mel_outputs, mel_outputs_postnet, _, alignments = model.inference(sequence)
             if plot:
@@ -1340,7 +1342,7 @@ class Trainer(AbstractTrainer, ABC):
                 # print(len(y_pred))
                 # for ret in y_pred:
                 #     print(ret.dtype)
-                    # assert ret.dtype is torch.float16
+                # assert ret.dtype is torch.float16
                 # if self.state.trainer_spec.is_distributed_run():
                 #     reduced_loss = dist.reduce_tensor(loss.data, n_gpus).item()
 
@@ -1387,7 +1389,7 @@ class Trainer(AbstractTrainer, ABC):
                                                 'batch mean': self.metric.batch_grad_loss.mean(),
                                                 'loss': normal_loss,
                                                 'epoch': self.metric.epoch_train_gn_loss.mean(),
-                                               # 'spectral_loss': spectral_loss.item(),
+                                                 # 'spectral_loss': spectral_loss.item(),
                                                 'mel': mel_loss.item(),
                                                 'gate': gate_loss.item(),
                                                 'batch': f"{batch_idx}/{loader_data_size}",
@@ -1402,6 +1404,7 @@ class Trainer(AbstractTrainer, ABC):
             # ray has issue with torch and tensorboard.
             if self.state.rank == 0 and self.state.is_hyper_tunner is False:
                 self.save_if_need(step=current_step)
+                self.tqdm_iter.set_description(f"Training in progress, {self.state.device}")
 
                 # dist.barrier()
                 # hparam we want track.
@@ -1410,12 +1413,12 @@ class Trainer(AbstractTrainer, ABC):
                     'batch_size': self.state.batch_size,
                 }
                 metrics = {
-                    'loss/loss': normal_loss,
-                    'loss/validation': grad_norm,
+                    'loss/normal_loss': normal_loss,
+                    'loss/grad_loss': grad_norm,
                 }
                 criterions = {
                     "loss/normal_loss": normal_loss,
-                    "loss/loss": grad_norm,
+                    "loss/grad_loss": grad_norm,
                     "loss/mel_loss": mel_loss,
                     "loss/gate_loss": gate_loss,
                 }
@@ -1448,12 +1451,6 @@ class Trainer(AbstractTrainer, ABC):
         mel_padded = to_gpu(mel_padded, device).float()
         gate_padded = to_gpu(gate_padded, device).float()
         output_lengths = to_gpu(output_lengths, device).long()
-
-        # assert text_padded.get_device() == 0
-        # assert input_lengths.get_device() == 0
-        # assert mel_padded.get_device() == 0
-        # assert gate_padded.get_device() == 0
-        # assert output_lengths.get_device() == 0
 
         return (text_padded, input_lengths, mel_padded, max_len, output_lengths), \
                (mel_padded, gate_padded)

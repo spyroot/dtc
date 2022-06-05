@@ -150,7 +150,7 @@ settings:
         shuffle: False
   small:
     epochs: 1000
-    batch_size: 1
+    batch_size: 32
     grad_clipping: True
     grad_max_norm : 1.0
     tensorboard_update: 100       # update rate for tensorboard

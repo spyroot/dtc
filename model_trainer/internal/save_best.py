@@ -4,11 +4,7 @@ from typing import Optional
 import numpy as np
 from loguru import logger
 from .call_interface import Callback
-
-
-class ReduceMode(Enum):
-    MIN = "min"
-    MAX = "max"
+from .const import ReduceMode
 
 
 class CheckpointBest(Callback):

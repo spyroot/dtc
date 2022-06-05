@@ -15,12 +15,12 @@ class ResetOptimizer(Callback):
         self.verbose = verbose
 
     def on_epoch_end(self):
-        if self.state.epoch_log in self.reset_epochs:
+        if self.trainer.state.epoch_log in self.reset_epochs:
             # any optimizer inherited from torch.Optimizer has state which can be reset
-            if hasattr(self.state.optimizer, "optimizer"):  # for lookahead
-                self.state.optimizer.optimizer.state = defaultdict(dict)
+            if hasattr(self.trainer.state.optimizer, "optimizer"):  # for lookahead
+                self.trainer.state.current_optimizer.state = defaultdict(dict)
             else:
-                self.state.optimizer.state = defaultdict(dict)
+                self.trainer.state.current_optimizer.state = defaultdict(dict)
 
             if self.verbose:
                 logger.info("Reseting optimizer")

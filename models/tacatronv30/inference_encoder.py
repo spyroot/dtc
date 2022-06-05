@@ -41,7 +41,7 @@ class InferenceEncoder(nn.Module):
         :param y:
         :return:
         """
-        xy = x if y is None else torch.cat((x, y), dim=1)
-        h = self.net(xy)
+        combined_xy = x if y is None else torch.cat((x, y), dim=1)
+        h = self.net(combined_xy)
         m, v = self.gaussian_parameters(h, dim=1)
         return m, v

@@ -14,11 +14,9 @@ class Callback(object):
         self.trainer: AbstractTrainer = Optional[None]
 
     def register_trainer(self, trainer):
-        print("registering trainer")
         self.trainer = trainer
 
     def register_metric(self, metric):
-        print("registering metric")
         self.metric = metric
 
     def on_batch_begin(self):
@@ -60,9 +58,7 @@ class Callback(object):
 
 class BaseCallbacks(Callback):
     """
-
     """
-
     def __init__(self, callbacks):
         super().__init__()
         self.callbacks = listify(callbacks)
