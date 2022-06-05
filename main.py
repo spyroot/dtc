@@ -957,7 +957,7 @@ if __name__ == '__main__':
     try:
         set_logger(args.verbose)
         # trainer_spec = ExperimentSpecs(spec_config=args.config, verbose=args.verbose)
-         main(args)
+        main(args)
         # setup_handler(cleanup(is_distributed))
     except FileNotFoundError as file_error:
         print("File not found ", str(file_error))
