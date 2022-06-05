@@ -1,20 +1,7 @@
 import time
-
 import torch
-
 from model_trainer.utils import to_gpu
-
-try:
-    import ray
-    from ray import tune
-    from ray.tune import CLIReporter
-    from ray.tune.schedulers import ASHAScheduler
-    from tunner import Trainable
-except ImportError:
-    pass
-
 from tqdm import tqdm
-
 from model_loader.stft_dataloader import SFTFDataloader
 from model_trainer.trainer_specs import ExperimentSpecs
 
