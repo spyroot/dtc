@@ -16,3 +16,7 @@ numba~=0.55.1
 attrs~=21.4.0
 pyyaml~=5.4.1
 matplotlib
+librosa
+ray
+loguru
+tqdm
