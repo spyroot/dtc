@@ -1,7 +1,10 @@
 # SFTacotronSTFT3,
 #
-# Create SFT from audio file.  Unlike original MEL,
-# It also extracts additional spectral feature.
+# Create SFT from audio file.  Unlike original Tacotron
+# This layer extracted MEL, STFT.  Note we currently
+# pass directly Complex64.  At the moment torch supports
+# L1 loss for complex64 but in practive we only use magnitude
+# from original  STFT.
 #
 #
 # Mustafa
@@ -91,25 +94,20 @@ class TacotronSTFT3(torch.nn.Module):
         output = dynamic_range_decompression(magnitudes)
         return output
 
-    def mel_spectrogram(self, y, filter_length=None, stft=False) -> Tuple[Tensor, Tensor]:
+    def mel_spectrogram(self, y, filter_length=None, stft=True) -> Tuple[Tensor, Tensor]:
         """
         Computes spectral flatness and mel spectrogram from a batch.
 
-        :param stft:
+        :param stft: flag disable stft generation. note this mainly for a/b testing.
         :param filter_length:  n_fft
         :param y: tensor shape (batch, tensor), value normalized in range [-1, 1]
         :return:  torch.FloatTensor of shape (B, n_mel_channels, T)
         """
-        # assert (torch.min(y.data) >= -1)
-        # assert (torch.max(y.data) <= 1)
         magnitudes, phases = self.stft_fn.transform(y)
-        # print(magnitudes.shape)
-        # print(phases.shape)
 
         magnitudes = magnitudes.data
         mel_output = torch.matmul(self.mel_basis3, magnitudes)
         mel_output = self.spectral_normalize(mel_output)
-        # mel_numpy = self.mel_basis3.numpy()
 
         _filter_length = self.filter_length
         if filter_length is not None:
@@ -117,19 +115,21 @@ class TacotronSTFT3(torch.nn.Module):
 
         y_numpy = y.squeeze(0).numpy()
 
-        #  print(y_numpy)
         # sfts_y = librosa.stft(y_numpy,
         #                       n_fft=1024,
         #                       hop_length=self.hop_length,
         #                       win_length=self.win_length,
         #                       center=True)
+        if stft:
+            n = len(y_numpy)
+            y_pad = librosa.util.fix_length(y_numpy, size=n + self.filter_length // 2)
+            D = librosa.stft(y_pad, n_fft=self.filter_length,
+                             hop_length=self.hop_length,
+                             win_length=self.win_length)
 
-        n = len(y_numpy)
-        n_fft = 1024
-        y_pad = librosa.util.fix_length(y_numpy, size=n + n_fft // 2)
-        D = librosa.stft(y_pad, n_fft=n_fft, hop_length=self.hop_length, win_length=self.win_length)
-
-        return mel_output, torch.from_numpy(D)
+            return mel_output, torch.from_numpy(D)
+        else:
+            return mel_output
 
 
 def normalize_audio(filename):
@@ -137,9 +137,6 @@ def normalize_audio(filename):
     audio_norm = audio / 32768.0
     audio_norm = audio_norm.unsqueeze(0)
     audio_norm = torch.autograd.Variable(audio_norm, requires_grad=False)
-    # print(sample_rate)
-    # print(audio.shape)
-    # print(audio_norm.shape)
     return audio_norm
 
 

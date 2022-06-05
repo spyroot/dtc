@@ -15,10 +15,9 @@ class InferenceDecoder(nn.Module):
                 nn.ELU(),
                 nn.Linear(hidden_dim, hidden_dim),
                 nn.ELU(),
-                nn.Linear(hidden_dim, 1024)
+                nn.Linear(hidden_dim, self.z_dim)
         )
 
     def forward(self, z, y=None):
         zy = z if y is None else torch.cat((z, y), dim=1)
         return self.net(zy)
-
