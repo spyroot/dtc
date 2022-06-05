@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Tuple
 
 import librosa
-import numpy as np
 import torch
 import torch.utils.data
 from librosa.filters import mel as librosa_mel_fn
@@ -117,69 +116,19 @@ class TacotronSTFT3(torch.nn.Module):
             _filter_length = filter_length
 
         y_numpy = y.squeeze(0).numpy()
-        #  print(y_numpy)
 
-        sfts_y = librosa.stft(y_numpy,
-                              n_fft=1024,
-                              hop_length=self.hop_length,
-                              win_length=self.win_length,
-                              center=True)
+        #  print(y_numpy)
+        # sfts_y = librosa.stft(y_numpy,
+        #                       n_fft=1024,
+        #                       hop_length=self.hop_length,
+        #                       win_length=self.win_length,
+        #                       center=True)
 
         n = len(y_numpy)
         n_fft = 1024
         y_pad = librosa.util.fix_length(y_numpy, size=n + n_fft // 2)
-        D = librosa.stft(y_pad, n_fft=n_fft)
-        # print("original shape", D.shape, " original n ", n)
-        # y_out = librosa.istft(D, length=n)
+        D = librosa.stft(y_pad, n_fft=n_fft, hop_length=self.hop_length, win_length=self.win_length)
 
-        # print(np.max(np.abs(y - y_out)))
-        # S = librosa.istft(sfts_y)
-        # y = librosa.griffinlim(S)
-
-        # print("Writting to a file")
-        # import soundfile as sf
-        # sf.write('default1234.wav', y_out, 22050, 'PCM_24')
-
-        # sys.exit(1)
-        # print("s", sfts_y.dtype)
-        # print("mean dleta", magnitudes.mean().item() - sfts_y.mean())
-        # print("FIlter",  self.filter_length)
-        # print(self.hop_length)
-        # print(self.win_length)
-
-        # S = np.abs(sfts_y)
-        # print(sfts_y.shape)
-        # print(S.shape)
-        #
-        # print(self.sampling_rate)
-        # pitches, _ = librosa.piptrack(S=S, sr=self.sampling_rate)
-        # print("Pitch", pitches.shape)
-
-        # S = np.abs(sfts_y)
-        # print("sfts_y shape", sfts_y.shape)
-        # print("sfts_y S", S.shape)
-        # print(S)
-        #
-        # print("sfts_y shape", sfts_y.shape)
-        # print("sfts_y S", S.shape)
-
-        # flat01 = librosa.feature.spectral_flatness(y=y_numpy,
-        #                                            n_fft=_filter_length,
-        #                                            hop_length=self.hop_length,
-        #                                            win_length=self.win_length,
-        #                                            center=True)
-        #
-        #
-        #
-        # flat01 = librosa.util.pad_center(flat01, size=1024, axis=1)
-
-        # if stft:
-        #     sfts_y = librosa.stft(n_fft=_filter_length,
-        #                           hop_length=self.hop_length,
-        #                           win_length=self.win_length,
-        #                           center=True)
-
-        # flatness = torch.from_numpy(flat01)
         return mel_output, torch.from_numpy(D)
 
 
