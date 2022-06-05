@@ -571,7 +571,6 @@ class SFTFDataloader:
         return self._datasets['train_set'][0]
 
 
-
 #
 #
 # def test_from_subset_data_loader_from_raw():
@@ -678,16 +677,17 @@ class SFTFDataloader:
 #               f"total batches {total_batches} total batches {num_batched}")
 
 
-def batch_reader(self, batch, device):
+def batch_reader(batch, device):
     """
+
     Batch parser for DTS.
     :param device:
     :param batch:
     :return:
     """
-    text_padded, input_lengths, mel_padded, gate_padded, output_lengths, spectral = batch
+    text_padded, input_lengths, mel_padded, gate_padded, output_lengths, stft = batch
     text_padded = to_gpu(text_padded, device).long()
-    spectral = to_gpu(spectral, device).float()
+    stft = to_gpu(stft, device).float()
     input_lengths = to_gpu(input_lengths, device).long()
     max_len = torch.max(input_lengths.data).item()
     mel_padded = to_gpu(mel_padded, device).float()
@@ -700,13 +700,41 @@ def batch_reader(self, batch, device):
     # assert gate_padded.get_device() == 0
     # assert output_lengths.get_device() == 0
 
-    return (text_padded, input_lengths, mel_padded, max_len, output_lengths, spectral), \
-           (mel_padded, gate_padded, spectral)
+    return (text_padded, input_lengths, mel_padded, max_len, output_lengths, stft), \
+           (mel_padded, gate_padded, stft)
 
 
 from timeit import default_timer as timer
 
-def v3_dataloader_audio():
+
+def v3_dataloader_tensor_test():
+    """
+
+    :return:
+    """
+    spec = ExperimentSpecs(spec_config='../config.yaml')
+    model_spec = spec.get_model_spec().get_spec('spectrogram_layer')
+    dataloader = SFTFDataloader(spec, verbose=True)
+    _device = torch.device(f"cuda" if torch.cuda.is_available() else "cpu")
+
+    # get all
+    data_loaders, collate_fn = dataloader.get_all()
+    _train_loader = data_loaders['train_set']
+
+    # full GPU pass
+    start = timer()
+    start_time = time.time()
+
+    print(f"Dataloader datasize {dataloader.get_train_dataset_size()}")
+    print("--- %s load time, seconds ---" % (time.time() - start_time))
+    start_time = time.time()
+    for bidx, batch in enumerate(_train_loader):
+        x, y = batch_reader(batch, device=_device)
+
+    print("--- %s Single batch memory load, load time, seconds ---" % (time.time() - start_time))
+
+
+def v3_dataloader_audio_test():
     """
 
     :return:
@@ -741,4 +769,4 @@ if __name__ == '__main__':
     # test_from_subset_data_loader_from_raw()
     # test_download_numpy_files()
     # test_download_torch_files()
-    v3_dataloader_audio()
+    v3_dataloader_audio_test()
