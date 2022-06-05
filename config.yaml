@@ -1,7 +1,7 @@
 train: True                 # train or not,  default is True for generation we only need load pre-trained model
 #active: 'grid_small'       # dataset set generated.
 #use_dataset: 'LJSpeechSmallPkl'     # dataset set generated.
-use_dataset: 'lj_speech_full2'     # dataset set generated.
+use_dataset: 'LJSpeech2'     # dataset set generated.
 use_model: 'dts'     # model to use , it must be defined in models section.
 draw_prediction: True       # at the of training draw.
 load_model: True            # load model or not, and what
@@ -50,6 +50,16 @@ datasets:
     meta: metadata.csv
     recursive: False
     file_type: "torch"
+  LJSpeech2:
+    ds_type: "audio"
+    file_type: "wav"
+    format: raw
+    dir: "~/src/dtc/dataset/LJSpeech-1.1"
+    training_meta: ljs_audio_text_train_filelist.txt
+    validation_meta: ljs_audio_text_val_filelist.txt
+    test_meta: ljs_audio_text_test_filelist.txt
+    meta: metadata.csv
+    recursive: False
   lj_speech_full2:
     format: tensor_mel
     ds_type: "audio"
