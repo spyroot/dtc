@@ -43,6 +43,16 @@ models:
         self._model_dict = model_dict
         self.n_frames_per_step = 1
 
+    def is_reverse_decoder(self) -> bool:
+        """
+        Return true if spec contains reverse decoder.
+        :return:
+        """
+        if 'reverse_decoder' in self._model_dict:
+            return bool(self._model_dict['reverse_decoder'])
+
+        return False
+
     def encoder_spec(self):
         return ['encoder']
 

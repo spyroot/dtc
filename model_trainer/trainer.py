@@ -181,7 +181,7 @@ class Trainer(AbstractTrainer, ABC):
             if self.state.is_hyper_tunner is False:
                 # by default, we log model name currently trainer and batch size.
                 precision = "fp32" if not self.state.is_amp else "fp16"
-                self.tf_logger = TensorboardTrainerLogger(trainer_spec.tensorboard_update_rate(),
+                self.tf_logger = TensorboardTrainerLogger(trainer_spec=trainer_spec,
                                                           model_name=trainer_spec.get_active_model(),
                                                           batch_size=trainer_spec.batch_size(),
                                                           precision=precision,

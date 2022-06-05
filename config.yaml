@@ -1,8 +1,8 @@
 train: True                 # train or not,  default is True for generation we only need load pre-trained model
 #active: 'grid_small'       # dataset set generated.
 #use_dataset: 'LJSpeechSmallPkl'     # dataset set generated.
-use_dataset: 'lj_speech_625'     # dataset set generated.
-use_model: 'dts'            # model to use , it must be defined in models section.
+use_dataset: 'LJSpeech'     # dataset set generated.
+use_model: 'tacotron25'     # model to use , it must be defined in models section.
 draw_prediction: True       # at the of training draw.
 load_model: True            # load model or not, and what
 load_epoch: 500             # load model,  last epoch
@@ -244,6 +244,7 @@ models:
       model: tacotron25
       optimizer: tacotron2_optimizer
 #      lr_scheduler: main_lr_scheduler
+      reverse_decoder: False
       has_input: True
       has_output: True
       max_wav_value: 32768.0
@@ -294,6 +295,7 @@ models:
       model: tacotron3
       optimizer: tacotron2_optimizer
       #      lr_scheduler: main_lr_scheduler
+      reverse_decoder: True
       has_input: True
       has_output: True
       max_wav_value: 32768.0

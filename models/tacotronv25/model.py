@@ -24,7 +24,7 @@ class Tacotron25(nn.Module):
         self.experiment_specs = experiment_specs
         self.model_trainer_spec = experiment_specs
         self.model_spec = experiment_specs.get_model_spec()
-        self.encoder_spec = self.model_spec.get_encoder()
+        self.encoder_spec = self.model_spec.get_spectrogram()
         self.device = device
 
         self.mask_padding = self.experiment_specs.mask_padding

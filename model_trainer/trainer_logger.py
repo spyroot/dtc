@@ -1,20 +1,24 @@
 import random
+from typing import Optional
 
 import torch
 from torch import nn
 from torch.utils.tensorboard import SummaryWriter
 
 from model_trainer.plotting_utils import plot_alignment_to_numpy, plot_spectrogram_to_numpy, plot_gate_outputs_to_numpy
+from model_trainer.trainer_specs import ExperimentSpecs
 
 
 class TensorboardTrainerLogger(SummaryWriter):
     """
     """
 
-    def __init__(self, tensorboard_update_rate=0, model_name="dts", batch_size=32, precision="fp32",
+    def __init__(self, trainer_spec: ExperimentSpecs,
+                 model_name: Optional[str] = "dts",
+                 batch_size: Optional[int] = 32,
+                 precision: Optional[str] = "fp32",
                  comments="", logdir=None, is_distributed=False):
         """
-        :param tensorboard_update_rate:
         :param logdir:
         :param is_distributed:
         """
@@ -22,13 +26,17 @@ class TensorboardTrainerLogger(SummaryWriter):
                                                        comment="dts",
                                                        filename_suffix="dts",
                                                        flush_secs=2)
-        self.update_rate = tensorboard_update_rate
+
+        self.trainer_spec = trainer_spec
+        self.update_rate = trainer_spec.tensorboard_update_rate()
+        self.spectrogram_spec = trainer_spec.get_model_spec().get_spectrogram()
+        self.is_reverse_decoder = self.spectrogram_spec.is_reverse_decoder()
 
     def log_training(self, criterions: dict, step, lr, hparams=None, metrics=None, extra_data=None) -> None:
         """
-
-        :param metrics:
-        :param criterions:
+        Log trainer result to tensorboard.
+        :param metrics: metric all term attach to hparams.
+        :param criterions: criterions all loss term in dict.
         :param step:  current step of in training loop
         :param hparams:  dict host hparams.
         :param lr: learning rate
@@ -65,7 +73,7 @@ class TensorboardTrainerLogger(SummaryWriter):
         self.add_hparams(hp_dict, metrics)
 
     def log_validation(self, criterions: dict, model: nn.Module, y, y_pred, step=None,
-                       mel_filter=True, v3=True, is_reversed=True) -> None:
+                       mel_filter=True, v3=True) -> None:
         """
         Log validation step.
         :param criterions: dict that must hold all loss metric.
@@ -74,8 +82,7 @@ class TensorboardTrainerLogger(SummaryWriter):
         :param y_pred:
         :param step: current execution step.
         :param mel_filter:
-        :param is_reversed:   For dual decoder case we report additional metrics.
-        :param v3:  For v3 DTC model we report STFT
+        :param v3: For v3 DTC model we report STFT
         :return:
         """
         if self.update_rate == 0 or step % self.update_rate != 0:
@@ -89,12 +96,12 @@ class TensorboardTrainerLogger(SummaryWriter):
 
         # self.add_scalar("loss/validation", loss, step)
 
-        if is_reversed:
+        if self.is_reverse_decoder:
             _, mel_outputs, gate_outputs, alignments, rev = y_pred
             mel_out_rev, gate_out_rev, alignments_rev = rev
             mel_targets, gate_targets, stft = y
         else:
-            _, mel_outputs, gate_outputs, alignments, _ = y_pred
+            _, mel_outputs, gate_outputs, alignments = y_pred
             mel_targets, gate_targets = y
 
         # plot distribution of parameters
@@ -110,7 +117,7 @@ class TensorboardTrainerLogger(SummaryWriter):
                 plot_alignment_to_numpy(alignments[idx].data.cpu().numpy().T),
                 step, dataformats='HWC')
 
-        if is_reversed and alignments_rev is not None:
+        if self.is_reverse_decoder and alignments_rev is not None:
             self.add_image(
                     "alignment/alignments_right",
                     plot_alignment_to_numpy(alignments_rev[idx].data.cpu().numpy().T),
@@ -139,14 +146,14 @@ class TensorboardTrainerLogger(SummaryWriter):
         #         plot_sft(stft[idx].data.cpu().numpy()), step, dataformats='HWC')
 
         self.add_image(
-                "gate",
+                "gate/gate",
                 plot_gate_outputs_to_numpy(
                         gate_targets[idx].data.cpu().numpy(),
                         torch.sigmoid(gate_outputs[idx]).data.cpu().numpy()),
                 step, dataformats='HWC')
-        if is_reversed and gate_out_rev is not None:
+        if self.is_reverse_decoder and gate_out_rev is not None:
             self.add_image(
-                    "gate_rev",
+                    "gate/gate_rev",
                     plot_gate_outputs_to_numpy(
                             gate_targets[idx].data.cpu().numpy(),
                             torch.sigmoid(gate_out_rev[idx]).data.cpu().numpy()), step, dataformats='HWC')

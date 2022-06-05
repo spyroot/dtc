@@ -1,21 +1,16 @@
-import librosa
 from torch import nn
-import torch
-from torch.distributions.kl import kl_divergence
-from torch.distributions.normal import Normal
-from torch.distributions.kl import kl_divergence
-from torch.nn import functional as F
 
 
 class Tacotron2Loss(nn.Module):
     """
-
     """
-
     def __init__(self, filter_length=1024, hop_length=256, win_length=1024,
                  n_mel_channels=80, sampling_rate=22050, mel_fmin=0.0, sr=22050, n_fft=2048, fmax=8000,
-                 mel_fmax=8000.0):
+                 mel_fmax=8000.0, device=None):
         super(Tacotron2Loss, self).__init__()
+        self.filter_length = filter_length
+        self.sample_rate = sampling_rate
+        self.device = device
 
     def forward(self, model_output, targets):
         """

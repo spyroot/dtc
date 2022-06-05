@@ -41,7 +41,7 @@ class ModelSpecDTS(ModelSpec, ABC):
         if 'spectrogram_layer' not in model_spec:
             raise InvalidModelSpec("Model must contains spectrogram_layer.")
 
-        self._encoder_spec = TacotronSpec(model_spec['spectrogram_layer'])
+        self._spectrogram_spec = TacotronSpec(model_spec['spectrogram_layer'])
         self._sub_models['spectrogram_layer'] = TacotronSpec(model_spec['spectrogram_layer'])
 
     def get_model_param(self):
@@ -56,7 +56,7 @@ class ModelSpecDTS(ModelSpec, ABC):
 
         :return:
         """
-        return self._encoder_spec
+        return self._spectrogram_spec
 
     def sub_models(self):
         """

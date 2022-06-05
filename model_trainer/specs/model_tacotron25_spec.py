@@ -1,8 +1,9 @@
 from abc import ABC
+
+from loguru import logger
+
 from .model_spec import ModelSpec
 from .tacatron_spec import TacotronSpec
-from loguru import logger
-import attr
 
 
 class InvalidModelSpec(Exception):
@@ -39,7 +40,7 @@ class ModelSpecTacotron25(ModelSpec, ABC):
         if 'spectrogram_layer' not in model_spec:
             raise InvalidModelSpec("Model must contains spectrogram_layer.")
 
-        self._encoder_spec = TacotronSpec(model_spec['spectrogram_layer'])
+        self._spectrogram_spec = TacotronSpec(model_spec['spectrogram_layer'])
         self._sub_models['spectrogram_layer'] = TacotronSpec(model_spec['spectrogram_layer'])
 
     def get_model_param(self):
@@ -49,12 +50,12 @@ class ModelSpecTacotron25(ModelSpec, ABC):
         """
         return self._model_dict, self._generator_param_dict
 
-    def get_encoder(self) -> TacotronSpec:
+    def get_spectrogram(self) -> TacotronSpec:
         """
-
+        Return specification for spectrogram layer.
         :return:
         """
-        return self._encoder_spec
+        return self._spectrogram_spec
 
     def sub_models(self):
         """
