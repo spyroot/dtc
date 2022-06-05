@@ -2,7 +2,7 @@ train: True                 # train or not,  default is True for generation we o
 #active: 'grid_small'       # dataset set generated.
 #use_dataset: 'LJSpeechSmallPkl'     # dataset set generated.
 use_dataset: 'LJSpeech'     # dataset set generated.
-use_model: 'dts'     # model to use , it must be defined in models section.
+use_model: 'lj_speech_full2'     # model to use , it must be defined in models section.
 draw_prediction: True       # at the of training draw.
 load_model: True            # load model or not, and what
 load_epoch: 500             # load model,  last epoch
@@ -36,6 +36,24 @@ datasets:
     format: tensor_mel
     ds_type: "audio"
     dir: "~/Dropbox/Datasets/LJSpeech-1.1"
+    dataset_files:
+      - "LJSpeech_train_num_sam_12500_filter_80_3.pt"
+      - "LJSpeech_validate_num_sam_100_filter_80_3.pt"
+      - "LJSpeech_test_num_sam_500_filter_80_3.pt"
+    training_meta: LJSpeech_train_num_sam_12500_filter_80_3.pt
+    validation_meta: LJSpeech_validate_num_sam_100_filter_80_3.pt
+    test_meta: LJSpeech_test_num_sam_500_filter_80_3.pt
+    checksums:
+      - "7bc0f1bac289cfd1ba8ea1c390bddf8f"
+      - "5d3b94b131c08afcca993dfbec54c63a"
+      - "3291d802351928da7c5d0d9c917c2663"
+    meta: metadata.csv
+    recursive: False
+    file_type: "torch"
+  lj_speech_full2:
+    format: tensor_mel
+    ds_type: "audio"
+    dir: "~/src/dtc/dataset/LJSpeech-1.1"
     dataset_files:
       - "LJSpeech_train_num_sam_12500_filter_80_3.pt"
       - "LJSpeech_validate_num_sam_100_filter_80_3.pt"
