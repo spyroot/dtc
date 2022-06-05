@@ -36,45 +36,48 @@ class Decoder(nn.Module):
         self.device = device
 
         self.n_mel_channels = self.specto_spec.n_mel_channels()
-        self.n_frames_per_step = self.experiment_specs.n_frames_per_step
+        self.n_frames_per_step = self.specto_spec.decoder_fps()
         self.encoder_embedding_dim = self.specto_spec.encoder_embedding_dim()
 
-        self.attention_rnn_dim = specs.attention_rnn_dim
-        self.decoder_rnn_dim = specs.decoder_rnn_dim
-        self.pre_net_dim = specs.prenet_dim
-        self.max_decoder_steps = specs.max_decoder_steps
-        self.gate_threshold = specs.gate_threshold
-        self.p_attention_dropout = specs.p_attention_dropout
-        self.p_decoder_dropout = specs.p_decoder_dropout
+        self.attention_rnn_dim = self.specto_spec.attention_rnn_dim()
+        # decoder
+        self.decoder_rnn_dim = self.specto_spec.decoder_rnn_dim()
+        self.max_decoder_steps = self.specto_spec.max_decoder_steps()
+        self.gate_threshold = self.specto_spec.gate_threshold()
+        self.p_attention_dropout = self.specto_spec.p_attention_dropout()
+        self.p_decoder_dropout = self.specto_spec.p_decoder_dropout()
+        self.pre_net_dim = self.specto_spec.pre_net_dim()
 
         # layers
         self.pre_net = Prenet(
-                self.specto_spec.n_mel_channels() * specs.n_frames_per_step,
-                [specs.prenet_dim, specs.prenet_dim])
+                self.specto_spec.n_mel_channels() * self.specto_spec.decoder_fps(),
+                [self.specto_spec.pre_net_dim(), self.specto_spec.pre_net_dim()])
 
         self.attr_rnn = nn.LSTMCell(
-                specs.prenet_dim + self.specto_spec.encoder_embedding_dim(),
-                specs.attention_rnn_dim)
+                self.specto_spec.pre_net_dim() +
+                self.specto_spec.encoder_embedding_dim(),
+                self.specto_spec.attention_rnn_dim())
 
         self.attention_layer = Attention(
-                specs.attention_rnn_dim, self.specto_spec.encoder_embedding_dim(),
-                specs.attention_dim, specs.attention_location_n_filters,
+                self.specto_spec.attention_rnn_dim(),
+                self.specto_spec.encoder_embedding_dim(),
+                self.specto_spec.attention_dim(),
+                specs.attention_location_n_filters,
                 specs.attention_location_kernel_size)
 
-        #
-        self.self_attention = nn.MultiheadAttention(specs.attention_rnn_dim, 32)
-
         self.decoder_rnn = nn.LSTMCell(
-                specs.attention_rnn_dim + self.specto_spec.encoder_embedding_dim(),
-                specs.decoder_rnn_dim, 1)
+                self.specto_spec.attention_rnn_dim() +
+                self.specto_spec.encoder_embedding_dim(),
+                self.specto_spec.decoder_rnn_dim(), 1)
 
         self.linear_projection = LinearNorm(
-                specs.decoder_rnn_dim + self.specto_spec.encoder_embedding_dim(),
-                self.specto_spec.n_mel_channels() * specs.n_frames_per_step)
+                self.specto_spec.decoder_rnn_dim() +
+                self.specto_spec.encoder_embedding_dim(),
+                self.specto_spec.n_mel_channels() * self.specto_spec.decoder_fps())
 
         self.gate_layer = LinearNorm(
-                specs.decoder_rnn_dim + self.specto_spec.encoder_embedding_dim(), 1,
-                bias=True, w_init_gain='sigmoid')
+                self.specto_spec.decoder_rnn_dim() +
+                self.specto_spec.encoder_embedding_dim(), 1, bias=True, w_init_gain='sigmoid')
 
         # states
         self.memory = None
@@ -204,24 +207,6 @@ class Decoder(nn.Module):
         cell_input = torch.cat((decoder_input, self.attr_context), -1)
         self.attr_hidden, self.attr_cell = self.attr_rnn(cell_input, (self.attr_hidden, self.attr_cell))
 
-        # print("Attention hidden", self.attr_hidden.shape)
-        # print("Attention cell", self.attr_cell.shape)
-
-       # attn_output, attn_output_weights = self.self_attention(self.attr_hidden, self.attr_hidden, self.attr_hidden)
-        # for attr in self_attr:
-        #     print(attr.shape)
-
-       # att_mos = attn_output.view(attn_output.size(0), -1)
-      #  print("attr", attn_output.shape)
-       # print("attr_out_we", attn_output_weights.shape)
-
-        # est_MOS = self.relu(self.dense_MOS_2(self_attr))  # B
-        # fc_mos = self.relu(self.dense_MOS_1(att_mos))     # B
-
-        # torch.Size([32, 1024])
-        # torch.Size([32, 32])
-        # att_mos = att_mos.view(att_mos.size(0), -1)
-        #
         self.attr_hidden = F.dropout(self.attr_hidden, self.p_attention_dropout, self.training)
 
         attr_weights_cat = torch.cat(
@@ -233,17 +218,17 @@ class Decoder(nn.Module):
                 attr_weights_cat, self.mask)
 
         # self.attr_weights shape torch.Size([32, 161])
-       #   print("self.attr_weights shape", self.attr_weights.shape)
+        #   print("self.attr_weights shape", self.attr_weights.shape)
 
         # self.attr_weights_cum shape torch.Size([32, 161])
         self.attr_weights_cum += self.attr_weights
 
-      #  print("self.attr_weights_cum shape", self.attr_weights_cum.shape)
+        #  print("self.attr_weights_cum shape", self.attr_weights_cum.shape)
 
         decoder_input = torch.cat((self.attr_hidden, self.attr_context), -1)
 
         # Decoder input shape torch.Size([32, 1536])
-       # print("Decoder input shape", decoder_input.shape)
+        # print("Decoder input shape", decoder_input.shape)
 
         self.decoder_hidden, self.decoder_cell = self.decoder_rnn(decoder_input,
                                                                   (self.decoder_hidden, self.decoder_cell))

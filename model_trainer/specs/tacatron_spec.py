@@ -1,5 +1,4 @@
 import warnings
-
 from loguru import logger
 
 
@@ -41,7 +40,6 @@ models:
         :param model_dict:
         """
         self._model_dict = model_dict
-        self.n_frames_per_step = 1
 
     def is_reverse_decoder(self) -> bool:
         """
@@ -75,7 +73,6 @@ models:
 
     def encoder_spec(self):
         """
-
         :return:
         """
         return ['encoder']
@@ -164,6 +161,113 @@ models:
             raise TacotronSpecError("Model has no encoder specification,"
                                     " Please check configuration.")
         return self._model_dict['encoder']
+
+    def p_attention_dropout(self):
+        """
+        return encoder spec
+        :return:
+        """
+        decoder = self.get_decoder()
+        if 'attention_dropout' in decoder:
+            return decoder['attention_dropout']
+        return 0.1
+
+    def p_decoder_dropout(self):
+        """
+        return encoder spec
+        :return:
+        """
+        decoder = self.get_decoder()
+        if 'decoder_dropout' in decoder:
+            return decoder['decoder_dropout']
+        return 0.1
+
+    def decoder_fps(self) -> int:
+        """
+        return decoder frame per step.
+        :return:
+        """
+        decoder = self.get_decoder()
+        if 'fps' in decoder:
+            return int(decoder['fps'])
+        return 1
+
+    def max_decoder_steps(self) -> int:
+        """
+        return encoder spec
+        :return:
+        """
+        decoder = self.get_decoder()
+        if 'max_decoder_steps' in decoder:
+            return int(decoder['max_decoder_steps'])
+        return 1000
+
+    def gate_threshold(self) -> float:
+        """
+        return encoder spec
+        :return:
+        """
+        decoder = self.get_decoder()
+        if 'gate_threshold' in decoder:
+            return float(decoder['gate_threshold'])
+        return 0.5
+
+    def decoder_rnn_dim(self) -> int:
+        """
+        :return: Return decoder RNN dimension
+        """
+        decoder = self.get_decoder()
+        if 'rnn_dim' in decoder:
+            return int(decoder['rnn_dim'])
+        return 1024
+
+    def pre_net_dim(self) -> int:
+        """
+        return encoder spec
+        :return:
+        """
+        decoder = self.get_decoder()
+        if 'pre_net_dim' in decoder:
+            return int(decoder['pre_net_dim'])
+        return 256
+
+    def get_attention(self):
+        """
+        return encoder spec
+        :return:
+        """
+        if 'attention' not in self._model_dict:
+            raise TacotronSpecError("Model has no attention specification,"
+                                    " Please check configuration.")
+        return self._model_dict['attention']
+
+    def attention_rnn_dim(self) -> int:
+        """
+        :return:
+        """
+        attention = self.get_attention()
+        if 'rnn_dim' in attention:
+            return attention['rnn_dim']
+        return 1024
+
+    def attention_dim(self) -> int:
+        """
+        :return:
+        """
+        attention = self.get_attention()
+        if 'attention_dim' in attention:
+            return attention['attention_dim']
+        return 128
+
+    def get_decoder(self):
+        """
+        return encoder spec
+        :return:
+        """
+        if 'decoder' not in self._model_dict:
+            raise TacotronSpecError("Model has no decoder specification,"
+                                    " Please check configuration.")
+        return self._model_dict['decoder']
 
     def encoder_kernel_size(self) -> int:
         """

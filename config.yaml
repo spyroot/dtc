@@ -231,7 +231,7 @@ optimizers:
     momentum=0:
     betas: [ 0.9, 0.999 ]
     type: Adam
-  tacotron2_optimizer:
+  dtc_optimizer:
     type: Adam
     weight_decay: 1e-6
     betas: [ 0.9, 0.999 ]
@@ -270,7 +270,7 @@ models:
   tacotron25:
     spectrogram_layer:
       model: tacotron25
-      optimizer: tacotron2_optimizer
+      optimizer: dtc_optimizer
 #      lr_scheduler: main_lr_scheduler
       reverse_decoder: False
       has_input: True
@@ -292,17 +292,17 @@ models:
         embedding_dim: 512
         kernel_size: 5
       decoder:
-        n_frames_per_step: = 1  # currently, only 1 is supported
-        decoder_rnn_dim: 1024
-        pre_net_dim: 256
+        fps: 1
         max_decoder_steps: 1000
         gate_threshold: 0.5
-        p_attention_dropout: 0.1
-        p_decoder_dropout: 0.1
+        attention_dropout: 0.1
+        decoder_dropout: 0.1
+        rnn_dim: 1024
+        pre_net_dim: 256
       attention:
         # Attention parameters
-        attention_rnn_dim: 1024
-        self.attention_dim: 128
+        rnn_dim: 1024
+        attention_dim: 128
       attention_location:
         # Location Layer parameters
         attention_location_n_filters: = 32
@@ -322,7 +322,7 @@ models:
   dts:
     spectrogram_layer:
       model: tacotron3
-      optimizer: tacotron2_optimizer
+      optimizer: dtc_optimizer
       #      lr_scheduler: main_lr_scheduler
       reverse_decoder: True
       has_input: True
@@ -343,21 +343,21 @@ models:
         num_convolutions: 3
         embedding_dim: 512
         kernel_size: 5
+      decoder:
+        fps: 1
+        max_decoder_steps: 1000
+        gate_threshold: 0.5
+        attention_dropout: 0.1
+        decoder_dropout: 0.1
+        rnn_dim: 1024
+        pre_net_dim: 256
+      attention:
+        # Attention parameters
+        rnn_dim: 1024
+        attention_dim: 128
     vocoder:
       name: Test
       state: disabled
-      model: GraphLSTM
-      optimizer: edge_optimizer
-      lr_scheduler: main_lr_scheduler
-      input_size: 1
-  GraphLstmRnn:
-    node_model:
-      model: GraphLSTM
-      optimizer: node_optimizer
-      lr_scheduler: main_lr_scheduler
-      has_input: True
-      has_output: True
-    edge_model:
       model: GraphLSTM
       optimizer: edge_optimizer
       lr_scheduler: main_lr_scheduler

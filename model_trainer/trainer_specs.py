@@ -95,33 +95,17 @@ class ExperimentSpecs:
         # if clean tensorboard
         self.clean_tensorboard = False
 
+        # ignore layers
         self.ignore_layers = ['embedding.weight']
 
+        #
         self.load_mel_from_disk = False
 
+        #
         self.text_cleaners = ['english_cleaners']
 
         ################################
         self.n_symbols = len(symbols)
-        #self.symbols_embedding_dim = 512
-
-        # Encoder parameters
-        # self.encoder_kernel_size = 5
-        # self.encoder_n_convolutions = 3
-        # self.encoder_embedding_dim = 512
-
-        # Decoder parameters
-        self.n_frames_per_step = 1
-        self.decoder_rnn_dim = 1024
-        self.prenet_dim = 256
-        self.max_decoder_steps = 1000
-        self.gate_threshold = 0.5
-        self.p_attention_dropout = 0.1
-        self.p_decoder_dropout = 0.1
-
-        # Attention parameters
-        self.attention_rnn_dim = 1024
-        self.attention_dim = 128
 
         # Location Layer parameters
         self.attention_location_n_filters = 32
@@ -137,9 +121,6 @@ class ExperimentSpecs:
         ################################
         self.use_saved_learning_rate = False
 
-        # self.learning_rate = 1e-3
-        # self.weight_decay = 1e-6
-        # 
         self.mask_padding = True  # set model's padded outputs to padded values
         self.dynamic_loss_scaling = True
 
