@@ -128,9 +128,9 @@ class BaseCallbacks(Callback):
         pass
 
 
-def listify(p: Any) -> collections.Iterable:
+def listify(p: Any) -> collections.abc.Iterable:
     if p is None:
         p = []
-    elif not isinstance(p, collections.Iterable):
+    elif not isinstance(p, collections.abc.Iterable):
         p = [p]
     return p
