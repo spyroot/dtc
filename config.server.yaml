@@ -284,10 +284,10 @@ models:
   dts:
     spectrogram_layer:
       model: tacotron3
-      reverse_decoder: True
-      enable_stft_loss: False
-      optimizer: tacotron2_optimizer
+      optimizer: dtc_optimizer
       #      lr_scheduler: main_lr_scheduler
+      reverse_decoder: False
+      enable_stft_loss: True
       has_input: True
       has_output: True
       max_wav_value: 32768.0
@@ -299,6 +299,30 @@ models:
       n_mel_channels: 80
       mel_fmin: 0.0
       mel_fmax: 8000.0
+      symbols_embedding_dim: 512
+      encoder:
+        desc: "Encoder parameters"
+        dropout_rate: 0.5
+        num_convolutions: 3
+        embedding_dim: 512
+        kernel_size: 5
+      decoder:
+        desc: "Decoder layer and parameters"
+        fps: 1
+        max_decoder_steps: 1000
+        gate_threshold: 0.5
+        attention_dropout: 0.1
+        decoder_dropout: 0.1
+        rnn_dim: 1024
+        pre_net_dim: 256
+      attention:
+        desc: "Attention layer and parameters"
+        rnn_dim: 1024
+        attention_dim: 128
+      attention_location:
+        desc: "Location Layer parameters"
+        num_filters: 32
+        kernel_size: 31
     vocoder:
       name: Test
       state: disabled
