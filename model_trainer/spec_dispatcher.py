@@ -1,22 +1,7 @@
-import os
-import sys
-import warnings
-from pathlib import Path
-from typing import List, Callable, Optional
-from typing import Type
+from typing import Callable
 
-import torch
-import yaml
-from loguru import logger
-
-import model_loader
-from model_trainer.utils import fmt_print
-from text.symbols import symbols
-from .model_files import ModelFiles
-from .specs.model_tacotron25_spec import ModelSpecTacotron25
 from .specs.model_dts_spec import ModelSpecDTS
-from .specs.model_spec import ModelSpec
-from model_loader.ds_util import check_integrity
+from .specs.model_tacotron25_spec import ModelSpecTacotron25
 
 
 class SpecsDispatcher:
@@ -27,7 +12,7 @@ class SpecsDispatcher:
         """
         :param verbose:
         """
-        self._verbose: bool = False
+        self._verbose: bool = verbose
         self.dispatchers = self._create_spec_dispatch()
 
     def _create_spec_dispatch(self) -> dict[str, Callable]:
