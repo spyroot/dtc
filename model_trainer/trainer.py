@@ -1481,28 +1481,7 @@ class Trainer(AbstractTrainer, ABC):
         :param batch:
         :return:
         """
-        if self.spectogram_spec.is_stft_loss_enabled():
-            print("Parser expect stft")
-            text_padded, input_lengths, mel_padded, gate_padded, output_lengths, stft = batch
-            sf = stft.contiguous()
-            if torch.cuda.is_available():
-                sf = sf.cuda(non_blocking=True)
-                sf.requires_grad = False
-
-                text_padded = to_gpu(text_padded, device).long()
-                input_lengths = to_gpu(input_lengths, device).long()
-                max_len = torch.max(input_lengths.data).item()
-                mel_padded = to_gpu(mel_padded, device).float()
-                gate_padded = to_gpu(gate_padded, device).float()
-                output_lengths = to_gpu(output_lengths, device).long()
-
-                if stft is not None:
-                    return (text_padded, input_lengths, mel_padded, max_len, output_lengths), \
-                           (mel_padded, gate_padded, stft)
-
-        else:
-            text_padded, input_lengths, mel_padded, gate_padded, output_lengths = batch
-
+        text_padded, input_lengths, mel_padded, gate_padded, output_lengths, stft = batch
         text_padded = to_gpu(text_padded, device).long()
         input_lengths = to_gpu(input_lengths, device).long()
         max_len = torch.max(input_lengths.data).item()
@@ -1510,8 +1489,17 @@ class Trainer(AbstractTrainer, ABC):
         gate_padded = to_gpu(gate_padded, device).float()
         output_lengths = to_gpu(output_lengths, device).long()
 
-        return (text_padded, input_lengths, mel_padded, max_len, output_lengths), \
-               (mel_padded, gate_padded)
+        if self.spectogram_spec.is_stft_loss_enabled():
+            sf = stft.contiguous()
+            if torch.cuda.is_available():
+                sf = sf.cuda(non_blocking=True)
+                sf.requires_grad = False
+
+            return (text_padded, input_lengths, mel_padded, max_len, output_lengths), \
+                   (mel_padded, gate_padded, stft)
+
+        else:
+            text_padded, input_lengths, mel_padded, gate_padded, output_lengths = batch
 
     def cleanup(self):
         """
