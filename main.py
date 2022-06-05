@@ -14,9 +14,13 @@ import numpy as np
 import ray
 import torch.distributed as dist
 from loguru import logger
-from ray import tune
-from ray.tune import CLIReporter
-from ray.tune.schedulers import ASHAScheduler
+try:
+    from ray import tune
+    from ray.tune import CLIReporter
+    from ray.tune.schedulers import ASHAScheduler
+except ImportError:
+    pass
+
 from tqdm import tqdm
 
 from inference_tools import plot_spectrogram
