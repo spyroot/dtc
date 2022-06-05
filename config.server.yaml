@@ -1,5 +1,5 @@
 train: True
-use_dataset: 'lj_speech_625'      # dataset set generated.
+use_dataset: 'lj_speech_full'      # dataset set generated.
 use_model: 'dts'                    # model to use , it must be defined in models section.
 draw_prediction: True               # at the of training draw.
 load_model: True            # load model or not, and what
