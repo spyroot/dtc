@@ -15,6 +15,7 @@ class Attention(nn.Module):
                  attention_location_n_filters, attention_location_kernel_size):
         super(Attention, self).__init__()
 
+
         #
         self.query_layer = LinearNorm(attention_rnn_dim, attention_dim, bias=False, w_init_gain='tanh')
         self.memory_layer = LinearNorm(embedding_dim, attention_dim, bias=False, w_init_gain='tanh')

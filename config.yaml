@@ -287,9 +287,10 @@ models:
       symbols_embedding_dim: 512
       encoder:
         desc: Encoder parameters
-        kernel_size: 5
+        dropout_rate: 0.5
         num_convolutions: 3
         embedding_dim: 512
+        kernel_size: 5
       decoder:
         n_frames_per_step: = 1  # currently, only 1 is supported
         decoder_rnn_dim: 1024
@@ -336,6 +337,12 @@ models:
       mel_fmin: 0.0
       mel_fmax: 8000.0
       symbols_embedding_dim: 512
+      encoder:
+        desc: Encoder parameters
+        dropout_rate: 0.5
+        num_convolutions: 3
+        embedding_dim: 512
+        kernel_size: 5
     vocoder:
       name: Test
       state: disabled

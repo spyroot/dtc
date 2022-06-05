@@ -161,7 +161,8 @@ models:
         :return:
         """
         if 'encoder' not in self._model_dict:
-            raise TacotronSpecError("Model has no encoder specification.")
+            raise TacotronSpecError("Model has no encoder specification,"
+                                    " Please check configuration.")
         return self._model_dict['encoder']
 
     def encoder_kernel_size(self) -> int:
@@ -183,6 +184,17 @@ models:
             return encoder['num_convolutions']
         return 3
 
+    def dropout_rate(self) -> float:
+        """
+        Encoder dropout rate.
+        :return:
+        """
+        encoder = self.get_encoder()
+        if 'dropout_rate' in encoder:
+            return encoder['dropout_rate']
+
+        return 0.5
+
     def encoder_embedding_dim(self) -> int:
         """
         Encoder embedding dimension.
@@ -203,7 +215,7 @@ models:
 
     def get_seed(self):
         """
-
+        Return fixed seed.
         :return:
         """
         return 1234

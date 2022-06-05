@@ -32,12 +32,13 @@ class Decoder(nn.Module):
         super(Decoder, self).__init__()
         self.experiment_specs = specs
         self.model_spec = specs.get_model_spec()
-        self.encoder_spec = self.model_spec.get_spectrogram()
+        self.specto_spec = self.model_spec.get_spectrogram()
         self.device = device
 
-        self.n_mel_channels = self.encoder_spec.n_mel_channels()
+        self.n_mel_channels = self.specto_spec.n_mel_channels()
         self.n_frames_per_step = self.experiment_specs.n_frames_per_step
-        self.encoder_embedding_dim = self.experiment_specs.encoder_embedding_dim
+        self.encoder_embedding_dim = self.specto_spec.encoder_embedding_dim()
+
         self.attention_rnn_dim = specs.attention_rnn_dim
         self.decoder_rnn_dim = specs.decoder_rnn_dim
         self.pre_net_dim = specs.prenet_dim
@@ -48,15 +49,15 @@ class Decoder(nn.Module):
 
         # layers
         self.pre_net = Prenet(
-                self.encoder_spec.n_mel_channels() * specs.n_frames_per_step,
+                self.specto_spec.n_mel_channels() * specs.n_frames_per_step,
                 [specs.prenet_dim, specs.prenet_dim])
 
         self.attr_rnn = nn.LSTMCell(
-                specs.prenet_dim + specs.encoder_embedding_dim,
+                specs.prenet_dim + self.specto_spec.encoder_embedding_dim(),
                 specs.attention_rnn_dim)
 
         self.attention_layer = Attention(
-                specs.attention_rnn_dim, specs.encoder_embedding_dim,
+                specs.attention_rnn_dim, self.specto_spec.encoder_embedding_dim(),
                 specs.attention_dim, specs.attention_location_n_filters,
                 specs.attention_location_kernel_size)
 
@@ -64,15 +65,15 @@ class Decoder(nn.Module):
         self.self_attention = nn.MultiheadAttention(specs.attention_rnn_dim, 32)
 
         self.decoder_rnn = nn.LSTMCell(
-                specs.attention_rnn_dim + specs.encoder_embedding_dim,
+                specs.attention_rnn_dim + self.specto_spec.encoder_embedding_dim(),
                 specs.decoder_rnn_dim, 1)
 
         self.linear_projection = LinearNorm(
-                specs.decoder_rnn_dim + specs.encoder_embedding_dim,
-                self.encoder_spec.n_mel_channels() * specs.n_frames_per_step)
+                specs.decoder_rnn_dim + self.specto_spec.encoder_embedding_dim(),
+                self.specto_spec.n_mel_channels() * specs.n_frames_per_step)
 
         self.gate_layer = LinearNorm(
-                specs.decoder_rnn_dim + specs.encoder_embedding_dim, 1,
+                specs.decoder_rnn_dim + self.specto_spec.encoder_embedding_dim(), 1,
                 bias=True, w_init_gain='sigmoid')
 
         # states
@@ -120,14 +121,21 @@ class Decoder(nn.Module):
         batch_size = memory.size(0)
         MAX_TIME = memory.size(1)
 
-        self.attr_hidden = Variable(memory.data.new(batch_size, self.attention_rnn_dim).zero_())
-        self.attr_cell = Variable(memory.data.new(batch_size, self.attention_rnn_dim).zero_())
-        self.decoder_hidden = Variable(memory.data.new(batch_size, self.decoder_rnn_dim).zero_())
-        self.decoder_cell = Variable(memory.data.new(batch_size, self.decoder_rnn_dim).zero_())
+        self.attr_hidden = Variable(
+                memory.data.new(batch_size, self.attention_rnn_dim).zero_())
+        self.attr_cell = Variable(
+                memory.data.new(batch_size, self.attention_rnn_dim).zero_())
+        self.decoder_hidden = Variable(
+                memory.data.new(batch_size, self.decoder_rnn_dim).zero_())
+        self.decoder_cell = Variable(
+                memory.data.new(batch_size, self.decoder_rnn_dim).zero_())
 
-        self.attr_weights = Variable(memory.data.new(batch_size, MAX_TIME).zero_())
-        self.attr_weights_cum = Variable(memory.data.new(batch_size, MAX_TIME).zero_())
-        self.attr_context = Variable(memory.data.new(batch_size, self.encoder_embedding_dim).zero_())
+        self.attr_weights = Variable(
+                memory.data.new(batch_size, MAX_TIME).zero_())
+        self.attr_weights_cum = Variable(
+                memory.data.new(batch_size, MAX_TIME).zero_())
+        self.attr_context = Variable(
+                memory.data.new(batch_size, self.encoder_embedding_dim).zero_())
 
         self.memory = memory
         self.processed_memory = self.attention_layer.memory_layer(memory)

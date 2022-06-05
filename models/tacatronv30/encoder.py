@@ -35,45 +35,51 @@ class Encoder(nn.Module):
     features are computed using 32 1-D convolution filters of length 31.
 
     """
-    def __init__(self, experiment_specs: ExperimentSpecs, device):
+    def __init__(self, spec: ExperimentSpecs, device) -> None:
         """
 
-        :param experiment_specs:
+        :param spec:
         :param device:
         """
         super(Encoder, self).__init__()
         self.device = device
 
-        self.conv_kernel_size = experiment_specs.encoder_kernel_size
-        self.embedding_dim = experiment_specs.encoder_embedding_dim
-        self.num_conv_layers = experiment_specs.encoder_n_convolutions
-        self.forward_pass_dropout_rate = 0.5
+        self.model_spec = spec.get_model_spec()
+        self.specto_spec = self.model_spec.get_spectrogram()
+
+        self.conv_kernel_size = self.specto_spec.encoder_kernel_size()
+        self.embedding_dim = self.specto_spec.encoder_embedding_dim()
+        self.num_conv_layers = self.specto_spec.encoder_n_convolutions()
+        self.forward_pass_dropout_rate = self.specto_spec.dropout_rate()
+
         self.stride_size = 1
+        self.default_gain = 'relu'
 
         convolutions = []
-        for _ in range(experiment_specs.encoder_n_convolutions):
+        for _ in range(self.num_conv_layers):
             conv_layer = nn.Sequential(
                 ConvNorm(self.embedding_dim, self.embedding_dim,
-                         kernel_size=self.conv_kernel_size, stride=1,
-                         padding=int((experiment_specs.encoder_kernel_size - 1) / 2),
-                         dilation=1, w_init_gain='relu'),
-                nn.BatchNorm1d(experiment_specs.encoder_embedding_dim))
+                         kernel_size=self.conv_kernel_size, stride=self.stride_size,
+                         padding=int((self.conv_kernel_size - 1) / 2),
+                         dilation=1, w_init_gain=self.default_gain),
+                nn.BatchNorm1d(self.embedding_dim))
             convolutions.append(conv_layer)
         self.convolutions = nn.ModuleList(convolutions)
 
         self.lstm = nn.LSTM(self.embedding_dim,
-                            int(experiment_specs.encoder_embedding_dim / 2), 1,
+                            int(self.embedding_dim / 2), 1,
                             batch_first=True, bidirectional=True)
 
     def forward(self, x, input_lengths):
         """
-
         :param x:
         :param input_lengths:
         :return:
         """
         for conv in self.convolutions:
-            x = F.dropout(F.relu(conv(x)), self.forward_pass_dropout_rate, self.training)
+            x = F.dropout(F.relu(conv(x)),
+                          self.forward_pass_dropout_rate,
+                          self.training)
 
         x = x.transpose(1, 2)
 
@@ -87,7 +93,7 @@ class Encoder(nn.Module):
 
     def inference(self, x):
         """
-
+        Inference block.
         :param x:
         :return:
         """
