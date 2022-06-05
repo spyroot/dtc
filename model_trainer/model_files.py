@@ -30,6 +30,7 @@ class ModelFiles:
         :param dir_walker_callback:
         :param verbose:
         """
+        self._loaded_model = None
         self._verbose = verbose
         self.set_logger(verbose)
         self.parent = parent
@@ -329,14 +330,18 @@ class ModelFiles:
 
     def get_model_file_path(self, model_layer_name: str, file_type='dat') -> str:
         """
-        Method return model name file, based on template format.
+        Method return model file name, the name generated based specification.
+        and based on template format.
 
-        :param model_layer_name:
+        :param model_layer_name: model specification in config spec.
         :param file_type:
         :return:
         """
         if model_layer_name is None or len(model_layer_name) == 0:
-            raise ValueError("Model layer is empty")
+            raise ValueError("Model layer is empty.")
+
+        if self._loaded_model is not None:
+            return self._loaded_model
 
         for k in self._model:
             if k == model_layer_name:
@@ -496,3 +501,21 @@ class ModelFiles:
         if self._config is not None and 'tuner_save_dir' in self._config:
             return self._config['tuner_save_dir']
         return 'tuner_save_dir'
+
+    def update_model_file(self, path: str) -> bool:
+        """
+
+        :param path:
+        :return:
+        """
+        if path is None or len(path) == 0:
+            return False
+
+        resolved = Path(path).expanduser().resolve()
+        if resolved.exists():
+            self._loaded_model = str(resolved)
+            return True
+
+        return False
+
+

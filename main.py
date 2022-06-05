@@ -816,10 +816,10 @@ def main(cmd_args):
     else:
         _device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    start_time = time.time()
+    _start_time = time.time()
     trainer_spec = ExperimentSpecs(spec_config=cmd_args.config, verbose=cmd_args.verbose)
     trainer_spec.set_logger(cmd_args.verbose)
-    print("--- %s Parser load time, seconds ---" % (time.time() - start_time))
+    print("--- %s Parser load time, seconds ---" % (time.time() - _start_time))
 
     if cmd_args.batch_size is not None:
         trainer_spec.set_batch_size(int(cmd_args.batch_size))
@@ -858,6 +858,33 @@ def main(cmd_args):
         plot_example(trainer_spec, dataset_name=cmd_args.dataset_name,
                      version=3, verbose=cmd_args.verbose)
         return
+
+    if len(cmd_args.load) > 0:
+        resolved = Path(cmd_args.load).expanduser().resolve()
+        if not resolved.exists():
+            print("File not found.")
+            return
+        if cmd_args.model is None or len(cmd_args.model) == 0:
+            print("Error. If you want load model from a file, Please indicate a model name.")
+            return
+        if cmd_args.remove_opt is True:
+            model = torch.load(cmd_args.load)
+            del model["optimizer_state_dict"]
+            torch.save(model, f"{cmd_args.load}.new.dat")
+            return
+        if cmd_args.freeze is True:
+            model = torch.load(cmd_args.load)
+            print(model.keys())
+            return
+        if cmd_args.show is True:
+            model = torch.load(cmd_args.load)
+            print(model.keys())
+            return
+        print(f"Loading model {cmd_args.model} from {cmd_args.load}")
+        trainer_spec.set_active_model(model_name=cmd_args.model)
+        if not trainer_spec.model_files.update_model_file(cmd_args.load):
+            print(f"Error; Please check path to a file.")
+            return
 
     if cmd_args.convert:
         if 0 > cmd_args.convert_size > 100:
@@ -928,6 +955,12 @@ if __name__ == '__main__':
                         required=False, help='Distributed group name')
     parser.add_argument('--verbose', action="store_true",
                         required=False, help='set verbose output.')
+    parser.add_argument('--remove_opt', action="store_true",
+                        required=False, help='remove optimizer from checkpoint.')
+    parser.add_argument('--show', action="store_true",
+                        required=False, help='show loaded model.')
+    parser.add_argument('--freeze', action="store_true",
+                        required=False, help='freeze a model.')
     parser.add_argument('--plot', action="store_true",
                         required=False, help='plot examples from a dataset.')
     parser.add_argument('--overfit', action='store_true',
@@ -955,8 +988,11 @@ if __name__ == '__main__':
                         default='config.yaml', required=False)
     parser.add_argument('--epochs', type=int, help='overwrites epoch in config file', required=False)
     parser.add_argument('--batch_size', type=int, help='overwrites batch_size in config file', required=False)
-    parser.add_argument('--mode', type=str, default="",
-                        help='run trainer in distributed or standalone',
+    parser.add_argument('--mode', type=str, default="", help='run trainer in distributed or standalone',
+                        required=False)
+    parser.add_argument('--load', type=str, default="", help='load model from a file.', required=False)
+    parser.add_argument('--model', type=str, default="", help='model name. note load and model '
+                                                              'name mainly used if we need explicit load from file',
                         required=False)
 
     # parser.add_argument('--load', type=bool, default=False,

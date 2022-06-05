@@ -417,7 +417,7 @@ class Trainer(AbstractTrainer, ABC):
 
     def load_model_layer(self, layer_name: str, file_path: str):
         """
-
+        Loads specific mode layer from model.
         :param layer_name:
         :param file_path:
         :return:
@@ -492,7 +492,7 @@ class Trainer(AbstractTrainer, ABC):
                     f"'{model_name}' model {layer_name} fro file {resolved_path}.")
 
         # original saved file with DataParallel
-       # state_dict = torch.load('myfile.pth.tar')
+        # state_dict = torch.load('myfile.pth.tar')
         # create new OrderedDict that does not contain `module.`
 
         # from collections import OrderedDict
@@ -538,9 +538,11 @@ class Trainer(AbstractTrainer, ABC):
 
             if not skip_opt_state:
                 logger.debug(f"Loading optimizer state for model {model_name} layer {layer_name}.")
-                self._optimizers[model_name][layer_name].load_state_dict(checkpoint['optimizer_state_dict'])
-                if 'optimizer_state_dict' not in checkpoint:
-                    raise TrainerError(f"{model_name} has no optimizer_state_dict.")
+                if 'optimizer_state_dict' in checkpoint:
+                    self._optimizers[model_name][layer_name].load_state_dict(checkpoint['optimizer_state_dict'])
+                else:
+                    if strict:
+                        raise TrainerError(f"{model_name} has no optimizer_state_dict.")
 
             # if model has scheduler, re-create.
             if model_name in self._schedulers:
@@ -974,7 +976,8 @@ class Trainer(AbstractTrainer, ABC):
                             'model_state_dict': self._models[model_name][layer_name].state_dict(),
                             'optimizer_state_dict': self._optimizers[model_name][layer_name].state_dict(),
                             'scheduler_state_dict': self._schedulers[model_name].state_dict(),
-                            "scaler": self.scaler.state_dict()
+                            'scaler': self.scaler.state_dict(),
+                            'model_name': self.state.model_name,
                             }, resolved_path)
                 is_saved = True
 
@@ -987,7 +990,8 @@ class Trainer(AbstractTrainer, ABC):
                 torch.save({'epoch': last_epoch, 'it': last_step,
                             'model_state_dict': self._models[model_name][layer_name].state_dict(),
                             'optimizer_state_dict': self._optimizers[model_name][layer_name].state_dict(),
-                            "scaler": self.scaler.state_dict(),
+                            'scaler': self.scaler.state_dict(),
+                            'model_name': self.state.model_name,
                             }, resolved_path)
                 is_saved = True
 

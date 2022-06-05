@@ -244,7 +244,7 @@ class ExperimentSpecs:
         """
         return list(self.config['datasets'].keys())
 
-    def set_active_model(self) -> None:
+    def set_active_model(self, model_name: Optional[str] = None) -> None:
         """
         Sets active Model.
 
@@ -252,14 +252,21 @@ class ExperimentSpecs:
         """
         # self.spec_dispatcher = self.create_spec_dispatch()
         if 'models' not in self.config:
-            raise TrainerSpecError("config.yaml must contain at least one models list and one model.")
+            raise TrainerSpecError(f"{self.config_file_name} must contain at "
+                                   f"least a models and specification for each model.")
+        if model_name is not None:
+            if model_name not in self.config['models']:
+                raise TrainerSpecError(f"{self.config_file_name} unknown model.")
+            self.config['use_model'] = model_name
+        else:
+            print("Not update model name", model_name)
 
         if 'use_model' not in self.config:
-            raise TrainerSpecError("config.yaml must contain use_model and it must defined.")
+            raise TrainerSpecError("config.yaml must contain use_model "
+                                   "and it must defined.")
 
         self.active_model = self.config['use_model']
         self.models_specs = self.config['models']
-
         self._model_dispatcher.has_creator(self.active_model)
 
         if not self._model_dispatcher.has_creator(self.active_model):
