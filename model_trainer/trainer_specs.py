@@ -1788,13 +1788,24 @@ class ExperimentSpecs:
         return False
 
     def is_sequential(self):
+        """
+
+        :return:
+        """
         if self._setting is None:
             raise TrainerSpecError("Initialize settings first")
+
         if 'sequential_sampler' in self._setting:
             return self._setting['sequential_sampler']
+
         return False
 
     def get_tuner_spec(self):
+        """
+        Return ray specification,  config re presets
+        a dict pass to tuner.
+        :return:
+        """
         if 'ray' in self.config:
             return self.config['ray']
         return {}
