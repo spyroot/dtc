@@ -52,13 +52,31 @@ datasets:
     ds_type: "audio"
     file_type: "wav"
     format: raw
-    dir: "~/Dropbox/Datasets/LJSpeech-1.1"
+    dir: "~/src/dtc/dataset/LJSpeech-1.1"
     #    dir: "~/Dropbox/Datasets/LJSpeechSmall"
     training_meta: ljs_audio_text_train_filelist_1000.txt
     validation_meta: ljs_audio_text_val_filelist.txt
     test_meta: ljs_audio_text_test_filelist.txt
     meta: metadata.csv
     recursive: False
+  lj_speech_625:
+    format: tensor_mel
+    ds_type: "audio"
+    dir: "~/Dropbox/Datasets/LJSpeech-1.1"
+    dataset_files:
+      - "LJSpeech_train_num_sam_625_filter_80_3.pt"
+      - "LJSpeech_validate_num_sam_100_filter_80_3.pt"
+      - "LJSpeech_test_num_sam_25_filter_80_3.pt"
+    training_meta: LJSpeech_train_num_sam_625_filter_80_3.pt
+    validation_meta: LJSpeech_validate_num_sam_100_filter_80_3.pt
+    test_meta: LJSpeech_test_num_sam_25_filter_80_3.pt
+    checksums:
+      - "bde6b0af0868c7a1a9bbdaaa79d08d56"
+      - "5d3b94b131c08afcca993dfbec54c63a"
+      - "6702b6b7f47f12891d9d95144400bdc9"
+    meta: metadata.csv
+    recursive: False
+    file_type: "torch"
   LJSpeechMiniRaw:
     ds_type: "audio"
     dir: "~/Dropbox/Datasets/LJSpeechSmall"
