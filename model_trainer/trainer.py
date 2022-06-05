@@ -331,6 +331,7 @@ class Trainer(AbstractTrainer, ABC):
         Factor method, creator for tacotron 3
         :return:
         """
+        logger.debug("Creating tacotron30 model.")
         if self.state.is_inference:
             model = Tacotron3(self.state.trainer_spec, self.state.device).to(self.state.device)
         elif self.state.trainer_spec.is_distributed_run():
@@ -362,8 +363,6 @@ class Trainer(AbstractTrainer, ABC):
         :return: nothing
         :param is_set_cuda: will pin directly
         """
-        print("Creating model", model_name)
-
         logger.info(f"Creating a model {model_name} layer: {layer_name}.")
         if model_name not in self.model_creator:
             raise ValueError("Unknown {} model for a "
@@ -554,7 +553,7 @@ class Trainer(AbstractTrainer, ABC):
                 self._last_step[layer_name] = 0
                 return 0, 0
 
-          #  ignore_layers = 'reverse_decoder'
+            #  ignore_layers = 'reverse_decoder'
             #  ignore layers.
             if ignore_layers is not None and len(ignore_layers) > 0:
                 model_dict = {k: v for k, v in self._models[model_name].items()

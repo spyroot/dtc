@@ -5,7 +5,6 @@ from torch import nn
 from torch.distributions.kl import kl_divergence
 from torch.distributions.normal import Normal
 from torch.nn import functional as F
-from torchaudio.transforms import InverseMelScale
 
 
 def tiny(x):
@@ -103,18 +102,18 @@ class DTSLoss(nn.Module):
                  n_mel_channels=80, sampling_rate=22050, mel_fmin=0.0, sr=22050, n_fft=2048, fmax=8000,
                  mel_fmax=8000.0, device=None):
         super(DTSLoss, self).__init__()
-        self.reconstruction_loss = nn.BCELoss(reduction='sum')
 
-        print("Created dts loss.")
+        self.filter_length = filter_length
+        self.sample_rate = sampling_rate
 
-        sr = torch.tensor(22050, device=device, requires_grad=False)
-        n_fft = torch.tensor(1024, device=device, requires_grad=False)
-        fmin = torch.tensor(150.0, device=device, requires_grad=False)
-        fmax = torch.tensor(4000.0, device=device, requires_grad=False)
-        threshold = torch.tensor(0.1, device=device, requires_grad=False)
+        self.sr = torch.tensor(22050, device=device, requires_grad=False)
+        self.n_fft = torch.tensor(1024, device=device, requires_grad=False)
+        self.fmin = torch.tensor(150.0, device=device, requires_grad=False)
+        self.fmax = torch.tensor(4000.0, device=device, requires_grad=False)
+        self.threshold = torch.tensor(0.1, device=device, requires_grad=False)
+        self.device = device
 
-        self.transform = InverseMelScale(n_stft=1024, n_mels=80,
-                                         sample_rate=22050, f_min=0.0, f_max=8000.0)
+        # self.transform = InverseMelScale(n_stft=1024, n_mels=80, sample_rate=22050, f_min=0.0, f_max=8000.0)
 
     def kl_loss(self, q_dist):
         """
@@ -167,60 +166,39 @@ class DTSLoss(nn.Module):
             mel_out, mel_out_post_net, gate_out, alignment, rev = model_output
             gate_targets = gate_target.view(-1, 1)
 
-            rev_mel_out, b, alignment_rev = rev
+            rev_mel_out, reverse_gate, alignment_rev = rev
             # rev_mel_out = gate_out_rev.view(-1, 1)
             gate_outs = gate_out.view(-1, 1)
 
-            rev_mel_out = torch.flip(rev_mel_out, dims=(1,))
+            reversed_mel_out = torch.flip(rev_mel_out, dims=(1,))
 
             # second_gate_loss = nn.BCEWithLogitsLoss()(rev_mel_out, gate_targets)
             # second_mse_loss = nn.MSELoss()(rev_mel_out, mel_target)
-            l1_loss = nn.L1Loss()(alignment, alignment_rev)
+            l1_loss = nn.L1Loss()(alignment_rev, alignment)
 
             # alignment_loss = nn.L1Loss()(alignment, rev_alignments)
             mel_loss = nn.MSELoss()(mel_out, mel_target) + nn.MSELoss()(mel_out_post_net, mel_target)
             gate_loss = nn.BCEWithLogitsLoss()(gate_outs, gate_targets)
             total = mel_loss + gate_loss + l1_loss
 
-            # # target mel , padded, mel_out padded to compute inverse, same for mel_out
-            # mel_target_padded = torch.nn.functional.pad(mel_target,  (1, 1), "constant", 0)
-            # mel_out_post_net_padded = torch.nn.functional.pad(mel_out_post_net,  (1, 1), "constant", 0)
-            # mel_out_padded = torch.nn.functional.pad(mel_out,  (1, 1), "constant", 0)
+            # # target mel, we padded to match stft dim. it edge padded.
+            mel_target_padded = F.pad(mel_target,  (1, 1), "constant", 0)
+            # mel_out_post_net_padded = F.pad(mel_out_post_net,  (1, 1), "constant", 0)
+            # mel_out_padded = F.pad(mel_out,  (1, 1), "constant", 0)
+
+            # stft complex64, we take abs and it float32
+            S = torch.abs(stft).to(self.device)
+            S_inv_target = librosa.feature.inverse.mel_to_stft(
+                    mel_target_padded.detach().cpu().numpy(), n_fft=self.filter_length, sr=self.sample_rate)
+
+            # S_inv_generated = librosa.feature.inverse.mel_to_stft(
+            #         mel_out_post_net_padded.detach().cpu().numpy(), n_fft=self.filter_length, sr=self.sample_rate)
             #
-            # for i in range(0, len(stft)):
-            #     S_inv_target = librosa.feature.inverse.mel_to_stft(
-            #             mel_target_padded[i].detach().cpu().numpy(), n_fft=1024, sr=22050)
-            #
-            #     S_inv_generated = librosa.feature.inverse.mel_to_stft(
-            #             mel_out_post_net_padded[i].detach().cpu().numpy(), n_fft=1024, sr=22050)
-            #
-            #     S_inv_generated2 = librosa.feature.inverse.mel_to_stft(
-            #             mel_out_padded[i].detach().cpu().numpy(), n_fft=1024, sr=22050)
-            #
-            #     ith_stft = stft[i]
-            #     print(ith_stft.shape)
-            #     print(S_inv_target[i].shape)
-            #     print(S_inv_generated[i].shape)
-            #
-            #     print(ith_stft.dtype)
-            #     print(torch.from_numpy(S_inv_generated[i]).dtype)
-            #     print(torch.from_numpy(S_inv_generated2[i]).dtype)
-            #
-            #     sf_loss1 = nn.L1Loss()(torch.from_numpy(S_inv_target[i]), ith_stft)
-            #     sf_loss2 = nn.L1Loss()(torch.from_numpy(S_inv_generated[i]), ith_stft)
-            #     sf_loss3 = nn.L1Loss()(torch.from_numpy(S_inv_generated2[i]), ith_stft)
-            #
-            #     # cross_01 = nn.CrossEntropyLoss()(torch.from_numpy(S_inv_target[i]), ith_stft)
-            #     # cross_02 = nn.CrossEntropyLoss()(torch.from_numpy(S_inv_generated[i]), ith_stft)
-            #     # cross_03 = nn.CrossEntropyLoss()(torch.from_numpy(S_inv_generated2[i]), ith_stft)
-            #     # tensor(2.6611) tensor(14.2158)
-            #     # tensor(1283.1836) tensor(2361.4380)
-            #     # torch.from_numpy(S_inv)
-            #     # mse = torch.square(torch.from_numpy(S_inv) - orginal).mean().item()
-            #
-            #     print(f"l loss target/target {sf_loss1}, target/generated {sf_loss2} target/generated {sf_loss3}")
-            #     # print(f"cross entropy target/target {cross_01}, target/generated {cross_02} target/generated {cross_03}")
-            #     # print(cross_01, cross_02)
+            # S_inv_generated2 = librosa.feature.inverse.mel_to_stft(
+            #         mel_out_padded.detach().cpu().numpy(), n_fft=self.filter_length, sr=self.sample_rate)
+
+            sf_loss1 = nn.L1Loss()(torch.from_numpy(S_inv_target).to(self.device), S)
+            total += sf_loss1
 
             return {
                 'loss': total,
