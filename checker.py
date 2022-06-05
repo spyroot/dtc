@@ -40,7 +40,6 @@ def batch_reader(batch, device, version=3):
         gate_padded = to_gpu(gate_padded, device).float()
         output_lengths = to_gpu(output_lengths, device).long()
 
-
         return (text_padded, input_lengths,
                 mel_padded, max_len,
                 output_lengths), \
@@ -68,7 +67,7 @@ def v3_dataloader_audio_test(config="config.yaml"):
     # full GPU pass
     start_time = time.time()
     for batch_idx, (batch) in tqdm(enumerate(_train_loader), total=iters):
-        x, y = batch_reader(batch, device=_device,  version=2)
+        x, y = batch_reader(batch, device=_device, version=3)
     print("--- %s SFTFDataloader entire dataset pass, load time, seconds ---" % (time.time() - start_time))
 
 
