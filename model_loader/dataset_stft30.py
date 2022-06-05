@@ -3,7 +3,6 @@
 # It for dataset that outputs only one hot vector and mel spectrogram.
 #
 # Mustafa
-
 from abc import ABC
 from typing import Callable, Optional
 
@@ -12,14 +11,13 @@ import torch.utils.data
 from loguru import logger
 from torch import Tensor
 
-from model_loader.base_stft_dataset import BaseSFTFDataset, DatasetError
+from model_loader.base_stft_dataset import BaseSFTFDataset
 from model_loader.tacotron_stft30 import TacotronSTFT3
 from model_trainer.specs.tacatron_spec import TacotronSpec
 from model_trainer.trainer_specs import ExperimentSpecs
-import numpy
 
 
-class SFTF3Dataset(BaseSFTFDataset):
+class SFTF3Dataset(BaseSFTFDataset, ABC):
     """
 
     """
@@ -74,7 +72,7 @@ class SFTF3Dataset(BaseSFTFDataset):
         """
         normalized_audio, sampling_rate = self.normalize_audio(filename)
         if sampling_rate != self.stft.sampling_rate:
-            raise ValueError("{} {} SR doesn't match target {} SR".format(sampling_rate, self.stft.sampling_rate))
+            raise ValueError("{} SR doesn't match target {} SR".format(sampling_rate, self.stft.sampling_rate))
 
         self.normalize_audio(filename)
 
