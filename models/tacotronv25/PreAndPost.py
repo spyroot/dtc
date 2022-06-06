@@ -94,7 +94,8 @@ class Postnet(nn.Module):
 
         self.convolutions.append(
             nn.Sequential(
-                ConvNorm(self.specto_spec.postnet_embedding_dim(), self.specto_spec.n_mel_channels(),
+                ConvNorm(self.specto_spec.postnet_embedding_dim(),
+                         self.specto_spec.n_mel_channels(),
                          kernel_size=self.specto_spec.postnet_kernel_size(), stride=1,
                          padding=int((self.specto_spec.postnet_kernel_size() - 1) / 2),
                          dilation=1, w_init_gain='linear'),
