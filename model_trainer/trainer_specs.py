@@ -107,20 +107,15 @@ class ExperimentSpecs:
         ################################
         self.n_symbols = len(symbols)
 
-        # Mel-post processing network parameters
-        # self.postnet_embedding_dim = 512
-        # self.postnet_kernel_size = 5
-        # self.postnet_n_convolutions = 5
-
-        ################################
-        # Optimization Hyperparameters #
-        ################################
         self.use_saved_learning_rate = False
 
-        self.mask_padding = True  # set model's padded outputs to padded values
+        # set model's padded outputs to padded values
+        self.mask_padding = True
+
         self.dynamic_loss_scaling = True
 
         self.cudnn_enabled = True
+
         self.cudnn_benchmark = True
 
         self.read_from_file()

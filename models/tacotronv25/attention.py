@@ -16,7 +16,6 @@
 import torch
 from torch import nn, autocast
 from torch.nn import functional as F
-
 from .layers import LinearNorm
 from .location import LocationLayer
 

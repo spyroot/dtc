@@ -62,6 +62,7 @@ class Attention(nn.Module):
     def forward(self, attention_state, memory, processed_memory,
                 attention_weights_cat, mask):
         """
+
         :param attention_state:  attention rnn last output
         :param memory: encoder memory
         :param processed_memory: processed encoder output

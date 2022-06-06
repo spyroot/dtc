@@ -13,7 +13,6 @@
 # https://arxiv.org/abs/1712.05884
 #
 # Mustafa B.
-from math import sqrt
 import torch
 from torch.autograd import Variable
 from torch import nn
@@ -34,43 +33,57 @@ class Decoder(nn.Module):
         super(Decoder, self).__init__()
         self.experiment_specs = specs
         self.model_spec = specs.get_model_spec()
-        self.encoder_spec = self.model_spec.get_spectrogram()
+        self.specto_spec = self.model_spec.get_spectrogram()
         self.device = device
 
-        self.n_mel_channels = self.encoder_spec.n_mel_channels()
-        self.n_frames_per_step = self.experiment_specs.n_frames_per_step
-        self.encoder_embedding_dim = self.experiment_specs.encoder_embedding_dim
-        self.attention_rnn_dim = specs.attention_rnn_dim
-        self.decoder_rnn_dim = specs.decoder_rnn_dim
-        self.pre_net_dim = specs.prenet_dim
-        self.max_decoder_steps = specs.max_decoder_steps
-        self.gate_threshold = specs.gate_threshold
-        self.p_attention_dropout = specs.p_attention_dropout
-        self.p_decoder_dropout = specs.p_decoder_dropout
+        # model param
+        self.n_mel_channels = self.specto_spec.n_mel_channels()
+        self.decoder_fps = self.specto_spec.decoder_fps()
+        self.encoder_embedding_dim = self.specto_spec.encoder_embedding_dim()
+        # attention rnn
+        self.attention_rnn_dim = self.specto_spec.attention_rnn_dim()
+
+        self.encoder_embedding_dim = self.specto_spec.encoder_embedding_dim()
+        self.attention_rnn_dim = self.specto_spec.attention_rnn_dim()
+        self.decoder_rnn_dim = self.specto_spec.decoder_rnn_dim()
+        self.pre_net_dim = self.specto_spec.pre_net_dim()
+        self.max_decoder_steps = self.specto_spec.max_decoder_steps()
+        self.gate_threshold = self.specto_spec.gate_threshold()
+        self.p_attention_dropout = self.specto_spec.p_attention_dropout()
+        self.p_decoder_dropout = self.specto_spec.p_decoder_dropout()
 
         self.pre_net = Prenet(
-                self.encoder_spec.n_mel_channels() * specs.n_frames_per_step,
-                [specs.prenet_dim, specs.prenet_dim])
+                self.specto_spec.n_mel_channels() *
+                self.specto_spec.decoder_fps(),
+                [self.specto_spec.pre_net_dim(), self.specto_spec.pre_net_dim()])
 
         self.attention_rnn = nn.LSTMCell(
-                specs.prenet_dim + specs.encoder_embedding_dim,
-                specs.attention_rnn_dim)
+                self.specto_spec.pre_net_dim() +
+                self.specto_spec.encoder_embedding_dim(),
+                self.specto_spec.attention_rnn_dim())
 
         self.attention_layer = Attention(
-                specs.attention_rnn_dim, specs.encoder_embedding_dim,
-                specs.attention_dim, specs.attention_location_n_filters,
-                specs.attention_location_kernel_size, is_amp=specs.is_amp())
+                self.specto_spec.attention_rnn_dim(),
+                self.specto_spec.encoder_embedding_dim(),
+                self.specto_spec.attention_dim(),
+                self.specto_spec.attention_location_n_filters(),
+                self.specto_spec.attention_location_kernel_size(),
+                is_amp=specs.is_amp())
 
         self.decoder_rnn = nn.LSTMCell(
-                specs.attention_rnn_dim + specs.encoder_embedding_dim,
-                specs.decoder_rnn_dim, 1)
+                self.specto_spec.attention_rnn_dim() +
+                self.specto_spec.encoder_embedding_dim(),
+                self.specto_spec.decoder_rnn_dim(), 1)
 
         self.linear_projection = LinearNorm(
-                specs.decoder_rnn_dim + specs.encoder_embedding_dim,
-                self.encoder_spec.n_mel_channels() * specs.n_frames_per_step)
+                self.specto_spec.decoder_rnn_dim() +
+                self.specto_spec.encoder_embedding_dim(),
+                self.specto_spec.n_mel_channels() *
+                self.specto_spec.decoder_fps())
 
         self.gate_layer = LinearNorm(
-                specs.decoder_rnn_dim + specs.encoder_embedding_dim, 1,
+                self.specto_spec.decoder_rnn_dim() +
+                self.specto_spec.encoder_embedding_dim(), 1,
                 bias=True, w_init_gain='sigmoid')
 
     def get_go_frame(self, memory):
@@ -111,7 +124,6 @@ class Decoder(nn.Module):
                 B, self.decoder_rnn_dim).zero_())
         self.decoder_cell = Variable(memory.data.new(
                 B, self.decoder_rnn_dim).zero_())
-
         self.attention_weights = Variable(memory.data.new(
                 B, MAX_TIME).zero_())
         self.attention_weights_cum = Variable(memory.data.new(

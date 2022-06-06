@@ -16,10 +16,12 @@
 from .layers import ConvNorm, LinearNorm
 from torch import nn
 
+
 class LocationLayer(nn.Module):
     """
 
     """
+
     def __init__(self, attention_n_filters, attention_kernel_size, attention_dim):
         """
 
