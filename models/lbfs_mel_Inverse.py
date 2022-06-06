@@ -110,7 +110,7 @@ class DTCInverseSTFS(torch.nn.Module):
         #
         assert f_min <= self.f_max, "Require f_min: {} < f_max: {}".format(f_min, self.f_max)
 
-        fb = melscale_fbanks(n_stft, self.f_min, self.f_max, self.n_mels, self.sample_rate, norm, mel_scale)
+        fb = melscale_fbanks(n_stft, self.f_min, self.f_max, self.n_mels, self.sample_rate, norm, mel_scale).to(device)
         #
         self.device = device
         #
@@ -172,8 +172,12 @@ class DTCInverseSTFS(torch.nn.Module):
         if B.shape[-1] <= n_columns:
             return self.lbfgs_block(A, B)
 
+        print("A dev", A.device)
         A_inv = torch.linalg.pinv(A)
+        print("A_inv dev", A_inv.device)
         B = torch.permute(B, (0, 2, 1))
+        print("B_inv dev", B.device)
+
         x = torch.einsum("fm,...mt->...ft", A_inv, B)
         torch.clip(x, 0, None, out=x)
         x_init = x
@@ -395,7 +399,7 @@ def inverse_test_gpu(dataset_name="", epsilon=1e-60, max_iteration=100,  batch_s
 
     abs_error = 0
     start_time = time.time()
-    dtc_stfs_module = DTCInverseSTFS(n_stft, f_max=8000.0).device = torch.device('cuda')
+    dtc_stfs_module = DTCInverseSTFS(n_stft, f_max=8000.0).to(torch.device('cuda'))
 
     for bidx, batch in enumerate(_train_loader):
         if bidx == max_iteration:
