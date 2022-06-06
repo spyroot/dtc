@@ -1,3 +1,18 @@
+#
+# Model based on original Natural TTS Synthesis by Conditioning WaveNet
+# on Mel Spectrogram Predictions.
+#
+#  - My modification focused on additional vector used to compute extra loss term.
+#  - Additional VAE as regularization layer.
+#  - Modified encoder seq.
+#
+# Jonathan Shen, Ruoming Pang, Ron J. Weiss, Mike Schuster, Navdeep Jaitly,
+# Zongheng Yang, Zhifeng Chen, Yu Zhang, Yuxuan Wang, RJ Skerry-Ryan, Rif A. Saurous,
+# Yannis Agiomyrgiannakis, Yonghui Wu
+#
+# https://arxiv.org/abs/1712.05884
+#
+# M
 import torch
 from torch.autograd import Variable
 from torch import nn
@@ -24,29 +39,47 @@ class Decoder(nn.Module):
     in each direction) to generate the encoded features.
     """
 
-    def __init__(self, specs: ExperimentSpecs, device):
+    def __init__(self, specs: ExperimentSpecs, device, is_strict=True):
         """
         Decoder based on tacotron2 spec
         :param specs:
         """
         super(Decoder, self).__init__()
+
+        # spec
         self.experiment_specs = specs
         self.model_spec = specs.get_model_spec()
         self.specto_spec = self.model_spec.get_spectrogram()
         self.device = device
 
+        # model param
         self.n_mel_channels = self.specto_spec.n_mel_channels()
-        self.n_frames_per_step = self.specto_spec.decoder_fps()
+        self.decoder_fps = self.specto_spec.decoder_fps()
         self.encoder_embedding_dim = self.specto_spec.encoder_embedding_dim()
-
+        # attention rnn
         self.attention_rnn_dim = self.specto_spec.attention_rnn_dim()
+
         # decoder
         self.decoder_rnn_dim = self.specto_spec.decoder_rnn_dim()
         self.max_decoder_steps = self.specto_spec.max_decoder_steps()
         self.gate_threshold = self.specto_spec.gate_threshold()
         self.p_attention_dropout = self.specto_spec.p_attention_dropout()
         self.p_decoder_dropout = self.specto_spec.p_decoder_dropout()
+
+        # pre-net
         self.pre_net_dim = self.specto_spec.pre_net_dim()
+
+        if is_strict:
+            assert self.decoder_fps == 1
+            assert self.encoder_embedding_dim == 512
+            assert self.attention_rnn_dim == 1024
+            assert self.specto_spec.attention_dim() == 128
+            assert self.decoder_rnn_dim == 1024
+            assert self.max_decoder_steps == 1000
+            assert self.gate_threshold == 0.5
+            assert self.p_attention_dropout == 0.1
+            assert self.p_decoder_dropout == 0.1
+            assert self.pre_net_dim == 256
 
         # layers
         self.pre_net = Prenet(
@@ -104,7 +137,7 @@ class Decoder(nn.Module):
         decoder_input: all zeros frames
         """
         B = memory.size(0)
-        decoder_input = Variable(memory.data.new(B, self.n_mel_channels * self.n_frames_per_step).zero_())
+        decoder_input = Variable(memory.data.new(B, self.n_mel_channels * self.decoder_fps).zero_())
         return decoder_input
 
     def initialize_decoder_states(self, memory: torch.Tensor, mask: torch.Tensor) -> None:
@@ -120,9 +153,8 @@ class Decoder(nn.Module):
         :param mask: Mask for padded data if training, expects None for inference
         :return:
         """
-
         batch_size = memory.size(0)
-        MAX_TIME = memory.size(1)
+        max_frame = memory.size(1)
 
         self.attr_hidden = Variable(
                 memory.data.new(batch_size, self.attention_rnn_dim).zero_())
@@ -134,9 +166,9 @@ class Decoder(nn.Module):
                 memory.data.new(batch_size, self.decoder_rnn_dim).zero_())
 
         self.attr_weights = Variable(
-                memory.data.new(batch_size, MAX_TIME).zero_())
+                memory.data.new(batch_size, max_frame).zero_())
         self.attr_weights_cum = Variable(
-                memory.data.new(batch_size, MAX_TIME).zero_())
+                memory.data.new(batch_size, max_frame).zero_())
         self.attr_context = Variable(
                 memory.data.new(batch_size, self.encoder_embedding_dim).zero_())
 
@@ -145,20 +177,17 @@ class Decoder(nn.Module):
         self.mask = mask
 
     def parse_decoder_inputs(self, decoder_inputs):
-        """ Prepares decoder inputs, i.e. mel outputs
-        PARAMS
-        ------
-        decoder_inputs: inputs used for teacher-forced training, i.e. mel-specs
+        """
+        Original decoder from tacotron2,
+        inputs used for teacher-forced training, i.e. mel-specs
 
-        RETURNS
-        -------
-        inputs: processed decoder inputs
-
+        :param decoder_inputs:
+        :return:
         """
         # (B, n_mel_channels, T_out) -> (B, T_out, n_mel_channels)
         decoder_inputs = decoder_inputs.transpose(1, 2)
         decoder_inputs = decoder_inputs.view(decoder_inputs.size(0),
-                                             int(decoder_inputs.size(1) / self.n_frames_per_step), -1)
+                                             int(decoder_inputs.size(1) / self.decoder_fps), -1)
 
         # (B, T_out, n_mel_channels) -> (T_out, B, n_mel_channels)
         decoder_inputs = decoder_inputs.transpose(0, 1)

@@ -35,15 +35,15 @@ class Encoder(nn.Module):
     features are computed using 32 1-D convolution filters of length 31.
 
     """
-    def __init__(self, spec: ExperimentSpecs, device) -> None:
+    def __init__(self, spec: ExperimentSpecs, device, is_strict=True) -> None:
         """
 
         :param spec:
         :param device:
         """
         super(Encoder, self).__init__()
-        self.device = device
 
+        self.device = device
         self.model_spec = spec.get_model_spec()
         self.specto_spec = self.model_spec.get_spectrogram()
 
@@ -54,6 +54,11 @@ class Encoder(nn.Module):
 
         self.stride_size = 1
         self.default_gain = 'relu'
+
+        if is_strict:
+            assert self.embedding_dim == 512
+            assert self.conv_kernel_size == 5
+            assert self.num_conv_layers == 3
 
         convolutions = []
         for _ in range(self.num_conv_layers):

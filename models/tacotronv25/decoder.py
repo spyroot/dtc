@@ -1,3 +1,18 @@
+#
+# Model based on original Natural TTS Synthesis by Conditioning WaveNet
+# on Mel Spectrogram Predictions.
+#
+#  - My modification focused on additional vector used to compute extra loss term.
+#  - Additional VAE as regularization layer.
+#  - Modified encoder seq.
+#
+# Jonathan Shen, Ruoming Pang, Ron J. Weiss, Mike Schuster, Navdeep Jaitly,
+# Zongheng Yang, Zhifeng Chen, Yu Zhang, Yuxuan Wang, RJ Skerry-Ryan, Rif A. Saurous,
+# Yannis Agiomyrgiannakis, Yonghui Wu
+#
+# https://arxiv.org/abs/1712.05884
+#
+# Mustafa B.
 from math import sqrt
 import torch
 from torch.autograd import Variable

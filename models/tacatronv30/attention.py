@@ -12,15 +12,27 @@ class Attention(nn.Module):
     """
 
     def __init__(self, attention_rnn_dim, embedding_dim, attention_dim,
-                 attention_location_n_filters, attention_location_kernel_size):
+                 attention_location_n_filters, attention_location_kernel_size, is_strict=True) -> None:
         super(Attention, self).__init__()
 
+        if is_strict:
+            assert attention_rnn_dim == 1024
+            assert attention_dim == 128
+            assert attention_location_n_filters == 32
+            assert attention_location_kernel_size == 31
+            assert embedding_dim == 512
 
-        #
-        self.query_layer = LinearNorm(attention_rnn_dim, attention_dim, bias=False, w_init_gain='tanh')
-        self.memory_layer = LinearNorm(embedding_dim, attention_dim, bias=False, w_init_gain='tanh')
+        self.query_layer = LinearNorm(attention_rnn_dim,
+                                      attention_dim,
+                                      bias=False,
+                                      w_init_gain='tanh')
+
+        self.memory_layer = LinearNorm(embedding_dim,
+                                       attention_dim,
+                                       bias=False,
+                                       w_init_gain='tanh')
+
         self.v = LinearNorm(attention_dim, 1, bias=False)
-        # location layer
         self.location_layer = LocationLayer(attention_location_n_filters,
                                             attention_location_kernel_size,
                                             attention_dim)
