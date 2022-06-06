@@ -382,12 +382,13 @@ models:
 
     def get_text_cleaner(self):
         """
-        Return sampling rate, used to processing text seq.
+        Return text list callable for text pre-processing.
          :return:
         """
         if 'english_cleaners' not in self._model_dict:
-            raise TacotronSpecError("Model has no sampling_rate defined.")
-        return ['english_cleaners']
+            return ['english_cleaners']
+
+        return self._model_dict['english_cleaners']
 
     def get_seed(self):
         """
