@@ -749,11 +749,13 @@ def main(cmd_args):
     trainer_spec.set_logger(cmd_args.verbose)
     print("--- %s Parser load time, seconds ---" % (time.time() - _start_time))
 
+    # cmd overwrite batch size from spec.
     if cmd_args.batch_size is not None:
         trainer_spec.set_batch_size(int(cmd_args.batch_size))
     if cmd_args.batch_size is not None:
         trainer_spec.set_epochs(int(cmd_args.epochs))
 
+    # similarly active dataset
     if cmd_args.dataset_name is not None and len(cmd_args.dataset_name) > 0:
         spec = trainer_spec.get_dataset_spec(cmd_args.dataset_name)
         trainer_spec.set_active_dataset(dataset_name=str(cmd_args.dataset_name))
@@ -807,6 +809,10 @@ def main(cmd_args):
             return
         if cmd_args.show is True:
             model = torch.load(cmd_args.load)
+            if 'epoch' in model:
+                print(f"Model trained {model['epoch']} epochs.")
+            if 'it' in model:
+                print(f"Model trained {model['it']} steps.")
             print(model.keys())
             return
         print(f"Loading model {cmd_args.model} from {cmd_args.load}")
@@ -865,6 +871,7 @@ if __name__ == '__main__':
     set_logger(False)
 
     parser = argparse.ArgumentParser()
+
     parser.add_argument('-m', '--model_file', type=str,
                         help='Path to a pre-trained model.')
     parser.add_argument('-o', '--output_directory', type=str,
