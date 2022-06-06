@@ -86,6 +86,7 @@ class DTCInverseSTFS(torch.nn.Module):
         sgdargs: Optional[dict] = None,
         norm: Optional[str] = None,
         mel_scale: str = "htk",
+        device="cuda",
     ) -> None:
         super(DTCInverseSTFS, self).__init__()
         # num mels
@@ -110,6 +111,9 @@ class DTCInverseSTFS(torch.nn.Module):
         assert f_min <= self.f_max, "Require f_min: {} < f_max: {}".format(f_min, self.f_max)
 
         fb = melscale_fbanks(n_stft, self.f_min, self.f_max, self.n_mels, self.sample_rate, norm, mel_scale)
+        #
+        self.device = device
+        #
         self.register_buffer("fb", fb)
 
     @staticmethod
@@ -205,11 +209,7 @@ class DTCInverseSTFS(torch.nn.Module):
         # n_mels = M.shape[-2]
 
         mel_basis = self.fb.T
-        # Mel basis torch.Size([513, 80])
-        print("Mel basis", mel_basis.shape)
-
         spectogram = self.nnls(mel_basis, melspec)
-        print(f"original shape {melspec.shape} return shape {spectogram.shape}")
         return spectogram
 
 
