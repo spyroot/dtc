@@ -1,3 +1,5 @@
+import os
+
 from model_loader.stft_dataloader import SFTFDataloader
 from model_trainer.internal.call_interface import Callback
 from model_trainer.trainer import Trainer
@@ -25,7 +27,7 @@ class Trainable(tune.Trainable, Callback):
         self.config = config
         spec = config['spec']
 
-        batch_size = 0
+        batch_size = 1
         if 'batch_size' in config:
             spec.set_batch_size(int(config['batch_size']))
             assert spec.batch_size() == int(config['batch_size'])
@@ -38,14 +40,14 @@ class Trainable(tune.Trainable, Callback):
         SFTFDataloader.set_logger(False)
         data = SFTFDataloader(config['spec'],
                               batch_size=batch_size,
-                              rank=int(args.rank),
+                              rank=int(config.rank),
                               world_size=config['world_size'],
                               verbose=False)
 
         Trainer.set_logger(False)
         self.trainer = Trainer(config['spec'],
                                data_loader=data,
-                               rank=int(args.rank),
+                               rank=int(config.rank),
                                world_size=config['world_size'],
                                verbose=False,
                                device=config['device'],
@@ -79,7 +81,6 @@ class Trainable(tune.Trainable, Callback):
         :param tmp_dir:
         :return:
         """
-        print("called save_checkpoint with tmp dir ", tmp_dir)
         checkpoint_path = os.path.join(tmp_dir, "model.pth")
         self.trainer.save_model_layer("spectrogram_layer", checkpoint_path)
 
@@ -87,16 +88,19 @@ class Trainable(tune.Trainable, Callback):
 
     def load_checkpoint(self, tmp_dir):
         """
+        It is separate load and save routines.  Ray keeps own checkpoints.
+
         :param tmp_dir:
         :return:
         """
-        print("called save_checkpoint with tmp dir ", tmp_dir)
         checkpoint_path = os.path.join(tmp_dir, "model.pth")
         self.trainer.load_model_layer("spectrogram_layer", checkpoint_path)
         return checkpoint_path
 
     def step(self):
         """
+        We execute each step and collect metrics.
+
         :return:
         """
         self.trainer.train_optimizer(self.config)
@@ -109,6 +113,3 @@ class Trainable(tune.Trainable, Callback):
             "mean_train_loss": self.trainer.metric.epoch_train_gn_loss.sum(),
             "mean_val_loss": self.trainer.metric.epoch_val_loss.sum()
         }
-
-    # def reset_config(self, new_config):
-    #     return True
