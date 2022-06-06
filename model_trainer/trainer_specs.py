@@ -1050,6 +1050,16 @@ class ExperimentSpecs:
 
         return 100
 
+    def predict_per_iteration(self) -> bool:
+        """
+        Do prediction / validation inside a training loop.
+        Default true and rate based on predict.
+        """
+        if 'predict_per_iteration' in self._setting:
+            return bool(self._setting['predict_per_iteration'])
+
+        return True
+
     def is_train_verbose(self):
         """
         @return: Return true if we do verbose training

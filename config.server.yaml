@@ -1,6 +1,6 @@
-train: True                 # train or not,  default is True for generation we only need load pre-trained model
-use_dataset: 'lj_speech_full'      # dataset set generated.
-use_model: 'dtc'                    # model to use , it must be defined in models section.
+train: True                     # train or not,  default is True for generation we only need load pre-trained model
+use_dataset: 'lj_speech_full'   # dataset set generated.
+use_model: 'dtc'                # model to use , it must be defined in models section.
 draw_prediction: True               # at the of training draw.
 load_model: True            # load model or not, and what
 load_epoch: 500             # load model,  last epoch

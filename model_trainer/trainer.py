@@ -1419,10 +1419,11 @@ class Trainer(AbstractTrainer, ABC):
                                                 'batch': f"{batch_idx}/{loader_data_size}",
                                                 'lr': optimizer.param_groups[0]['lr'],
                                                 'saved': self.state.saved_run})
-            # run prediction if_needed
-            if current_step != 0 and current_step % self.state.trainer_spec.predict() == 0:
-                self.state.step = current_step
-                self.validate_epoch(model, model_name, layer_name)
+            # run prediction only if if need to.
+            if self.state.trainer_spec.predict_per_iteration():
+                if current_step != 0 and current_step % self.state.trainer_spec.predict() == 0:
+                    self.state.step = current_step
+                    self.validate_epoch(model, model_name, layer_name)
 
             # save model checkpoint if needed
             # ray has issue with torch and tensorboard.

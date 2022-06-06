@@ -734,7 +734,6 @@ def inference(spec: ExperimentSpecs, cmd_args, device):
 
 def main(cmd_args):
     """
-
     :param cmd_args:
     :return:
     """
