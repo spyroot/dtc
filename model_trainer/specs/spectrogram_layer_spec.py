@@ -43,8 +43,8 @@ models:
 
     def is_reverse_decoder(self) -> bool:
         """
-        Return true if spec contains reverse decoder enabled
-        by default it false.
+        Return true if spec contains requirement to enable reverse decoder.
+        by default it False.
         :return:
         """
         if 'reverse_decoder' in self._model_dict:
@@ -252,7 +252,7 @@ models:
                                     " Please check configuration.")
         return self._model_dict['post_net']
 
-    def postnet_embedding_dim(self):
+    def postnet_embedding_dim(self) -> int:
         """
         Return post net embedding dimension. Default 512
         :return:
@@ -262,7 +262,7 @@ models:
             return post_net['embedding_dim']
         return 512
 
-    def postnet_kernel_size(self):
+    def postnet_kernel_size(self) -> int:
         """
         Return post net kernel size. Default 5
         :return:
