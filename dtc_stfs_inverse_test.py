@@ -192,6 +192,7 @@ def inverse_test_gpu(dataset_name="", config='config.yaml',
     _train_loader = data_loaders['train_set']
 
     n_stft = 1024 // 2 + 1
+    dts_inverse = DTCInverseSTFS(n_stft, f_max=8000.0).to("cuda")
 
     abs_error = 0
     start_time = time.time()
@@ -204,8 +205,7 @@ def inverse_test_gpu(dataset_name="", config='config.yaml',
         mel_padded = mel_padded.contiguous().cuda(non_blocking=True)
         stft_padded = stft_padded.contiguous().cuda(non_blocking=True)
         mel_padded = F.pad(mel_padded, (1, 1), "constant", 0)
-        librosa_module = DTCInverseSTFS(n_stft, f_max=8000.0)
-        x = librosa_module(mel_padded)
+        x = dts_inverse(mel_padded)
         abs_error += nn.L1Loss()(x, stft_padded).item()
 
     print("--- %s load time, seconds ---" % (time.time() - start_time))

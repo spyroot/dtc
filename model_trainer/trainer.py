@@ -1380,7 +1380,6 @@ class Trainer(AbstractTrainer, ABC):
 
             # here we have scaled loss
             self.scaler.scale(loss).backward()
-
             self.scaler.unscale_(optimizer)
 
             # loss.backward()
@@ -1502,13 +1501,16 @@ class Trainer(AbstractTrainer, ABC):
         output_lengths = to_gpu(output_lengths, device).long()
 
         if self.spectogram_spec.is_stft_loss_enabled():
-            sf = stft.contiguous()
-            if torch.cuda.is_available():
-                sf = sf.cuda(non_blocking=True)
-                sf.requires_grad = False
+            mel_padded = mel_padded.contiguous().cuda(non_blocking=True)
+            stft_padded = stft.contiguous().cuda(non_blocking=True)
+
+            # sf = stft.contiguous()
+            # if torch.cuda.is_available():
+            #     sf = sf.cuda(non_blocking=True)
+            #     sf.requires_grad = False
 
             return (text_padded, input_lengths, mel_padded, max_len, output_lengths), \
-                   (mel_padded, gate_padded, stft)
+                   (mel_padded, gate_padded, stft_padded)
 
         else:
             return (text_padded, input_lengths, mel_padded, max_len, output_lengths), \

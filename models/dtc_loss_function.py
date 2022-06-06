@@ -1,3 +1,5 @@
+import logging
+
 import librosa
 import numpy as np
 import torch
@@ -6,6 +8,8 @@ from torch.distributions.kl import kl_divergence
 from torch.distributions.normal import Normal
 from torch.nn import functional as F
 from model_trainer.specs.spectrogram_layer_spec import SpectrogramLayerSpec
+from models.lbfs_mel_Inverse import DTCInverseSTFS
+
 
 def tiny(x):
     return torch.finfo().tiny
@@ -108,7 +112,7 @@ class dtcLoss(nn.Module):
                  mel_fmin=0.0,
                  sr=22050,
                  n_fft=2048,
-                 fmax=8000,
+                 fmax=8000.0,
                  mel_fmax=8000.0, device=None):
         super(dtcLoss, self).__init__()
 
@@ -121,12 +125,18 @@ class dtcLoss(nn.Module):
         self.sr = torch.tensor(self.sample_rate, device=device, requires_grad=False)
         self.n_fft = torch.tensor(self.filter_length, device=device, requires_grad=False)
         self.fmin = torch.tensor(150.0, device=device, requires_grad=False)
-        self.fmax = torch.tensor(4000.0, device=device, requires_grad=False)
+        self.fmax = torch.tensor(fmax, device=device, requires_grad=False)
         self.threshold = torch.tensor(0.1, device=device, requires_grad=False)
         self.device = device
 
-        print("Creating loss with stft term", {self.is_stft_compute})
-        print("Enabling reverse decoder.", {self.is_reverse_encoder})
+        self.n_stft = 1024 // 2 + 1
+        self.dts_inverse = DTCInverseSTFS(self.n_stft, f_max=fmax).to(device)
+
+        if self.is_stft_compute:
+            logging.log("inverse STFS loss enabled.")
+
+        if self.is_reverse_encoder:
+            logging.log("Reverse encoder - decoder enabled.")
 
     def kl_loss(self, q_dist):
         """
@@ -175,25 +185,28 @@ class dtcLoss(nn.Module):
 
             total = mel_loss + gate_loss
 
+            print(self.alignment_diagonal_score())
             if self.is_stft_compute:
                 stft = targets[2]
                 stft.requires_grad = False
 
-                # stft complex64, we take abs and it float32
-                mel_target_padded = F.pad(mel_target, (1, 1), "constant", 0)
-                S = torch.abs(stft).to(self.device)
+                mel_padded = F.pad(mel_out, (1, 1), "constant", 0)
+                with torch.no_grad():
+                    x = self.dts_inverse(mel_padded)
+                    abs_error = nn.L1Loss()(x, stft)
+                    # print("l1 abs error", abs_error)
 
-                S_inv_target = librosa.feature.inverse.mel_to_stft(
-                        mel_target_padded.detach().cpu().numpy(),
-                        n_fft=self.filter_length, sr=self.sample_rate)
+                # S_inv_target = librosa.feature.inverse.mel_to_stft(
+                #         mel_target_padded.detach().cpu().numpy(),
+                #         n_fft=self.filter_length, sr=self.sample_rate)
 
                 # S_inv_generated = librosa.feature.inverse.mel_to_stft(
                 #         mel_out_post_net_padded.detach().cpu().numpy(), n_fft=self.filter_length, sr=self.sample_rate)
                 # S_inv_generated2 = librosa.feature.inverse.mel_to_stft(
                 #         mel_out_padded.detach().cpu().numpy(), n_fft=self.filter_length, sr=self.sample_rate)
 
-                sf_loss1 = nn.L1Loss()(torch.from_numpy(S_inv_target).to(self.device), S)
-                total += sf_loss1
+                # sf_loss1 = nn.L1Loss()(torch.from_numpy(S_inv_target).to(self.device), S)
+                total += abs_error
 
             return {'loss': total,
                     'mel_loss': mel_loss,
