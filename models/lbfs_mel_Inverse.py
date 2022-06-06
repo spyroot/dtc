@@ -13,7 +13,7 @@ from torchaudio.functional import melscale_fbanks
 from model_loader.stft_dataloader import SFTFDataloader
 from model_trainer.trainer_specs import ExperimentSpecs
 from models.torch_mel_inverse import LibrosaInverseMelScale
-
+from models.lb import LBFGS_FIXED
 
 class InverseSTFSObjective(torch.autograd.Function):
     @staticmethod
@@ -135,7 +135,7 @@ class DTCInverseSTFS(torch.nn.Module):
 
         # Construct non-negative bounds
         shape = x_init.shape
-        optimizer = optim.LBFGS([x_init],
+        optimizer = LBFGS_FIXED([x_init],
                                 lr=0.1,
                                 max_iter=500,
                                 tolerance_grad=1e-3,
