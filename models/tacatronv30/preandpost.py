@@ -4,6 +4,7 @@ from torch.nn import functional as F
 
 from .layers import ConvNorm
 from .layers import LinearNorm
+from model_trainer.trainer_specs import ExperimentSpecs
 
 
 class Prenet(nn.Module):
@@ -35,7 +36,7 @@ class Postnet(nn.Module):
     A post net by default five 1-d convolution layers.
     Each layer kernel size 5
     """
-    def __init__(self, experiment_specs, device, is_strict=True) -> None:
+    def __init__(self, specs: ExperimentSpecs, device, is_strict=True) -> None:
         """
         :param experiment_specs:  a model spec that must contain all parameter for post net.
         :param device:  a target device.
@@ -43,45 +44,48 @@ class Postnet(nn.Module):
         super(Postnet, self).__init__()
         self.device = device
         self.convolutions = nn.ModuleList()
-        self.experiment_specs = experiment_specs
-        self.model_spec = experiment_specs.get_model_spec()
-        self.spectogram_spec = self.model_spec.get_spectrogram()
+        self.experiment_specs = specs
+        self.model_spec = specs.get_model_spec()
+        self.specto_spec = self.model_spec.get_spectrogram()
 
         if is_strict:
-            assert self.spectogram_spec.n_mel_channels() == 80
-            assert self.spectogram_spec.embedding_dim() == 512
-            assert self.spectogram_spec.postnet_kernel_size() == 5
-            assert self.spectogram_spec.postnet_n_convolutions() == 5
+            assert self.specto_spec.n_mel_channels() == 80
+            assert self.specto_spec.postnet_embedding_dim() == 512
+            assert self.specto_spec.postnet_kernel_size() == 5
+            assert self.specto_spec.postnet_n_convolutions() == 5
 
         self.convolutions.append(
             nn.Sequential(
-                ConvNorm(self.spectogram_spec.n_mel_channels(),
-                         self.spectogram_spec.postnet_embedding_dim(),
-                         kernel_size=self.encoder_spec.postnet_kernel_size(), stride=1,
-                         padding=int((self.encoder_spec.postnet_kernel_size() - 1) / 2),
+                ConvNorm(self.specto_spec.n_mel_channels(),
+                         self.specto_spec.postnet_embedding_dim(),
+                         kernel_size=self.specto_spec.postnet_kernel_size(), stride=1,
+                         padding=int((self.specto_spec.postnet_kernel_size() - 1) / 2),
                          dilation=1, w_init_gain='tanh'),
-                nn.BatchNorm1d(self.encoder_spec.postnet_embedding_dim()))
+                nn.BatchNorm1d(self.specto_spec.postnet_embedding_dim(),
+                               affine=self.specto_spec.post_net_batch_affine()))
         )
 
         for i in range(1, self.encoder_spec.postnet_n_convolutions() - 1):
             self.convolutions.append(
                 nn.Sequential(
-                    ConvNorm(self.spectogram_spec.postnet_embedding_dim(),
-                             self.spectogram_spec.postnet_embedding_dim(),
-                             kernel_size=self.spectogram_spec.postnet_kernel_size(), stride=1,
-                             padding=int((self.spectogram_spec.postnet_kernel_size() - 1) / 2),
+                    ConvNorm(self.specto_spec.postnet_embedding_dim(),
+                             self.specto_spec.postnet_embedding_dim(),
+                             kernel_size=self.specto_spec.postnet_kernel_size(), stride=1,
+                             padding=int((self.specto_spec.postnet_kernel_size() - 1) / 2),
                              dilation=1, w_init_gain='tanh'),
-                    nn.BatchNorm1d(self.spectogram_spec.postnet_embedding_dim()))
+                    nn.BatchNorm1d(self.specto_spec.postnet_embedding_dim(),
+                                   affine=self.specto_spec.post_net_batch_affine()))
             )
 
         self.convolutions.append(
             nn.Sequential(
-                ConvNorm(self.encoder_spec.postnet_embedding_dim(),
-                         self.encoder_spec.n_mel_channels(),
-                         kernel_size=self.encoder_spec.postnet_kernel_size(), stride=1,
-                         padding=int((self.encoder_spec.postnet_kernel_size() - 1) / 2),
+                ConvNorm(self.specto_spec.postnet_embedding_dim(),
+                         self.specto_spec.n_mel_channels(),
+                         kernel_size=self.specto_spec.postnet_kernel_size(), stride=1,
+                         padding=int((self.specto_spec.postnet_kernel_size() - 1) / 2),
                          dilation=1, w_init_gain='linear'),
-                nn.BatchNorm1d(self.encoder_spec.n_mel_channels()))
+                nn.BatchNorm1d(self.specto_spec.n_mel_channels(),
+                               affine=self.specto_spec.post_net_batch_affine()))
         )
 
     def forward(self, x):

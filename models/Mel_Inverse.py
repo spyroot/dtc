@@ -226,6 +226,11 @@ class MelObjective(nn.Module):
         # Flatten the gradient
         return value, grad.flatten()
 
+    @staticmethod
+    def backward(ctx, grad_output):
+
+
+
 from torch.autograd import Variable
 
 class LibrosaInverseMelScale2(torch.nn.Module):
