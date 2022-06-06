@@ -1134,6 +1134,7 @@ class Trainer(AbstractTrainer, ABC):
                                             'batch_loss': all_reduced_loss['loss'] // max(1, batch_idx + 1),
                                             'avg loss': self.metric.total_train_mean_loss(),
                                             'batch': f"{batch_idx}/{current_batch_size}",
+                                            'diag': all_reduced_loss['diagonal_score'],
                                             'saved': self.state.saved_run}
 
                         for k in all_reduced_loss:
@@ -1375,6 +1376,7 @@ class Trainer(AbstractTrainer, ABC):
                 gate_loss = criterion_out['gate_loss']
                 # spectral_loss = criterion_out['spectral_loss']
                 loss = criterion_out['loss']
+                diag_score = ['diagonal_score']
                 assert loss.dtype is torch.float32
                 normal_loss = loss.item()
 
@@ -1409,8 +1411,9 @@ class Trainer(AbstractTrainer, ABC):
                     self.state.step = current_step
                     self.tqdm_iter.set_postfix({'step': current_step,
                                                 'grad': grad_norm.item(),
-                                                'batch mean': self.metric.batch_grad_loss.mean(),
+                                                'b_mean': self.metric.batch_grad_loss.mean(),
                                                 'loss': normal_loss,
+                                                'diag': diag_score.item(),
                                                 'epoch': self.metric.epoch_train_gn_loss.mean(),
                                                 # 'spectral_loss': spectral_loss.item(),
                                                 'mel': mel_loss.item(),

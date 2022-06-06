@@ -177,7 +177,7 @@ class dtcLoss(nn.Module):
         gate_target.requires_grad = False
 
         if not self.is_reverse_encoder:
-            mel_out, mel_out_post_net, gate_out, _, = model_output
+            mel_out, mel_out_post_net, gate_out, alignment, = model_output
             gate_targets = gate_target.view(-1, 1)
             gate_outs = gate_out.view(-1, 1)
 
@@ -186,7 +186,6 @@ class dtcLoss(nn.Module):
 
             total = mel_loss + gate_loss
 
-            print(self.alignment_diagonal_score())
             if self.is_stft_compute:
                 stft = targets[2]
                 stft.requires_grad = False
@@ -209,9 +208,12 @@ class dtcLoss(nn.Module):
                 # sf_loss1 = nn.L1Loss()(torch.from_numpy(S_inv_target).to(self.device), S)
                 total += abs_error
 
-            return {'loss': total,
-                    'mel_loss': mel_loss,
-                    'gate_loss': gate_loss}
+            return {
+                'loss': total,
+                'mel_loss': mel_loss,
+                'gate_loss': gate_loss,
+                'diagonal_score': self.alignment_diagonal_score(alignment),
+            }
         else:
             mel_out, mel_out_post_net, gate_out, alignment, rev = model_output
             gate_targets = gate_target.view(-1, 1)
