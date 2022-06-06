@@ -395,6 +395,8 @@ def inverse_test_gpu(dataset_name="", epsilon=1e-60, max_iteration=100,  batch_s
 
     abs_error = 0
     start_time = time.time()
+    dtc_stfs_module = DTCInverseSTFS(n_stft, f_max=8000.0).device = torch.device('cuda')
+
     for bidx, batch in enumerate(_train_loader):
         if bidx == max_iteration:
             break
@@ -404,8 +406,7 @@ def inverse_test_gpu(dataset_name="", epsilon=1e-60, max_iteration=100,  batch_s
         mel_padded = mel_padded.contiguous().cuda(non_blocking=True)
         stft_padded = stft_padded.contiguous().cuda(non_blocking=True)
         mel_padded = F.pad(mel_padded, (1, 1), "constant", 0)
-        librosa_module = DTCInverseSTFS(n_stft, f_max=8000.0)
-        x = librosa_module(mel_padded)
+        x = dtc_stfs_module(mel_padded)
         abs_error += nn.L1Loss()(x, stft_padded).item()
 
     print("--- %s load time, seconds ---" % (time.time() - start_time))
