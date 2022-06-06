@@ -1661,6 +1661,8 @@ class Trainer(AbstractTrainer, ABC):
 
     def train(self, model_name=None, config=None, checkpoint_dir=None):
         """
+        Main routine for model training.
+
         :param  config:
         :param  model_name:
         :param  checkpoint_dir this mainly for ray
