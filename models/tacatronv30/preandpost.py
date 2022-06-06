@@ -35,7 +35,7 @@ class Postnet(nn.Module):
     A post net by default five 1-d convolution layers.
     Each layer kernel size 5
     """
-    def __init__(self, experiment_specs, device) -> None:
+    def __init__(self, experiment_specs, device, is_strict=True) -> None:
         """
         :param experiment_specs:  a model spec that must contain all parameter for post net.
         :param device:  a target device.
@@ -45,12 +45,18 @@ class Postnet(nn.Module):
         self.convolutions = nn.ModuleList()
         self.experiment_specs = experiment_specs
         self.model_spec = experiment_specs.get_model_spec()
-        self.encoder_spec = self.model_spec.get_spectrogram()
+        self.spectogram_spec = self.model_spec.get_spectrogram()
+
+        if is_strict:
+            assert self.spectogram_spec.n_mel_channels() == 80
+            assert self.spectogram_spec.embedding_dim() == 512
+            assert self.spectogram_spec.postnet_kernel_size() == 5
+            assert self.spectogram_spec.postnet_n_convolutions() == 5
 
         self.convolutions.append(
             nn.Sequential(
-                ConvNorm(self.encoder_spec.n_mel_channels(),
-                         self.encoder_spec.postnet_embedding_dim(),
+                ConvNorm(self.spectogram_spec.n_mel_channels(),
+                         self.spectogram_spec.postnet_embedding_dim(),
                          kernel_size=self.encoder_spec.postnet_kernel_size(), stride=1,
                          padding=int((self.encoder_spec.postnet_kernel_size() - 1) / 2),
                          dilation=1, w_init_gain='tanh'),
@@ -60,12 +66,12 @@ class Postnet(nn.Module):
         for i in range(1, self.encoder_spec.postnet_n_convolutions() - 1):
             self.convolutions.append(
                 nn.Sequential(
-                    ConvNorm(self.encoder_spec.postnet_embedding_dim(),
-                             self.encoder_spec.postnet_embedding_dim(),
-                             kernel_size=self.encoder_spec.postnet_kernel_size(), stride=1,
-                             padding=int((self.encoder_spec.postnet_kernel_size() - 1) / 2),
+                    ConvNorm(self.spectogram_spec.postnet_embedding_dim(),
+                             self.spectogram_spec.postnet_embedding_dim(),
+                             kernel_size=self.spectogram_spec.postnet_kernel_size(), stride=1,
+                             padding=int((self.spectogram_spec.postnet_kernel_size() - 1) / 2),
                              dilation=1, w_init_gain='tanh'),
-                    nn.BatchNorm1d(self.encoder_spec.postnet_embedding_dim()))
+                    nn.BatchNorm1d(self.spectogram_spec.postnet_embedding_dim()))
             )
 
         self.convolutions.append(

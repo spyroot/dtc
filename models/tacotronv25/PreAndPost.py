@@ -49,7 +49,7 @@ class Postnet(nn.Module):
         - Five 1-d convolution with 512 channels and kernel size 5
     """
 
-    def __init__(self, specs, device):
+    def __init__(self, specs, device, is_strict):
         super(Postnet, self).__init__()
         self.device = device
         self.convolutions = nn.ModuleList()
@@ -57,6 +57,12 @@ class Postnet(nn.Module):
         self.experiment_specs = specs
         self.model_spec = specs.get_model_spec()
         self.specto_spec = self.model_spec.get_spectrogram()
+
+        if is_strict:
+            assert self.spectogram_spec.n_mel_channels() == 80
+            assert self.spectogram_spec.embedding_dim() == 512
+            assert self.spectogram_spec.postnet_kernel_size() == 5
+            assert self.spectogram_spec.postnet_n_convolutions() == 5
 
         self.convolutions.append(
             nn.Sequential(

@@ -19,6 +19,7 @@ class Tacotron3(nn.Module):
     """
 
     """
+
     def __init__(self, experiment_specs: ExperimentSpecs, device) -> None:
         """
 
@@ -38,8 +39,6 @@ class Tacotron3(nn.Module):
         self.n_mel_channels = self.specto_spec.n_mel_channels()
         self.fp16_run = self.experiment_specs.is_amp()
 
-
-        #
         self.embedding = nn.Embedding(self.experiment_specs.n_symbols,
                                       self.specto_spec.symbols_embedding_dim())
         std = sqrt(2.0 / (self.experiment_specs.n_symbols +
