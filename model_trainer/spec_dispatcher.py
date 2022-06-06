@@ -1,4 +1,6 @@
 from typing import Callable
+
+from .specs.model_dtc_spec import ModelSpecDTC
 from .specs.model_tacotron25_spec import ModelSpecTacotron25
 
 
@@ -44,7 +46,7 @@ class SpecsDispatcher:
         Create spec, for dtc.
         :return:
         """
-        return ModelSpecdtc(model_spec, dataset_spec, verbose=verbose)
+        return ModelSpecDTC(model_spec, dataset_spec, verbose=verbose)
 
     def get_model(self, model_name: str):
         """
