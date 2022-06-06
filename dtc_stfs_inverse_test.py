@@ -177,7 +177,7 @@ def inverse_test_combine_error(dataset_name="", epsilon=1e-60, max_iteration=100
 
 def inverse_test_gpu(dataset_name="", config='config.yaml',
                      epsilon=1e-60, max_iteration=100,
-                     batch_size=32, verbose=False):
+                     batch_size=16, verbose=False):
     """
     :return:
     """
@@ -187,7 +187,7 @@ def inverse_test_gpu(dataset_name="", config='config.yaml',
     assert 'validation_set' in pk_dataset
     assert 'test_set' in pk_dataset
 
-    dataloader = SFTFDataloader(trainer_spec, batch_size=2, verbose=True)
+    dataloader = SFTFDataloader(trainer_spec, batch_size=batch_size, verbose=True)
     data_loaders, collate_fn = dataloader.get_all()
     _train_loader = data_loaders['train_set']
 
@@ -220,4 +220,6 @@ if __name__ == '__main__':
     # test_create_from_numpy_and_iterator()
     # inverse_test('lj_speech_1k_raw')
     # inverse_test_combine_error('lj_speech_1k_raw')
+
     inverse_test_gpu('lj_speech_1k_raw')
+    inverse_test_gpu('LJSpeech')
