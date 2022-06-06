@@ -9,6 +9,7 @@ from torch.distributions.normal import Normal
 from torch.nn import functional as F
 from model_trainer.specs.spectrogram_layer_spec import SpectrogramLayerSpec
 from models.lbfs_mel_Inverse import DTCInverseSTFS
+from loguru import logger
 
 
 def tiny(x):
@@ -133,10 +134,10 @@ class dtcLoss(nn.Module):
         self.dts_inverse = DTCInverseSTFS(self.n_stft, f_max=fmax).to(device)
 
         if self.is_stft_compute:
-            logging.log("inverse STFS loss enabled.")
+            logging.info("inverse STFS loss enabled.")
 
         if self.is_reverse_encoder:
-            logging.log("Reverse encoder - decoder enabled.")
+            logging.info("Reverse encoder - decoder enabled.")
 
     def kl_loss(self, q_dist):
         """
