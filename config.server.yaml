@@ -338,19 +338,6 @@ models:
       optimizer: edge_optimizer
       lr_scheduler: main_lr_scheduler
       input_size: 1
-  GraphLstmRnn:
-    node_model:
-      model: GraphLSTM
-      optimizer: node_optimizer
-      lr_scheduler: main_lr_scheduler
-      has_input: True
-      has_output: True
-    edge_model:
-      model: GraphLSTM
-      optimizer: edge_optimizer
-      lr_scheduler: main_lr_scheduler
-      input_size: 1
-
 
 ray:
   batch_size: [32, 64, 128]
