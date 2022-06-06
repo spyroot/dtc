@@ -179,12 +179,14 @@ class dtcLoss(nn.Module):
                 stft = targets[2]
                 stft.requires_grad = False
 
-                mel_target_padded = F.pad(mel_target, (1, 1), "constant", 0)
                 # stft complex64, we take abs and it float32
+                mel_target_padded = F.pad(mel_target, (1, 1), "constant", 0)
                 S = torch.abs(stft).to(self.device)
 
                 S_inv_target = librosa.feature.inverse.mel_to_stft(
-                        mel_target_padded.detach().cpu().numpy(), n_fft=self.filter_length, sr=self.sample_rate)
+                        mel_target_padded.detach().cpu().numpy(),
+                        n_fft=self.filter_length, sr=self.sample_rate)
+
                 # S_inv_generated = librosa.feature.inverse.mel_to_stft(
                 #         mel_out_post_net_padded.detach().cpu().numpy(), n_fft=self.filter_length, sr=self.sample_rate)
                 # S_inv_generated2 = librosa.feature.inverse.mel_to_stft(
@@ -204,8 +206,7 @@ class dtcLoss(nn.Module):
             # rev_mel_out = gate_out_rev.view(-1, 1)
             gate_outs = gate_out.view(-1, 1)
 
-            reversed_mel_out = torch.flip(rev_mel_out, dims=(1,))
-
+            # reversed_mel_out = torch.flip(rev_mel_out, dims=(1,))
             # second_gate_loss = nn.BCEWithLogitsLoss()(rev_mel_out, gate_targets)
             # second_mse_loss = nn.MSELoss()(rev_mel_out, mel_target)
             l1_loss = nn.L1Loss()(alignment_rev, alignment)
