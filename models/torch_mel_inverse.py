@@ -1,5 +1,9 @@
+#
+# This original torch implementation and it SGD method doesn't
+# produce very good result.   Initial attempt was improve this
+# But I converged on LBFG implementation.
+#
 from typing import Optional
-
 import torch
 import torchaudio
 from torch import Tensor
