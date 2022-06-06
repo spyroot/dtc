@@ -170,14 +170,10 @@ class DTCInverseSTFS(torch.nn.Module):
 
         # Process in blocks:
         if B.shape[-1] <= n_columns:
-            return self.lbfgs_block(A, B)
+            return self.lbfgs_block(A, B, attach_grad=True)
 
-        print("A dev", A.device)
         A_inv = torch.linalg.pinv(A)
-        print("A_inv dev", A_inv.device)
         B = torch.permute(B, (0, 2, 1))
-        print("B_inv dev", B.device)
-
         x = torch.einsum("fm,...mt->...ft", A_inv, B)
         torch.clip(x, 0, None, out=x)
         x_init = x
