@@ -144,7 +144,7 @@ settings:
     cudnn_benchmark: False
   small:
     epochs: 500
-    batch_size: 64
+    batch_size: 128
     grad_clipping: True
     grad_max_norm: 1.0
     tensorboard_update: 100       # update rate for tensorboard
