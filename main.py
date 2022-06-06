@@ -390,10 +390,10 @@ def convert(trainer_spec, version=3,
 #         win32api.SetConsoleCtrlHandler(handler, True)
 
 
-def cleanup(is_distributed: bool) -> None:
+def cleanup(is_dist: bool) -> None:
     """
 
-    :param is_distributed:
+    :param is_dist:
     :return:
     """
     if is_distributed:

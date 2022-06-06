@@ -9,8 +9,10 @@ class ResetOptimizer(Callback):
         reset_epoch (List[int]): after which epochs to reset optimizer
         verbose (bool): Flag to print that optimizer was reset."""
 
-    def __init__(self, reset_epochs=[], verbose=True):
+    def __init__(self, reset_epochs=None, verbose=True):
         super().__init__()
+        if reset_epochs is None:
+            reset_epochs = []
         self.reset_epochs = set(reset_epochs)
         self.verbose = verbose
 

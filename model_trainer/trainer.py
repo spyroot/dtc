@@ -1789,16 +1789,3 @@ class Trainer(AbstractTrainer, ABC):
             t_writer.add_histogram(name, weight, epoch)
             t_writer.add_histogram(f'{name}.grad', weight.grad, epoch)
         # tune.report(loss=(val_loss / val_steps), accuracy=correct / total)
-
-    def plot_data(self, data, figsize=(16, 4)):
-        """
-        :param data:
-        :param figsize:
-        :return:
-        """
-        fig, axes = plt.subplots(1, len(data), figsize=figsize)
-        for i in range(len(data)):
-            axes[i].imshow(data[i],
-                           aspect='auto',
-                           inorigin='bottom',
-                           interpolation='none')

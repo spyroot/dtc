@@ -94,14 +94,15 @@ class TacotronSTFT3(torch.nn.Module):
         output = dynamic_range_decompression(magnitudes)
         return output
 
-    def mel_spectrogram(self, y, filter_length=None, stft=True) -> Tuple[Tensor, Tensor]:
+    def mel_spectrogram(self, y, filter_length=None, is_stft=True) -> Tuple[Tensor, Tensor]:
         """
         Computes spectral flatness and mel spectrogram from a batch.
 
-        :param stft: flag disable stft generation. note this mainly for a/b testing.
-        :param filter_length:  n_fft
+        :param is_stft: flag set false,  no stft will follow.
+                        note this mainly for a/b testing.
+        :param filter_length:  n_fft number of filters.
         :param y: tensor shape (batch, tensor), value normalized in range [-1, 1]
-        :return:  torch.FloatTensor of shape (B, n_mel_channels, T)
+        :return: torch.FloatTensor of shape (B, n_mel_channels, T)
         """
         magnitudes, phases = self.stft_fn.transform(y)
 
@@ -120,7 +121,7 @@ class TacotronSTFT3(torch.nn.Module):
         #                       hop_length=self.hop_length,
         #                       win_length=self.win_length,
         #                       center=True)
-        if stft:
+        if is_stft:
             n = len(y_numpy)
             y_pad = librosa.util.fix_length(y_numpy, size=n + self.filter_length // 2)
             D = librosa.stft(y_pad, n_fft=self.filter_length,

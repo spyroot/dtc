@@ -7,8 +7,7 @@ RUN apt-get install -y libnuma-dev vim openssh-server zsh fzf \
     cuda-cudart-dev-11-6 cuda-libraries-dev-11-6 cuda-libraries-dev-11-6 libcusparse-dev-11-6 \
     install nvidia-cuda-toolkit
 
-RUN a
- python3-wheel python3-libnvinfer
+RUN pip install python3-wheel python3-libnvinfer
 #RUN make pkg.debian.build
 EXPOSE 22/tcp
 EXPOSE 54321/tcp

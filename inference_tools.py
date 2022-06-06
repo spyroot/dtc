@@ -194,3 +194,16 @@ def show_img(img, title=""):
     thismanager = plt.get_current_fig_manager()
     thismanager.window.wm_geometry("+100+100")
     plt.show()
+
+    def plot_data(data, figsize=(16, 4)):
+        """
+        :param data:
+        :param figsize:
+        :return:
+        """
+        fig, axes = plt.subplots(1, len(data), figsize=figsize)
+        for i in range(len(data)):
+            axes[i].imshow(data[i],
+                           aspect='auto',
+                           inorigin='bottom',
+                           interpolation='none')
