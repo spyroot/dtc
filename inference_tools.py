@@ -1,5 +1,5 @@
-# Toolingto plot MEL and save to file
-# SFTS, Mel dataset and samples. --plot uses this.
+# Tools for ploting STFS, MEL and saving to file
+# STFS, Mel dataset and samples. --plot uses this.
 #
 # Mustafa. B
 #
