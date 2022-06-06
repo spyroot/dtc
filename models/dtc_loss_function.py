@@ -93,7 +93,7 @@ def pitch_track(
     return pitches, mags
 
 
-class DTSLoss(nn.Module):
+class dtcLoss(nn.Module):
     """
 
     """
@@ -110,7 +110,7 @@ class DTSLoss(nn.Module):
                  n_fft=2048,
                  fmax=8000,
                  mel_fmax=8000.0, device=None):
-        super(DTSLoss, self).__init__()
+        super(dtcLoss, self).__init__()
 
         self.filter_length = filter_length
         self.sample_rate = sampling_rate

@@ -15,7 +15,7 @@ class TensorboardTrainerLogger(SummaryWriter):
     """
 
     def __init__(self, trainer_spec: ExperimentSpecs,
-                 model_name: Optional[str] = "dts",
+                 model_name: Optional[str] = "dtc",
                  batch_size: Optional[int] = 32,
                  precision: Optional[str] = "fp32",
                  comments="", logdir=None, is_distributed=False):
@@ -24,8 +24,8 @@ class TensorboardTrainerLogger(SummaryWriter):
         :param is_distributed:
         """
         super(TensorboardTrainerLogger, self).__init__(f"results/tensorboard/{model_name}/{batch_size}/{precision}",
-                                                       comment="dts",
-                                                       filename_suffix="dts",
+                                                       comment="dtc",
+                                                       filename_suffix="dtc",
                                                        flush_secs=2)
 
         self.is_stft_loss = None

@@ -98,7 +98,7 @@ class Decoder(nn.Module):
         """
         B = memory.size(0)
         decoder_input = Variable(memory.data.new(
-                B, self.n_mel_channels * self.n_frames_per_step).zero_())
+                B, self.n_mel_channels * self.decoder_fps).zero_())
         return decoder_input
 
     def initialize_decoder_states(self, memory, mask):
@@ -150,7 +150,7 @@ class Decoder(nn.Module):
         decoder_inputs = decoder_inputs.transpose(1, 2)
         decoder_inputs = decoder_inputs.view(
                 decoder_inputs.size(0),
-                int(decoder_inputs.size(1) / self.n_frames_per_step), -1)
+                int(decoder_inputs.size(1) / self.decoder_fps), -1)
         # (B, T_out, n_mel_channels) -> (T_out, B, n_mel_channels)
         decoder_inputs = decoder_inputs.transpose(0, 1)
         return decoder_inputs

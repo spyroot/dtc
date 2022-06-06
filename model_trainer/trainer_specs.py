@@ -1603,7 +1603,7 @@ class ExperimentSpecs:
                 order:
                  - spectrogram_layer
                  - wav2vec
-              dts:
+              dtc:
                 type: sequential
                 order:
                  - spectrogram_layer

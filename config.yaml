@@ -256,7 +256,7 @@ strategy:
     order:
      - spectrogram_layer
      - wav2vec
-  dts:
+  dtc:
     type: sequential
     order:
      - spectrogram_layer
@@ -320,7 +320,7 @@ models:
       optimizer: edge_optimizer
       lr_scheduler: main_lr_scheduler
       input_size: 1
-  dts:
+  dtc:
     spectrogram_layer:
       model: tacotron3
       optimizer: dtc_optimizer

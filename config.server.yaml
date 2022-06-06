@@ -1,6 +1,6 @@
 train: True                 # train or not,  default is True for generation we only need load pre-trained model
 use_dataset: 'lj_speech_full'      # dataset set generated.
-use_model: 'dts'                    # model to use , it must be defined in models section.
+use_model: 'dtc'                    # model to use , it must be defined in models section.
 draw_prediction: True               # at the of training draw.
 load_model: True            # load model or not, and what
 load_epoch: 500             # load model,  last epoch
@@ -220,7 +220,7 @@ strategy:
     order:
       - spectrogram_layer
       - wav2vec
-  dts:
+  'dtc:
     type: sequential
     order:
       - spectrogram_layer
@@ -284,7 +284,7 @@ models:
       optimizer: edge_optimizer
       lr_scheduler: main_lr_scheduler
       input_size: 1
-  dts:
+  dtc:
     spectrogram_layer:
       model: tacotron3
       optimizer: dtc_optimizer

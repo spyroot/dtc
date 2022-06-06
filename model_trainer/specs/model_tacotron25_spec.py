@@ -29,7 +29,7 @@ class ModelSpecTacotron25(ModelSpec, ABC):
         super(ModelSpecTacotron25, self).__init__(verbose=verbose)
         self.set_logger(verbose)
 
-        logger.debug("Creating model spec dts", model_spec, dataset_spec)
+        logger.debug("Creating model spec dtc", model_spec, dataset_spec)
 
         self._model_dict = model_spec
         self._generator_param_dict = dataset_spec

@@ -1,8 +1,7 @@
 from abc import ABC
+from loguru import logger
 from .model_spec import ModelSpec
 from .spectrogram_layer_spec import SpectrogramLayerSpec
-from loguru import logger
-import attr
 
 
 class InvalidModelSpec(Exception):
@@ -11,7 +10,7 @@ class InvalidModelSpec(Exception):
 
 
 # @attr.s(frozen = True)
-class ModelSpecDTS(ModelSpec, ABC):
+class ModelSpecDTC(ModelSpec, ABC):
     """
     MODEL SPEC {'spectrogram_layer': {'model': 'tacotron25', 'optimizer': 'tacotron2_optimizer', 'has_input': True,
      'has_output': True, 'max_wav_value': 32768.0, 'frames_per_step': 1, 'sampling_rate': 22050, 'filter_length': 1024,
@@ -25,10 +24,10 @@ class ModelSpecDTS(ModelSpec, ABC):
         :param model_spec:
         :param dataset_spec:
         """
-        super(ModelSpecDTS, self).__init__(verbose=verbose)
+        super(ModelSpecDTC, self).__init__(verbose=verbose)
         self.set_logger(verbose)
 
-        logger.debug("Creating model spec dts", model_spec, dataset_spec)
+        logger.debug("Creating model spec dtc", model_spec, dataset_spec)
 
         self._model_dict = model_spec
 

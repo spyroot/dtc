@@ -1,6 +1,4 @@
 from typing import Callable
-
-from .specs.model_dts_spec import ModelSpecDTS
 from .specs.model_tacotron25_spec import ModelSpecTacotron25
 
 
@@ -28,25 +26,25 @@ class SpecsDispatcher:
         """
         model_dispatch = {
             'tacotron25': self.tacotron25_creator,
-            'dts': self.dts_creator,
+            'dtc': self.dtc_creator,
         }
         return model_dispatch
 
     @staticmethod
     def tacotron25_creator(model_spec, dataset_spec, verbose: bool):
         """
-        Create spec, for dts.
+        Create spec, for dtc.
         :return:
         """
         return ModelSpecTacotron25(model_spec, dataset_spec, verbose=verbose)
 
     @staticmethod
-    def dts_creator(model_spec, dataset_spec, verbose: bool):
+    def dtc_creator(model_spec, dataset_spec, verbose: bool):
         """
-        Create spec, for dts.
+        Create spec, for dtc.
         :return:
         """
-        return ModelSpecDTS(model_spec, dataset_spec, verbose=verbose)
+        return ModelSpecdtc(model_spec, dataset_spec, verbose=verbose)
 
     def get_model(self, model_name: str):
         """

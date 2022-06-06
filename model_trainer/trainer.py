@@ -48,7 +48,7 @@ from model_trainer.trainer_specs import ExperimentSpecs
 from model_trainer.utils import fmtl_print, to_gpu
 # from distributed import apply_gradient_allreduce
 from models.loss_function import Tacotron2Loss
-from models.dtc_loss_function import DTSLoss
+from models.dtc_loss_function import dtcLoss
 from models.tacatronv30.model import Tacotron3
 from models.tacotronv25.model import Tacotron25
 from text import text_to_sequence
@@ -270,10 +270,10 @@ class Trainer(AbstractTrainer, ABC):
                 'vocoder': self.create_tacotron25,
                 'loss': Tacotron2Loss,
             },
-            'dts': {
+            'dtc': {
                 'spectrogram_layer': self.create_tacotron30,
                 'vocoder': self.create_tacotron25,
-                'loss': DTSLoss,
+                'loss': dtcLoss,
             }
         }
 
@@ -286,7 +286,7 @@ class Trainer(AbstractTrainer, ABC):
             'tacotron25': {
                 'spectrogram_layer': self.tacotron25_batch,
             },
-            'dts': {
+            'dtc': {
                 'spectrogram_layer': self.tacotron30_batch,
             }
         }

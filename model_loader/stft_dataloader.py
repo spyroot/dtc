@@ -20,7 +20,7 @@ from model_loader.dataset_stft25 import SFTF2Dataset
 from model_loader.dataset_stft30 import SFTF3Dataset
 from model_loader.sfts2_collate import TextMelCollate2
 from model_loader.sfts3_collate import TextMelCollate3
-from model_trainer.specs.model_dts_spec import ModelSpecDTS
+from model_trainer.specs.model_dtc_spec import ModelSpecDTC
 from model_trainer.specs.model_tacotron25_spec import ModelSpecTacotron25
 from model_trainer.trainer_specs import ExperimentSpecs
 from model_trainer.utils import to_gpu
@@ -74,8 +74,8 @@ class SFTFDataloader:
         if isinstance(model_spec, ModelSpecTacotron25):
             self._model_spec: ModelSpecTacotron25 = trainer_spec.get_model_spec()
             self._version = 2
-        if isinstance(model_spec, ModelSpecDTS):
-            self._model_spec: ModelSpecDTS = trainer_spec.get_model_spec()
+        if isinstance(model_spec, ModelSpecDTC):
+            self._model_spec: ModelSpecDTC = trainer_spec.get_model_spec()
             self._version = 3
 
         # base class return must return spectrogram layer spec
@@ -675,7 +675,7 @@ class SFTFDataloader:
 
 def batch_reader(batch, device):
     """
-    Batch parser for DTS.
+    Batch parser for dtc.
     :param device:
     :param batch:
     :return:

@@ -790,10 +790,11 @@ def main(cmd_args):
     if len(cmd_args.load) > 0:
         resolved = Path(cmd_args.load).expanduser().resolve()
         if not resolved.exists():
-            print("File not found.")
+            print("Error, File not found.")
             return
         if cmd_args.model is None or len(cmd_args.model) == 0:
-            print("Error. If you want load model from a file, Please indicate a model name.")
+            print(cmd_args.model)
+            print("Error. If you want load model from a file, Please indicate a model name. --model")
             return
         if cmd_args.remove_opt is True:
             model = torch.load(cmd_args.load)
@@ -923,8 +924,9 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, help='overwrites batch_size in config file', required=False)
     parser.add_argument('--mode', type=str, default="", help='run trainer in distributed or standalone',
                         required=False)
-    parser.add_argument('--load', type=str, default="", help='load model from a file.', required=False)
-    parser.add_argument('--model', type=str, default="", help='model name. note load and model '
+    parser.add_argument('--load', type=str, default="",
+                        help='load model from a file. argument path to a file.', required=False)
+    parser.add_argument('--model', type=str, default="dtc", help='model name. note load and model '
                                                               'name mainly used if we need explicit load from file',
                         required=False)
 

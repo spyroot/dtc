@@ -24,7 +24,7 @@ class SFTF2Dataset(BaseSFTFDataset, ABC):
     """
     def __init__(self, model_spec: SpectrogramLayerSpec,
                  data=None,
-                 root: Optional[str] = "dts",
+                 root: Optional[str] = "dtc",
                  data_format: Optional[str] = "numpy_mel",
                  fixed_seed: Optional[bool] = True,
                  shuffle: Optional[bool] = False,
@@ -175,13 +175,13 @@ def test_create_from_numpy_in_memory():
     """
     trainer_spec = ExperimentSpecs(spec_config='../config.yaml')
     model_spec = trainer_spec.get_model_spec().get_spec('encoder')
-    train_dataset = SFTF2Dataset(model_spec, 'dts/subset.npy', data_format='numpy_mel', in_memory=True, download=False)
+    train_dataset = SFTF2Dataset(model_spec, 'dtc/subset.npy', data_format='numpy_mel', in_memory=True, download=False)
     assert len(train_dataset) > 0
     assert isinstance(train_dataset[0], tuple)
     assert isinstance(train_dataset[0][0], Tensor)
     assert isinstance(train_dataset[0][1], Tensor)
 
-    train_dataset2 = SFTF2Dataset(model_spec, 'dts/subset.npy', data_format='numpy_mel', in_memory=True, download=True)
+    train_dataset2 = SFTF2Dataset(model_spec, 'dtc/subset.npy', data_format='numpy_mel', in_memory=True, download=True)
     assert len(train_dataset) > 0
     assert isinstance(train_dataset[0], tuple)
     assert isinstance(train_dataset[0][0], Tensor)
@@ -196,7 +196,7 @@ def test_create_from_numpy_and_iterator():
     trainer_spec = ExperimentSpecs(spec_config='../config.yaml')
     model_spec = trainer_spec.get_model_spec().get_spec('spectrogram_layer')
     train_dataset = SFTF2Dataset(model_spec,
-                                 'dts/subset.npy',
+                                 'dtc/subset.npy',
                                  data_format='numpy_mel',
                                  in_memory=False)
     assert len(train_dataset) > 0

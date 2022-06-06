@@ -24,7 +24,7 @@ class SFTF3Dataset(BaseSFTFDataset, ABC):
 
     def __init__(self, model_spec: SpectrogramLayerSpec,
                  data=None,
-                 root: Optional[str] = "dts",
+                 root: Optional[str] = "dtc",
                  data_format: Optional[str] = "numpy_mel",
                  fixed_seed: Optional[bool] = True,
                  shuffle: Optional[bool] = False,

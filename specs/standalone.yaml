@@ -2,7 +2,7 @@ train: True                 # train or not,  default is True for generation we o
 #active: 'grid_small'       # dataset set generated.
 #use_dataset: 'LJSpeechSmallPkl'     # dataset set generated.
 use_dataset: 'LJSpeechSmallRaw'     # dataset set generated.
-use_model: 'dts'            # model to use , it must be defined in models section.
+use_model: 'dtc'            # model to use , it must be defined in models section.
 draw_prediction: True       # at the of training draw.
 load_model: True            # load model or not, and what
 load_epoch: 500             # load model,  last epoch
@@ -179,7 +179,7 @@ models:
   # this pure model specific, single model can describe both edges and nodes
   # in case we need use single model for edge and node prediction task ,
   # use keyword single_model: model_name
-  dts:
+  dtc:
     encoder:
       model: tacotron2
       optimizer: tacotron2_optimizer

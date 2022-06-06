@@ -5,7 +5,7 @@
 # from .trainer_specs import ExperimentSpecs
 # from .model_trainer import GeneratorTrainer
 # from models.loss_function import Tacotron2Loss
-# from models.dtc_loss_function import DTSLoss
+# from models.dtc_loss_function import dtcLoss
 #
 # class ModelCreator:
 #     """
@@ -63,7 +63,7 @@
 #                 'vocoder': self.create_tacotron25,
 #                 'loss': Tacotron2Loss,
 #             },
-#             'dts': {
+#             'dtc': {
 #                 'spectrogram_layer': self.create_tacotron30,
 #                 'vocoder': self.create_tacotron25,
 #                 'loss':
@@ -79,7 +79,7 @@
 #             'tacotron25': {
 #                 'spectrogram_layer': self.tacotron25_batch,
 #             },
-#             'dts': {
+#             'dtc': {
 #                 'spectrogram_layer': self.tacotron30_batch,
 #             }
 #         }
@@ -217,7 +217,7 @@
 #         """
 #         model_dispatch = {
 #             'tacotron25': self.create_tacotron25,
-#             'dts': self.create_tacotron30,
+#             'dtc': self.create_tacotron30,
 #         }
 #
 #         trainer_dispatch = {

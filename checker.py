@@ -8,7 +8,7 @@ from model_trainer.trainer_specs import ExperimentSpecs
 
 def batch_reader(batch, device, version=3):
     """
-    Batch parser for DTS.
+    Batch parser for dtc.
     :param device:
     :param batch:
     :return:
