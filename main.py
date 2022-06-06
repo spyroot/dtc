@@ -21,8 +21,8 @@ import soundfile as sf
 try:
     import ray
     from ray import tune
-    from ray.tune import CLIReporter
-    from ray.tune.schedulers import ASHAScheduler
+    from tune import CLIReporter
+    from tune.schedulers import ASHAScheduler
     from tunner import Trainable
 except ImportError:
     pass
@@ -146,7 +146,9 @@ def convert_mel_to_data(encoder_spec: SpectrogramLayerSpec,
 
 def plot_example(trainer_spec, version=3, dataset_name=None, verbose=True, target_dir=None):
     """
-    Routine plots dataset for dataset inspection
+    Routine plot dataset example for inspection.
+    Each MEl and STFT generated in result folder.  SampleS TFT reconstructed by inverse
+    function and serialized in result directory.
 
     :param target_dir: where to write plots
     :param version: a dataset version.  since we're serializing a tensor or numpy we need know what feature
@@ -188,18 +190,22 @@ def plot_example(trainer_spec, version=3, dataset_name=None, verbose=True, targe
     fig = plt.figure()
 
     start_time = time.time()
+    # take one batch exampe.
     for bidx, batch in enumerate(_train_loader):
-        text_padded, input_lengths, mel_padded, gate_padded, output_lengths, stft_padded = batch
+        text_padded, input_lengths, mel_padded, gate_padded, \
+        output_lengths, stft_padded = batch
 
         plot_spectrogram_to_numpy(mel_padded[0], file_name="results/default_mel.png")
-        plot_spectrogram(stft_padded[0], title="Spectrogram", y_axis_label="mel freq", file_name="results/default_stft.png")
+        plot_spectrogram(stft_padded[0],
+                         y_axis_label="mel freq",
+                         file_name="results/default_stft.png")
 
         # MEL
         S = librosa.feature.inverse.mel_to_stft(mel_padded[0].numpy())
         y = librosa.griffinlim(S)
         sf.write('results/default.wav', y, 22050, 'PCM_24')
 
-        # istf
+        # iSTFT
         y_numpy = stft_padded.numpy()
         for i in range(0, y_numpy.shape[0]):
             n = (y_numpy[bidx].shape[i] * y_numpy[i].shape[1])
@@ -215,13 +221,22 @@ def convert(trainer_spec, version=3,
             dataset_name=None, merge=True, verbose=True, target_dir=None,
             ds_ratio=10, exclude=None):
     """
-    Routine convert dataset to native torch tensor representation.
+    Routine convert dataset to native torch tensor representation.  It takes entire audio dataset.
+    and create single dat file. It supports both Tacotron2 format and DTC.
+
+    Each file serialized to disk and md5 hash provided.  In case we need provide download option.
+    BaseDataset class provide list of url that provide option to fetch url and dataset.
+
+    Each entries require mirror and md5 hash.
+
+    I used this method in my training procedure It significantly increases
+    batch load to GPU time.
 
     :param exclude:
     :param ds_ratio:
     :param target_dir:
-    :param version: a dataset version.  since we're serializing a tensor or numpy we need know what feature
-                    on top of MEL we extract.
+    :param version: a dataset version.  since we're serializing a tensor or numpy
+                    we need know what feature on top of MEL we extract.
     :param trainer_spec: a trainer spec object.
     :param verbose: verbose output
     :param dataset_name: if empty will use current active one. whatever in config use_dataset: 'mydataset'
@@ -251,8 +266,6 @@ def convert(trainer_spec, version=3,
 
     if 'data' in data:
         raise ConverterError("Data has no key ds_type active dataset must be raw audio.")
-
-    # 'train_meta', 'validation_meta', ['test_meta'] ['train_set'] ['validation_set'] ['test_set']
 
     training_set = data['train_set']
     validation_set = data['validation_set']
@@ -338,10 +351,7 @@ def convert(trainer_spec, version=3,
         Path(ds_spec['dir']).expanduser() / ds_spec['test_meta']
     ]
 
-    # print(files)
-    # print(data['train_meta'])
-    # sys.exit(1)
-
+    # by default we generate 3 seperate files.
     convert_mel_to_data(encoder_spec, train_dataset,
                         dataset_name=dataset_name,
                         meta_file=data['train_meta'],
@@ -459,6 +469,27 @@ def init_distributed(spec=None, rank=0, world_size=0) -> None:
 def tune_hyperparam(spec=None, cmd_args=None, device=None, cudnn_bench=False):
     """
 
+    Note Ray tunned pulled to a separate class and conditionally include
+    since ray has an issue with Python 3.10, I test code 3.9 and 3.10.
+
+    Specs for ray in same trainer spec.
+
+    Example will test batch size variation,  lr , grad clip rate.
+    ray:
+      batch_size: [32, 64]
+      lr_min: 1e-4
+      lr_max: 1e-1
+      num_samples: 10
+      checkpoint_freq: 4
+      resources:
+        cpu: 4
+        gpu: 1
+      attention_location_filters: 32
+      attention_kernel_size: 31
+      grad_clip:
+        min: 0.5
+        max: 1.0
+
     :param spec:
     :param cmd_args:
     :param device:
@@ -473,9 +504,6 @@ def tune_hyperparam(spec=None, cmd_args=None, device=None, cudnn_bench=False):
         logger.info("Staring training in distributed settings. "
                     "rank {} world size {}".format(args.rank, args.world_size))
         init_distributed(spec, int(args.rank), int(args.world_size))
-        # device = torch.device(f"cuda:{int(0)}")
-        # device = torch.device(f"cuda:{dist.get_rank()}")
-        # device = torch.device(device)
         dist.barrier()
 
     if cmd_args.overfit:
@@ -486,14 +514,22 @@ def tune_hyperparam(spec=None, cmd_args=None, device=None, cudnn_bench=False):
         torch.backends.cudnn.benchmark = True
 
     if args.verbose:
-        logger.debug(f"Torch allow matmul fp16 {torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction}")
-        logger.debug(f"Torch cudnn version, {torch.backends.cudnn.version}")
-        logger.debug(f"Torch backend openmp {torch.backends.openmp}")
-        logger.debug(f"Torch backend openmp {torch.version.cuda}")
-        logger.debug(f"Torch backend openmp {torch.backends.cudnn.version()}")
-        logger.debug(f"Torch backend openmp {torch.__version__}")
-        logger.debug(f"Torch backend openmp {torch.cuda.get_device_name(0)}")
-        logger.debug(f"Torch backend openmp {torch.cuda.get_device_properties(0)}")
+        logger.debug(f"Torch allow matmul fp16 "
+                     f"{torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction}")
+        logger.debug(f"Torch cudnn version, "
+                     f"{torch.backends.cudnn.version}")
+        logger.debug(f"Torch backend openmp "
+                     f"{torch.backends.openmp}")
+        logger.debug(f"Torch backend openmp "
+                     f"{torch.version.cuda}")
+        logger.debug(f"Torch backend openmp"
+                     f"{torch.backends.cudnn.version()}")
+        logger.debug(f"Torch backend openmp "
+                     f"{torch.__version__}")
+        logger.debug(f"Torch backend openmp "
+                     f"{torch.cuda.get_device_name(0)}")
+        logger.debug(f"Torch backend openmp "
+                     f"{torch.cuda.get_device_properties(0)}")
 
     try:
 
@@ -517,17 +553,17 @@ def tune_hyperparam(spec=None, cmd_args=None, device=None, cudnn_bench=False):
         }
 
         if 'batch_size' in ray_spec:
-            config['batch_size'] = ray.tune.choice(ray_spec['batch_size'])
+            config['batch_size'] = tune.choice(ray_spec['batch_size'])
 
         if 'lr_min' in ray_spec and 'lr_max' in ray_spec:
-            config['lr'] = ray.tune.loguniform(ray_spec['lr_min'], ray_spec['lr_max'])
+            config['lr'] = tune.loguniform(ray_spec['lr_min'], ray_spec['lr_max'])
 
         if 'num_samples' not in ray_spec:
-            print("Please indicate num_samples ray need take.")
+            print("You need indicate num_samples in spec. It mandatory for Ray to function. ")
             return
 
         if 'checkpoint_freq' not in ray_spec:
-            print("Please checkpoint_freq ray need take.")
+            print("Please checkpoint_freq, It essential for Ray to checkpoint.")
             return
 
         if 'resources' not in ray_spec:
@@ -540,28 +576,27 @@ def tune_hyperparam(spec=None, cmd_args=None, device=None, cudnn_bench=False):
         if 'grad_clip' in ray_spec:
             grad_clip_spec = ray_spec['grad_clip']
             if 'min' in grad_clip_spec and 'max' in grad_clip_spec:
-                config['grad_clip'] = ray.tune.loguniform(float(grad_clip_spec['min']), float(grad_clip_spec['max']))
+                config['grad_clip'] = tune.loguniform(float(grad_clip_spec['min']),
+                                                      float(grad_clip_spec['max']))
 
-        tuner_result = ray.tune.run(Trainable,
-                                    resources_per_trial={"cpu": int(resources['cpu']),
-                                                         "gpu": int(resources['gpu'])},
-                                    config=config,
-                                    num_samples=ray_spec['num_samples'],
-                                    scheduler=scheduler,
-                                    checkpoint_freq=ray_spec['checkpoint_freq'],
-                                    local_dir=spec.model_files.get_tuner_log_dir(),
-                                    stop={
-                                        # "mean_accuracy": 0.95,
-                                        "training_iteration": 2 if cmd_args.smoke_test else 20,
-                                    },
-                                    max_concurrent_trials=1,
-                                    progress_reporter=reporter)
+        tuner_result = tune.run(Trainable,
+                                resources_per_trial={"cpu": int(resources['cpu']),
+                                                     "gpu": int(resources['gpu'])},
+                                config=config,
+                                num_samples=ray_spec['num_samples'],
+                                scheduler=scheduler,
+                                checkpoint_freq=ray_spec['checkpoint_freq'],
+                                local_dir=spec.model_files.get_tuner_log_dir(),
+                                stop={
+                                    # "mean_accuracy": 0.95,
+                                    "training_iteration": 2 if cmd_args.smoke_test else 20,
+                                },
+                                max_concurrent_trials=1,
+                                progress_reporter=reporter)
 
         best_trial = tuner_result.get_best_trial(metric, "min", "last")
         print("Best trial config: {}".format(best_trial.config))
         print("Best trial final train loss: {}".format(best_trial.last_result[metric]))
-        # print("Best trial final validation accuracy: {}".format(best_trial.last_result["accuracy"]))
-        # print('best config: ', analysis.get_best_config(metric="score", mode="max"))
 
     except TrainerError as e:
         print("Error: trainer error: ", e)
@@ -660,27 +695,6 @@ def set_random_seeds(random_seed=1234):
     np.random.seed(random_seed)
     random.seed(random_seed)
 
-#
-# # Timing utilities
-# perf_start_time = None
-#
-#
-# def start_timer():
-#     global start_time
-#     gc.collect()
-#     torch.cuda.empty_cache()
-#     torch.cuda.reset_max_memory_allocated()
-#     torch.cuda.synchronize()
-#     start_time = time.time()
-
-
-# def end_timer_and_print(local_msg):
-#     torch.cuda.synchronize()
-#     end_time = time.time()
-#     print("\n" + local_msg)
-#     print("Total execution time = {:.3f} sec".format(end_time - start_time))
-#     print("Max memory used by tensors = {} bytes".format(torch.cuda.max_memory_allocated()))
-#
 
 def inference(spec: ExperimentSpecs, cmd_args, device):
     """

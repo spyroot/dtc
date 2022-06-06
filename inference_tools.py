@@ -13,7 +13,8 @@ from matplotlib import pyplot as plt
 from model_trainer.plotting_utils import save_figure_to_numpy
 
 
-def plot_spectrogram(spec, title=None,
+def plot_spectrogram(spec,
+                     title="Spectrogram",
                      y_axis_label: Optional[str] = 'freq_bin',
                      aspect: Optional[str] = 'auto',
                      xmax: Optional[float] = None,
