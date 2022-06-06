@@ -1,3 +1,4 @@
+# SVAE
 from typing import List
 
 import torch
@@ -20,6 +21,17 @@ class SWAE(AbstractVae):
                  num_projections: int = 50,
                  projection_dist: str = 'normal',
                  **kwargs) -> None:
+        """
+
+        :param in_channels:
+        :param latent_dim:
+        :param hidden_dims:
+        :param reg_weight:
+        :param wasserstein_deg:
+        :param num_projections:
+        :param projection_dist:
+        :param kwargs:
+        """
         super(SWAE, self).__init__()
 
         self.latent_dim = latent_dim

@@ -1,3 +1,6 @@
+# Base VAE.
+#
+#
 from typing import List, Any
 from torch import nn
 from abc import abstractmethod
