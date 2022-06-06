@@ -183,7 +183,7 @@ class dtcLoss(nn.Module):
 
             mel_loss = nn.MSELoss()(mel_out, mel_target) + nn.MSELoss()(mel_out_post_net, mel_target)
             gate_loss = nn.BCEWithLogitsLoss()(gate_outs, gate_targets)
-
+            alignment_score = self.alignment_diagonal_score(alignment)
             total = mel_loss + gate_loss
 
             if self.is_stft_compute:
@@ -212,7 +212,8 @@ class dtcLoss(nn.Module):
                 'loss': total,
                 'mel_loss': mel_loss,
                 'gate_loss': gate_loss,
-                'diagonal_score': self.alignment_diagonal_score(alignment),
+                'diagonal_score': alignment_score,
+                'abs_error': abs_error
             }
         else:
             mel_out, mel_out_post_net, gate_out, alignment, rev = model_output
