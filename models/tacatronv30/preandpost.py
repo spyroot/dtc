@@ -65,7 +65,7 @@ class Postnet(nn.Module):
                                affine=self.specto_spec.post_net_batch_affine()))
         )
 
-        for i in range(1, self.encoder_spec.postnet_n_convolutions() - 1):
+        for i in range(1, self.specto_spec.postnet_n_convolutions() - 1):
             self.convolutions.append(
                 nn.Sequential(
                     ConvNorm(self.specto_spec.postnet_embedding_dim(),

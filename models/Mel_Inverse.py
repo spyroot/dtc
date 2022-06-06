@@ -216,8 +216,6 @@ class MelObjective(nn.Module):
         """
         x = self.flat(x)
         diff = np.einsum("mf,...ft->...mt", A, x) - B
-
-        # Compute the objective value
         value = (1 / B.size()) * 0.5 * torch.sum(diff ** 2)
 
         # And the gradient
@@ -228,6 +226,10 @@ class MelObjective(nn.Module):
 
     @staticmethod
     def backward(ctx, grad_output):
+        grad = (1 / B.size()) * torch.einsum("mf,...mt->...ft", A, diff)
+        value, grad.flatten()
+        return grad_input, grad.flatten()
+
 
 
 
