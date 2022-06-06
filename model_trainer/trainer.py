@@ -1134,6 +1134,7 @@ class Trainer(AbstractTrainer, ABC):
                                             'batch_loss': all_reduced_loss['loss'] // max(1, batch_idx + 1),
                                             'avg loss': self.metric.total_train_mean_loss(),
                                             'batch': f"{batch_idx}/{current_batch_size}",
+                                            'diag': all_reduced_loss['diagonal_score'],
                                             'saved': self.state.saved_run}
 
                         for k in all_reduced_loss:
@@ -1375,6 +1376,8 @@ class Trainer(AbstractTrainer, ABC):
                 gate_loss = criterion_out['gate_loss']
                 # spectral_loss = criterion_out['spectral_loss']
                 loss = criterion_out['loss']
+                diag_score = criterion_out['diagonal_score']
+                stft_err = criterion_out['abs_error']
                 assert loss.dtype is torch.float32
                 normal_loss = loss.item()
 
@@ -1403,14 +1406,15 @@ class Trainer(AbstractTrainer, ABC):
                 for scheduler in schedulers:
                     scheduler.step()
 
-            # self.log_if_needed(it, loss, grad_norm, duration)
             if not self.state.is_hyper_tunner:
                 if self.state.rank == 0 and current_step != 0 and current_step % self.state.tbar_update_rate == 0:
                     self.state.step = current_step
                     self.tqdm_iter.set_postfix({'step': current_step,
                                                 'grad': grad_norm.item(),
-                                                'batch mean': self.metric.batch_grad_loss.mean(),
+                                                'b_mean': self.metric.batch_grad_loss.mean(),
                                                 'loss': normal_loss,
+                                                'diag': diag_score,
+                                                'stft_err': stft_err.item(),
                                                 'epoch': self.metric.epoch_train_gn_loss.mean(),
                                                 # 'spectral_loss': spectral_loss.item(),
                                                 'mel': mel_loss.item(),
@@ -1445,6 +1449,8 @@ class Trainer(AbstractTrainer, ABC):
                     "loss/grad_loss": grad_norm,
                     "loss/mel_loss": mel_loss,
                     "loss/gate_loss": gate_loss,
+                    "loss/stft_err": stft_err,
+                    "score/stft_err": diag_score,
                 }
 
                 if not self.state.is_hyper_tunner:

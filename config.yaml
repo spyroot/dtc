@@ -177,13 +177,13 @@ settings:
         pin_memory: True
         shuffle: False
   small:
-    epochs: 1000
+    epochs: 500
     batch_size: 32
     grad_clipping: True
     grad_max_norm : 1.0
     tensorboard_update: 100       # update rate for tensorboard
     early_stopping: True          # early stopping
-    console_log_rate: 20          # when to log to console
+    console_log_rate: 5           # when to log to console
     # when to start run a test
     start_test: 20
     # predict to start predict , validate

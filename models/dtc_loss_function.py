@@ -9,6 +9,7 @@ from torch.distributions.normal import Normal
 from torch.nn import functional as F
 from model_trainer.specs.spectrogram_layer_spec import SpectrogramLayerSpec
 from models.lbfs_mel_Inverse import DTCInverseSTFS
+from loguru import logger
 
 
 def tiny(x):
@@ -133,10 +134,10 @@ class dtcLoss(nn.Module):
         self.dts_inverse = DTCInverseSTFS(self.n_stft, f_max=fmax).to(device)
 
         if self.is_stft_compute:
-            logging.log("inverse STFS loss enabled.")
+            logging.info("inverse STFS loss enabled.")
 
         if self.is_reverse_encoder:
-            logging.log("Reverse encoder - decoder enabled.")
+            logging.info("Reverse encoder - decoder enabled.")
 
     def kl_loss(self, q_dist):
         """
@@ -176,16 +177,15 @@ class dtcLoss(nn.Module):
         gate_target.requires_grad = False
 
         if not self.is_reverse_encoder:
-            mel_out, mel_out_post_net, gate_out, _, = model_output
+            mel_out, mel_out_post_net, gate_out, alignment, = model_output
             gate_targets = gate_target.view(-1, 1)
             gate_outs = gate_out.view(-1, 1)
 
             mel_loss = nn.MSELoss()(mel_out, mel_target) + nn.MSELoss()(mel_out_post_net, mel_target)
             gate_loss = nn.BCEWithLogitsLoss()(gate_outs, gate_targets)
-
+            alignment_score = self.alignment_diagonal_score(alignment)
             total = mel_loss + gate_loss
 
-            print(self.alignment_diagonal_score())
             if self.is_stft_compute:
                 stft = targets[2]
                 stft.requires_grad = False
@@ -208,9 +208,13 @@ class dtcLoss(nn.Module):
                 # sf_loss1 = nn.L1Loss()(torch.from_numpy(S_inv_target).to(self.device), S)
                 total += abs_error
 
-            return {'loss': total,
-                    'mel_loss': mel_loss,
-                    'gate_loss': gate_loss}
+            return {
+                'loss': total,
+                'mel_loss': mel_loss,
+                'gate_loss': gate_loss,
+                'diagonal_score': alignment_score,
+                'abs_error': abs_error
+            }
         else:
             mel_out, mel_out_post_net, gate_out, alignment, rev = model_output
             gate_targets = gate_target.view(-1, 1)
