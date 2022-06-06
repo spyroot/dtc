@@ -1,12 +1,11 @@
-import torch
-from torch import nn
-from torch.nn import functional as F
-from scipy.stats import betabinom
-import torch
-from torch import nn
-from torch.nn import functional as F
-from scipy.stats import betabinom
+from typing import Optional
 
+import torch
+from scipy.stats import betabinom
+from torch import nn
+from torch.nn import functional as F
+
+from models.attentions.grave_attention import GravesAttention
 from models.attentions.location_layer import LocationLayer, LinearWithInitial
 
 
@@ -44,34 +43,47 @@ class OriginalAttention(nn.Module):
         location_attention (bool): enable/disable location sensitive attention.
         attention_location_n_filters (int): number of location attention filters.
         attention_location_kernel_size (int): filter size of location attention convolution layer.
-        windowing (int): window size for attention windowing. if it is 5, for computing the attention, it only considers the time steps [(t-5), ..., (t+5)] of the input.
+        windowing (int): window size for attention windowing. if it is 5, for computing the attention,
+                         it only considers the time steps [(t-5), ..., (t+5)] of the input.
         norm (str): normalization method applied to the attention weights. 'softmax' or 'sigmoid'
         forward_attn (bool): enable/disable forward attention.
         trans_agent (bool): enable/disable transition agent in the forward attention.
-        forward_attn_mask (int): enable/disable an explicit masking in forward attention. It is useful to set at especially inference time.
+        forward_attn_mask (int): enable/disable an explicit masking in forward attention.
+                                 It is useful to set at especially inference time.
     """
 
-    # Pylint gets confused by PyTorch conventions here
-    # pylint: disable=attribute-defined-outside-init
     def __init__(self, query_dim, embedding_dim, attention_dim,
                  location_attention, attention_location_n_filters,
                  attention_location_kernel_size, windowing, norm, forward_attn,
                  trans_agent, forward_attn_mask):
+        """
+        :param query_dim:
+        :param embedding_dim:
+        :param attention_dim:
+        :param location_attention:
+        :param attention_location_n_filters:
+        :param attention_location_kernel_size:
+        :param windowing:
+        :param norm:
+        :param forward_attn:
+        :param trans_agent:
+        :param forward_attn_mask:
+        """
         super(OriginalAttention, self).__init__()
-        self.query_layer = LinearWithInitial(
-                query_dim, attention_dim, bias=False, init_gain='tanh')
-        self.inputs_layer = LinearWithInitial(
-                embedding_dim, attention_dim, bias=False, init_gain='tanh')
+        self.query_layer = LinearWithInitial(query_dim, attention_dim, bias=False, w_init_gain='tanh')
+        self.inputs_layer = LinearWithInitial(embedding_dim, attention_dim, bias=False, w_init_gain='tanh')
         self.v = LinearWithInitial(attention_dim, 1, bias=True)
+
         if trans_agent:
-            self.ta = nn.Linear(
-                    query_dim + embedding_dim, 1, bias=True)
+            self.ta = nn.Linear(query_dim + embedding_dim, 1, bias=True)
+
         if location_attention:
             self.location_layer = LocationLayer(
                     attention_dim,
                     attention_location_n_filters,
                     attention_location_kernel_size,
             )
+
         self._mask_value = -float("inf")
         self.windowing = windowing
         self.win_idx = None
@@ -224,19 +236,12 @@ class OriginalAttention(nn.Module):
 
 
 class MonotonicDynamicConvolutionAttention(nn.Module):
-    """Dynamic convolution attention from
+    """
+
+    Dynamic convolution attention from
     https://arxiv.org/pdf/1910.10288.pdf
-    query -> linear -> tanh -> linear ->|
-                                        |                                            mask values
-                                        v                                              |    |
-               atten_w(t-1) -|-> conv1d_dynamic -> linear -|-> tanh -> + -> softmax -> * -> * -> context
-                             |-> conv1d_static  -> linear -|           |
-                             |-> conv1d_prior   -> log ----------------|
-    query: attention rnn output.
-    Note:
-        Dynamic convolution attention is an alternation of the location senstive attention with
-    dynamically computed convolution filters from the previous attention scores and a set of
-    constraints to keep the attention alignment diagonal.
+
+
     Args:
         query_dim (int): number of channels in the query tensor.
         embedding_dim (int): number of channels in the value tensor.
@@ -252,16 +257,29 @@ class MonotonicDynamicConvolutionAttention(nn.Module):
     def __init__(
         self,
         query_dim,
-        embedding_dim,  # pylint: disable=unused-argument
-        attention_dim,
-        static_filter_dim,
-        static_kernel_size,
-        dynamic_filter_dim,
-        dynamic_kernel_size,
-        prior_filter_len=11,
-        alpha=0.1,
-        beta=0.9,
+        embedding_dim: int,
+        attention_dim: int,
+        static_filter_dim: int,
+        static_kernel_size: int,
+        dynamic_filter_dim: int,
+        dynamic_kernel_size: int,
+        prior_filter_len: Optional[int] = 11,
+        alpha: Optional[float] = 0.1,
+        beta: Optional[float] = 0.9,
     ):
+        """
+
+        :param query_dim: number of channels in the query tensor.
+        :param embedding_dim:
+        :param attention_dim:
+        :param static_filter_dim:
+        :param static_kernel_size:
+        :param dynamic_filter_dim:
+        :param dynamic_kernel_size:
+        :param prior_filter_len:
+        :param alpha:
+        :param beta:
+        """
         super().__init__()
         self._mask_value = 1e-8
         self.dynamic_filter_dim = dynamic_filter_dim
@@ -297,11 +315,12 @@ class MonotonicDynamicConvolutionAttention(nn.Module):
         mask: [B, T_en]
         """
         # compute prior filters
-        prior_filter = F.conv1d(
-                F.pad(self.attention_weights.unsqueeze(1),
-                      (self.prior_filter_len - 1, 0)), self.prior.view(1, 1, -1))
+        prior_filter = F.conv1d(F.pad(self.attention_weights.unsqueeze(1),
+                                      (self.prior_filter_len - 1, 0)), self.prior.view(1, 1, -1))
+
         prior_filter = torch.log(prior_filter.clamp_min_(1e-6)).squeeze(1)
         G = self.key_layer(torch.tanh(self.query_layer(query)))
+
         # compute dynamic filters
         dynamic_filter = F.conv1d(
                 self.attention_weights.unsqueeze(0),
@@ -349,6 +368,7 @@ def init_attn(attn_type, query_dim, embedding_dim, attention_dim,
                                  forward_attn_mask)
     if attn_type == "graves":
         return GravesAttention(query_dim, attn_K)
+
     if attn_type == "dynamic_convolution":
         return MonotonicDynamicConvolutionAttention(query_dim,
                                                     embedding_dim,
