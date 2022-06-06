@@ -252,6 +252,16 @@ models:
                                     " Please check configuration.")
         return self._model_dict['post_net']
 
+    def post_net_batch_affine(self) -> bool:
+        """
+        Default Batch1D affine setting for post net.
+        :return:
+        """
+        post_net = self.get_post_net()
+        if 'batch_affine' in post_net:
+            return bool(post_net['batch_affine'])
+        return True
+
     def postnet_embedding_dim(self) -> int:
         """
         Return post net embedding dimension. Default 512
@@ -399,6 +409,7 @@ models:
 
     def __str__(self):
         return str(self._model_dict)
+
 
     @staticmethod
     def set_logger(is_enable: bool) -> None:

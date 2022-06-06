@@ -78,7 +78,7 @@ class Postnet(nn.Module):
                          kernel_size=self.specto_spec.postnet_kernel_size(), stride=1,
                          padding=int((self.specto_spec.postnet_kernel_size() - 1) / 2),
                          dilation=1, w_init_gain='tanh'),
-                nn.BatchNorm1d(self.specto_spec.postnet_embedding_dim()))
+                nn.BatchNorm1d(self.specto_spec.postnet_embedding_dim(), self.specto_spec.post_net_batch_affine()))
         )
 
         for i in range(1, self.specto_spec.postnet_n_convolutions() - 1):
