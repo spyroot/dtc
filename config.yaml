@@ -286,12 +286,13 @@ models:
       mel_fmax: 8000.0
       symbols_embedding_dim: 512
       encoder:
-        desc: Encoder parameters
+        desc: "Encoder parameters"
         dropout_rate: 0.5
         num_convolutions: 3
         embedding_dim: 512
         kernel_size: 5
       decoder:
+        desc: "Decoder layer and parameters"
         fps: 1
         max_decoder_steps: 1000
         gate_threshold: 0.5
@@ -300,11 +301,11 @@ models:
         rnn_dim: 1024
         pre_net_dim: 256
       attention:
-        # Attention parameters
+        desc: "Attention layer and parameters"
         rnn_dim: 1024
         attention_dim: 128
       attention_location:
-        # Location Layer parameters
+        desc: "Location Layer parameters"
         num_filters: 32
         kernel_size: 31
       post_net:
