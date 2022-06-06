@@ -711,7 +711,10 @@ def inference(spec: ExperimentSpecs, cmd_args, device):
             trainer = Trainer(spec, rank=int(args.rank),
                               world_size=int(cmd_args.world_size),
                               verbose=args.verbose, device=device, is_inference=True)
-            trainer.load_for_inference(model_name="encoder", model_file=str(model_path.resolve()))
+            trainer.load_for_inference(model_name="dtc",
+                                       layer_name="spectrogram_layer",
+                                       model_file=str(model_path.resolve()))
+
             logger.info("Model loaded.")
             text = "Hello world, I missed you so much."
             trainer.inference(input_seq=text,

@@ -1,21 +1,18 @@
 import copy
-import sys
 from math import sqrt
 
 import torch
-from torch import nn
 from torch import Tensor
+from torch import nn
+from torch.nn import functional as F
 
 from model_trainer.trainer_specs import ExperimentSpecs
 from model_trainer.utils import to_gpu, get_mask_from_lengths
-from .preandpost import Postnet
 from .decoder import Decoder
 from .encoder import Encoder
-from torch.distributions.normal import Normal
-from torch import nn
-from torch.nn import functional as F
 from .inference_decoder import InferenceDecoder
 from .inference_encoder import InferenceEncoder
+from .preandpost import Postnet
 
 
 class Tacotron3(nn.Module):
@@ -38,8 +35,9 @@ class Tacotron3(nn.Module):
         self.device = device
 
         self.mask_padding = self.experiment_specs.mask_padding
-        self.fp16_run = self.experiment_specs.is_amp()
         self.n_mel_channels = self.specto_spec.n_mel_channels()
+        self.fp16_run = self.experiment_specs.is_amp()
+
 
         #
         self.embedding = nn.Embedding(self.experiment_specs.n_symbols,
@@ -152,19 +150,6 @@ class Tacotron3(nn.Module):
         mask = (ids < lengths.unsqueeze(1)).bool(device=device).to(device)
         return mask
 
-    def compute_masks(self, text_lengths, mel_lengths):
-
-        device = text_lengths.device
-        input_mask = get_mask_from_lengths(text_lengths).to(device)
-        output_mask = None
-        if mel_lengths is not None:
-            max_len = mel_lengths.max()
-            r = self.decoder.r
-            max_len = max_len + (r - (max_len % r)) if max_len % r > 0 else max_len
-            output_mask = get_mask_from_lengths(mel_lengths, max_len=max_len).to(device)
-
-        return input_mask
-
     def backward_pass(self, encoder_outputs, mels, text_lengths):
         """
         Reverse decoder pass.
@@ -188,44 +173,27 @@ class Tacotron3(nn.Module):
         :param input_mask:
         :return:
         """
+
         T = mel_specs.shape[1]
         if T % self.coarse_decoder.r > 0:
-            padding_size = self.coarse_decoder.r - (T % self.coarse_decoder.r)
-            mel_specs = F.pad(mel_specs, (0, 0, 0, padding_size, 0, 0))
-        decoder_outputs_backward, alignments_backward, _ = self.coarse_decoder(encoder_outputs.detach(), mel_specs, input_mask)
+            pad_size = self.coarse_decoder.r - (T % self.coarse_decoder.r)
+            mel_specs = F.pad(mel_specs, (0, 0, 0, pad_size, 0, 0))
+
+        reverse_decoder_out, reverse_alignment, _ = \
+            self.coarse_decoder(encoder_outputs.detach(), mel_specs, input_mask)
 
         # scale_factor = self.decoder.r_init / self.decoder.r
-        alignments_backward = F.interpolate(
-                alignments_backward.transpose(1, 2),
+        reverse_alignment = F.interpolate(
+                reverse_alignment.transpose(1, 2),
                 size=alignments.shape[1],
                 mode='nearest').transpose(1, 2)
 
-        decoder_outputs_backward = decoder_outputs_backward.transpose(1, 2)
-        decoder_outputs_backward = decoder_outputs_backward[:, :T, :]
+        reverse_decoder_out = reverse_decoder_out.transpose(1, 2)
+        reverse_decoder_out = reverse_decoder_out[:, :T, :]
 
-        return decoder_outputs_backward, alignments_backward
+        return reverse_decoder_out, reverse_alignment
 
-    def compute_masks(self, text_lengths, mel_lengths):
-        """
-
-        :param text_lengths:
-        :param mel_lengths:
-        :return:
-        """
-        # B x T_in_max (boolean)
-        device = text_lengths.device
-        input_mask = get_mask_from_lengths(text_lengths).to(device)
-        output_mask = None
-
-        if mel_lengths is not None:
-            max_len = mel_lengths.max()
-            r = self.decoder.r
-            max_len = max_len + (r - (max_len % r)) if max_len % r > 0 else max_len
-            output_mask = get_mask_from_lengths(mel_lengths, max_len=max_len).to(device)
-
-        return input_mask
-
-    def forward(self, inputs, is_reversed=True):
+    def forward(self, inputs: Tensor, is_reversed=True):
         """
         Forward pass inputs a batch that contains text, mel , spectral data.
         :param is_reversed:  We can iterate between during training between normal and dual decoder.

@@ -40,14 +40,14 @@ class Trainable(tune.Trainable, Callback):
         SFTFDataloader.set_logger(False)
         data = SFTFDataloader(config['spec'],
                               batch_size=batch_size,
-                              rank=int(config.rank),
+                              rank=0,
                               world_size=config['world_size'],
                               verbose=False)
 
         Trainer.set_logger(False)
         self.trainer = Trainer(config['spec'],
                                data_loader=data,
-                               rank=int(config.rank),
+                               rank=0,
                                world_size=config['world_size'],
                                verbose=False,
                                device=config['device'],

@@ -28,7 +28,7 @@ class Encoder(nn.Module):
 
     def __init__(self, specs: ExperimentSpecs, device):
         """
-        :param spec:
+        :param specs:
         :param device:
         """
         super(Encoder, self).__init__()

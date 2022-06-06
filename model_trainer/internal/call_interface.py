@@ -1,4 +1,3 @@
-import collections
 import collections.abc
 
 from typing import Any, Optional
