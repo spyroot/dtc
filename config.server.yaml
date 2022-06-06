@@ -220,7 +220,7 @@ strategy:
     order:
       - spectrogram_layer
       - wav2vec
-  'dtc:
+  dtc:
     type: sequential
     order:
       - spectrogram_layer
