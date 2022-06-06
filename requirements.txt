@@ -16,9 +16,6 @@ numba~=0.55.1
 attrs~=21.4.0
 pyyaml~=6.0
 matplotlib~=3.5.2
-librosa
-ray
-loguru
 tqdm
 torchaudio~=0.11.0
 tensorboard~=2.9.0
