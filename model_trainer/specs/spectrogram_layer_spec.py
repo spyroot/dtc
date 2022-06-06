@@ -155,7 +155,7 @@ models:
 
     def get_encoder(self):
         """
-        return encoder spec
+        Return encoder spec
         :return:
         """
         if 'encoder' not in self._model_dict:
@@ -163,29 +163,29 @@ models:
                                     " Please check configuration.")
         return self._model_dict['encoder']
 
-    def p_attention_dropout(self):
+    def p_attention_dropout(self) -> float:
         """
-        return encoder spec
+        Return decoder attention dropout
         :return:
         """
         decoder = self.get_decoder()
         if 'attention_dropout' in decoder:
-            return decoder['attention_dropout']
+            return float(decoder['attention_dropout'])
         return 0.1
 
-    def p_decoder_dropout(self):
+    def p_decoder_dropout(self) -> float:
         """
-        return encoder spec
+        Return decoder dropout rate. default 0.1
         :return:
         """
         decoder = self.get_decoder()
         if 'decoder_dropout' in decoder:
-            return decoder['decoder_dropout']
+            return float(decoder['decoder_dropout'])
         return 0.1
 
     def decoder_fps(self) -> int:
         """
-        return decoder frame per step.
+        Return decoder frame per step. Default 1
         :return:
         """
         decoder = self.get_decoder()
@@ -195,7 +195,7 @@ models:
 
     def max_decoder_steps(self) -> int:
         """
-        return encoder spec
+        Returns decoders max decoder step. Default 1000
         :return:
         """
         decoder = self.get_decoder()
@@ -205,7 +205,7 @@ models:
 
     def gate_threshold(self) -> float:
         """
-        return encoder spec
+        Return encoder gate threshold, default 0.5
         :return:
         """
         decoder = self.get_decoder()
@@ -215,7 +215,7 @@ models:
 
     def decoder_rnn_dim(self) -> int:
         """
-        :return: Return decoder RNN dimension
+        :return: Return decoder RNN dimension, default 1024
         """
         decoder = self.get_decoder()
         if 'rnn_dim' in decoder:
@@ -224,7 +224,7 @@ models:
 
     def pre_net_dim(self) -> int:
         """
-        return encoder spec
+        Return decoder pre network dimension. Default 256
         :return:
         """
         decoder = self.get_decoder()
@@ -250,11 +250,11 @@ models:
         if 'post_net' not in self._model_dict:
             raise TacotronSpecError("Model has no post_net specification,"
                                     " Please check configuration.")
-        return self._model_dict['attention_location']
+        return self._model_dict['post_net']
 
     def postnet_embedding_dim(self):
         """
-        Return attention location specs.
+        Return post net embedding dimension. Default 512
         :return:
         """
         post_net = self.get_post_net()
@@ -264,31 +264,32 @@ models:
 
     def postnet_kernel_size(self):
         """
-        Return attention location specs.
+        Return post net kernel size. Default 5
         :return:
         """
         post_net = self.get_post_net()
         if 'kernel_size' in post_net:
-            return post_net['kernel_size']
+            return int(post_net['kernel_size'])
         return 5
 
-    def postnet_n_convolutions(self):
+    def postnet_n_convolutions(self) -> int:
         """
-        Return attention location specs.
+        Return post net num convolution layers. Default 5.
         :return:
         """
         post_net = self.get_post_net()
         if 'num_convolutions' in post_net:
-            return post_net['num_convolutions']
+            return int(post_net['num_convolutions'])
         return 5
 
     def get_attention_location(self):
         """
-        Return attention location specs.
+        Return attention location specs. It mandatory section.
         :return:
         """
         if 'attention_location' not in self._model_dict:
-            raise TacotronSpecError("Model has no attention_location specification,"
+            raise TacotronSpecError("Model has no attention_"
+                                    "location specification,"
                                     " Please check configuration.")
         return self._model_dict['attention_location']
 
@@ -307,25 +308,27 @@ models:
         """
         atten_loc = self.get_attention_location()
         if 'kernel_size' in atten_loc:
-            return atten_loc['kernel_size']
+            return int(atten_loc['kernel_size'])
         return 31
 
     def attention_rnn_dim(self) -> int:
         """
+        Return attention RNN dimension. Default 1024
         :return:
         """
         attention = self.get_attention()
         if 'rnn_dim' in attention:
-            return attention['rnn_dim']
+            return int(attention['rnn_dim'])
         return 1024
 
     def attention_dim(self) -> int:
         """
+        Returns attention dimension. Default 128
         :return:
         """
         attention = self.get_attention()
         if 'attention_dim' in attention:
-            return attention['attention_dim']
+            return int(attention['attention_dim'])
         return 128
 
     def get_decoder(self):
@@ -344,45 +347,45 @@ models:
         """
         encoder = self.get_encoder()
         if 'kernel_size' in encoder:
-            return encoder['kernel_size']
+            return int(encoder['kernel_size'])
         return 5
 
     def encoder_n_convolutions(self) -> int:
         """
-        Encoders number of conv layers.
+        Encoders number of conv layers in the encoder.
         :return:
         """
         encoder = self.get_encoder()
         if 'num_convolutions' in encoder:
-            return encoder['num_convolutions']
+            return int(encoder['num_convolutions'])
         return 3
 
     def dropout_rate(self) -> float:
         """
-        Encoder dropout rate.
+        Encoder encoder dropout out rate. Default 0.5
         :return:
         """
         encoder = self.get_encoder()
         if 'dropout_rate' in encoder:
-            return encoder['dropout_rate']
-
+            return float(encoder['dropout_rate'])
         return 0.5
 
     def encoder_embedding_dim(self) -> int:
         """
-        Encoder embedding dimension.
+        Return encoder embedding dimension, default 512.
         :return:
         """
         encoder = self.get_encoder()
         if 'embedding_dim' in encoder:
-            return encoder['embedding_dim']
+            return int(encoder['embedding_dim'])
         return 512
 
     def get_text_cleaner(self):
         """
-        :return:
+        Return sampling rate, used to processing text seq.
+         :return:
         """
-        if 'sampling_rate' not in self._model_dict:
+        if 'english_cleaners' not in self._model_dict:
             raise TacotronSpecError("Model has no sampling_rate defined.")
         return ['english_cleaners']
 
