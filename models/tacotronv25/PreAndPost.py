@@ -68,7 +68,7 @@ class Postnet(nn.Module):
 
         if is_strict:
             assert self.specto_spec.n_mel_channels() == 80
-            assert self.specto_spec.embedding_dim() == 512
+            assert self.specto_spec.postnet_embedding_dim() == 512
             assert self.specto_spec.postnet_kernel_size() == 5
             assert self.specto_spec.postnet_n_convolutions() == 5
 
