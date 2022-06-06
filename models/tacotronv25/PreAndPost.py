@@ -13,6 +13,8 @@
 # https://arxiv.org/abs/1712.05884
 #
 # Mustafa B.
+from typing import Optional
+
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -45,11 +47,16 @@ class Prenet(nn.Module):
 
 
 class Postnet(nn.Module):
-    """Postnet
-        - Five 1-d convolution with 512 channels and kernel size 5
     """
+    Default setting post Net Five 1-d convolution with 512 channels and kernel size 5
+    """
+    def __init__(self, specs, device, is_strict: Optional[bool] = True):
+        """
 
-    def __init__(self, specs, device, is_strict):
+        :param specs:  spec for post net.
+        :param device:  device
+        :param is_strict:  By default , check if model use same parameter.
+        """
         super(Postnet, self).__init__()
         self.device = device
         self.convolutions = nn.ModuleList()
