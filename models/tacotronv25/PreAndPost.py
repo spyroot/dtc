@@ -20,6 +20,7 @@ from torch import nn
 from torch.nn import functional as F
 from .layers import ConvNorm
 from .layers import LinearNorm
+from model_trainer.trainer_specs import ExperimentSpecs
 
 
 class Prenet(nn.Module):
@@ -50,7 +51,7 @@ class Postnet(nn.Module):
     """
     Default setting post Net Five 1-d convolution with 512 channels and kernel size 5
     """
-    def __init__(self, specs, device, is_strict: Optional[bool] = True):
+    def __init__(self, specs: ExperimentSpecs, device, is_strict: Optional[bool] = True):
         """
 
         :param specs:  spec for post net.
@@ -66,10 +67,10 @@ class Postnet(nn.Module):
         self.specto_spec = self.model_spec.get_spectrogram()
 
         if is_strict:
-            assert self.spectogram_spec.n_mel_channels() == 80
-            assert self.spectogram_spec.embedding_dim() == 512
-            assert self.spectogram_spec.postnet_kernel_size() == 5
-            assert self.spectogram_spec.postnet_n_convolutions() == 5
+            assert self.specto_spec.n_mel_channels() == 80
+            assert self.specto_spec.embedding_dim() == 512
+            assert self.specto_spec.postnet_kernel_size() == 5
+            assert self.specto_spec.postnet_n_convolutions() == 5
 
         self.convolutions.append(
             nn.Sequential(
