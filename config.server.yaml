@@ -143,7 +143,7 @@ settings:
     cudnn_enabled: True
     cudnn_benchmark: False
   small:
-    epochs: 10
+    epochs: 550
     batch_size: 128
     grad_clipping: True
     grad_max_norm: 1.0
@@ -151,10 +151,10 @@ settings:
     early_stopping: True          # early stopping
     console_log_rate: 20          # when to log to console
     start_test: 20
-    predict: 50                   # will do validation , prediction every 10 iteration .(re-scale based on ds/batch size)
+    predict: 128                  # will do validation , prediction every 10 iteration .(re-scale based on ds/batch size)
     predict_per_iteration: True   # use epoch or iteration counter, in large batch size we might want to see progress.
-    epochs_save: 2                # when we save
-    save_per_iteration: False
+    epochs_save: 1000             # when we save
+    save_per_iteration: True
     seed: 1234
     fp16: False                      # fp16 run
     distributed: False               # what distributed backend uses.
