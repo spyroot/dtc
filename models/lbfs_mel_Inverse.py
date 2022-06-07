@@ -19,6 +19,7 @@ from torchaudio.functional import melscale_fbanks
 
 from model_loader.stft_dataloader import SFTFDataloader
 from model_trainer.trainer_specs import ExperimentSpecs
+from model_trainer.utils import to_gpu
 from models.lbfgs_fixed import LBFGS_FIXED
 from models.torch_mel_inverse import LibrosaInverseMelScale
 
@@ -94,7 +95,7 @@ class DTCInverseSTFS(torch.nn.Module):
         sgdargs: Optional[dict] = None,
         norm: Optional[str] = None,
         mel_scale: str = "htk",
-        device="cuda:0",
+        device=torch.device("cuda:0"),
     ) -> None:
         """
 
@@ -195,11 +196,11 @@ class DTCInverseSTFS(torch.nn.Module):
 
         # Process in blocks:
         if B.shape[-1] <= n_columns:
-            print("executed this case")
             return self.lbfgs_block(A, B, attach_grad=True)
 
         A_inv = torch.linalg.pinv(A)
         B = torch.permute(B, (0, 2, 1))
+
         x = torch.einsum("fm,...mt->...ft", A_inv, B)
         torch.clip(x, min=0, max=None, out=x)
         x_init = x
@@ -233,6 +234,7 @@ class DTCInverseSTFS(torch.nn.Module):
         # n_mels = M.shape[-2]
 
         mel_basis = self.fb.T
+
         inverse = self.nnls(mel_basis, melspec)
         # return torch.pow(inverse, 1.0 / power, out=inverse)
         return inverse
@@ -242,7 +244,7 @@ def _get_ratio(mat):
     return (mat.sum() / mat.numel()).item()
 
 
-def compute_abs_delta(computed, target, epsilon: Optional[float] = 1e-60):
+def compute_abs_delta(computed, target,  epsilon: Optional[float] = 1e-60):
     return torch.abs((computed - target) / (computed + epsilon))
 
 
@@ -258,6 +260,9 @@ def inverse_correctness(mel, stft, n_fft=1024, epsilon: Optional[float] = 1e-60,
     :param f_max:
     :return:
     """
+
+    _device = torch.device(f"cuda" if torch.cuda.is_available() else "cpu")
+
     n_stft = n_fft // 2 + 1
     torch_inverse_mel = LibrosaInverseMelScale(n_stft, f_max=f_max)
     torch_mel_inverse = torch_inverse_mel(mel)
@@ -286,7 +291,9 @@ def inverse_correctness(mel, stft, n_fft=1024, epsilon: Optional[float] = 1e-60,
     print("-------------------------------------------------------------------------------------------------")
 
     # mine dtc
-    librosa_module = DTCInverseSTFS(n_stft, f_max=f_max)
+    mel_padded = to_gpu(mel_padded).float()
+    stft = to_gpu(stft)
+    librosa_module = DTCInverseSTFS(1024 // 2 + 1, f_max=8000.0, device=_device)
     x = librosa_module(mel_padded)
     assert x.shape == stft.shape == librosa_inverse.shape
 
@@ -306,6 +313,7 @@ def inverse_test_correctness(dataset_name=""):
     :return:
     """
     trainer_spec = ExperimentSpecs(spec_config='../config.yaml')
+    trainer_spec.set_active_dataset(dataset_name=dataset_name)
     pk_dataset = trainer_spec.get_audio_dataset(dataset_name)
     assert 'train_set' in pk_dataset
     assert 'validation_set' in pk_dataset
@@ -335,13 +343,17 @@ def inverse_test_combine_error(dataset_name="", epsilon=1e-60, max_iteration=100
     """
     :return:
     """
+
+    _device = torch.device(f"cuda" if torch.cuda.is_available() else "cpu")
     trainer_spec = ExperimentSpecs(spec_config='../config.yaml')
+    trainer_spec.set_active_dataset(dataset_name)
     pk_dataset = trainer_spec.get_audio_dataset(dataset_name)
+
     assert 'train_set' in pk_dataset
     assert 'validation_set' in pk_dataset
     assert 'test_set' in pk_dataset
 
-    dataloader = SFTFDataloader(trainer_spec, batch_size=2, verbose=True)
+    dataloader = SFTFDataloader(trainer_spec, batch_size=1, verbose=True)
     loaders, collate = dataloader.get_loader()
 
     # get all
@@ -353,6 +365,7 @@ def inverse_test_combine_error(dataset_name="", epsilon=1e-60, max_iteration=100
     n_stft = n_fft // 2 + 1
 
     inverse_mel = LibrosaInverseMelScale(n_stft, f_max=8000.0)
+    librosa_module = DTCInverseSTFS(1024 // 2 + 1, f_max=8000.0, device=torch.device(_device)).to(_device)
 
     torch_abs_error = 0
     mine_abs_error = 0
@@ -391,11 +404,13 @@ def inverse_test_combine_error(dataset_name="", epsilon=1e-60, max_iteration=100
         librosa_abs_error += nn.L1Loss()(librosa_inverse, stft_padded).item()
 
         # mine
-        librosa_module = DTCInverseSTFS(1024 // 2 + 1, f_max=8000.0)
+        mel_padded = to_gpu(mel_padded, _device).float()
         x = librosa_module(mel_padded)
         assert x.shape == stft_padded.shape == librosa_inverse.shape
         if verbose:
             compute_epsilon_deltas(x)
+
+        stft_padded = to_gpu(stft_padded)
         mine_abs_error += nn.L1Loss()(x, stft_padded).item()
 
     print(f"torch {torch_abs_error}, torch padded {torch_abs_error_padded}, "
@@ -445,5 +460,5 @@ if __name__ == '__main__':
     # test_create_from_numpy_in_memory()
     # test_create_from_numpy_and_iterator()
     inverse_test_correctness('lj_speech_1k_raw')
-    # inverse_test_combine_error('lj_speech_1k_raw')
-    # inverse_test_gpu('lj_speech_1k_raw')
+# inverse_test_combine_error('lj_speech_1k_raw')
+# inverse_test_gpu('lj_speech_1k_raw')

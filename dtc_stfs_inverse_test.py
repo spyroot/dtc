@@ -177,7 +177,7 @@ def inverse_test_combine_error(dataset_name="", epsilon=1e-60, max_iteration=100
 
 def inverse_test_gpu(dataset_name="", config='config.yaml',
                      epsilon=1e-60, max_iteration=100,
-                     batch_size=16, verbose=False):
+                     batch_size=1, verbose=False):
     """
     :return:
     """
@@ -221,5 +221,5 @@ if __name__ == '__main__':
     # inverse_test('lj_speech_1k_raw')
     # inverse_test_combine_error('lj_speech_1k_raw')
 
-    inverse_test_gpu('lj_speech_1k_raw')
+   # inverse_test_gpu('lj_speech_1k_raw')
     inverse_test_gpu('LJSpeech')

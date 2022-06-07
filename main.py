@@ -902,6 +902,8 @@ def metric(spec: ExperimentSpecs, cmd_args, device,
             if k not in dataset_files:
                 continue
             ds = list(dataset_files[k].values())
+            pesq_wbs = np.zeros((num_sample, 1))
+            pesq_nss = np.zeros((num_sample, 1))
             for i, dataset_rec in enumerate(ds):
                 if i == num_sample:
                     break
@@ -926,11 +928,15 @@ def metric(spec: ExperimentSpecs, cmd_args, device,
 
                 # now we read both files.
                 from pesq import pesq
-                print(f"{file_name.name} : {pesq(16000, ref, deg, 'wb')}")
-                print(f"{file_name.name} : {pesq(16000, ref, deg, 'nb')}")
+                pesq_wb = pesq(16000, ref, deg, 'wb')
+                pesw_nb = pesq(16000, ref, deg, 'nb')
+                pesq_wbs[i] = pesq_wb
+                pesq_nss[i] = pesw_nb
+                print(f"{file_name.name} : {pesq_wb}")
+                print(f"{file_name.name} : {pesw_nb}")
 
-                break
-            break
+            print(f"Average pesq for {k} : {pesq_wbs.mean()} {pesq_wbs.mean()}")
+
     else:
         print("Error: File does not exist {}".format(cmd_args.model_file))
         sys.exit()
