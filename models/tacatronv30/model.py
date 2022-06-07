@@ -61,6 +61,11 @@ class Tacotron3(nn.Module):
         self.parallel_decoder = self.specto_spec.is_reverse_decoder()
         self.reverse_decoder = None
 
+
+    @torch.jit.export
+    def version(self):
+        return 1.0
+
     def reparameterize(self, mu, logvar, mi=False):
         """
         Used for VAE re parameterization trick.
@@ -236,17 +241,21 @@ class Tacotron3(nn.Module):
 
     def inference(self, inputs):
         """
-        During inference pass input to embedding layer
+        During inference we pass input to embedding layer
         transpose shape (batch_size, x ,y ) (batc_size, y, z)
-        Pass to decoder and get output mel , gate and alignments.
+        Pass to a decoder and we get back output mel , gate and alignments.
 
         :param inputs:
         :return:
         """
+
         embedded_inputs = self.embedding(inputs).transpose(1, 2)
         encoder_outputs = self.encoder.inference(embedded_inputs)
         mel_outputs, gate_outputs, alignments = self.decoder.inference(encoder_outputs)
         mel_outputs_post_net = self.postnet(mel_outputs)
         mel_outputs_post_net = mel_outputs + mel_outputs_post_net
-        return self.parse_output(
-                [mel_outputs, mel_outputs_post_net, gate_outputs, alignments])
+
+        return self.parse_output([mel_outputs,
+                                  mel_outputs_post_net,
+                                  gate_outputs,
+                                  alignments])

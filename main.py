@@ -8,6 +8,8 @@ import sys
 import warnings
 from pathlib import Path
 from typing import Optional
+
+import scipy
 import torch
 import time
 
@@ -696,10 +698,15 @@ def set_random_seeds(random_seed=1234):
     random.seed(random_seed)
 
 
-def inference(spec: ExperimentSpecs, cmd_args, device):
+def inference(spec: ExperimentSpecs, cmd_args, device, sigma=1.0, sampling_rate=22050, denoiser_strength=0.2,
+              max_wav_values=32768.0):
     """
     Main routine for inference.
 
+    :param max_wav_values:
+    :param denoiser_strength:
+    :param sampling_rate:
+    :param sigma:
     :param spec:
     :param cmd_args:
     :param device:
@@ -716,20 +723,217 @@ def inference(spec: ExperimentSpecs, cmd_args, device):
                                        model_file=str(model_path.resolve()))
 
             logger.info("Model loaded.")
-            text = "Hello world, I missed you so much."
-            trainer.inference(input_seq=text,
-                              model_name="encoder",
-                              mel_output_path=str(spec.model_files.get_figure_dir() / "mel_out.png"),
-                              mel_post_path=str(spec.model_files.get_figure_dir() / "mel_post.png"),
-                              mel_alignment_path=str(spec.model_files.get_figure_dir() / "mel_alignment.png"),
-                              plot=True)
-            # tacotron2 = torch.hub.load('NVIDIA/DeepLearningExamples:torchhub', 'nvidia_tacotron2', model_math='fp32')
-            # tacotron2 = tacotron2.to(device)
-            # tacotron2.eval()
+            # text = "Hello world, I missed you so much."
+            text = "Meat was no longer issued raw, to be imperfectly cooked before a ward fire and bolted gluttonously, the whole two pounds at one sitting."
+            mel_outputs, mel_outputs_postnet, alignments = \
+                trainer.inference(input_seq=text,
+                                  model_name="dtc",
+                                  mel_output_path=str(spec.model_files.get_figure_dir() / "mel_out.png"),
+                                  mel_post_path=str(spec.model_files.get_figure_dir() / "mel_post.png"),
+                                  mel_alignment_path=str(spec.model_files.get_figure_dir() / "mel_alignment.png"),
+                                  plot=True)
 
+            glow_path = f"{spec.model_files.get_model_dir()}/waveglow_256channels_universal_v5.pt"
+            model_file = Path(glow_path)
+            if not model_file.exists():
+                print("Please download glow model and put to a results/model dir.")
+                print("url: https://drive.google.com/u/0/uc?id=1rpK8CzAAirq9sWZhe9nlfvxMF1dRgFbF&export=download")
+                return
+
+            from waveglow.denoiser import Denoiser
+            sys.path.insert(0, './waveglow')
+            waveglow = torch.load(str(model_file))['model']
+            waveglow = waveglow.remove_weightnorm(waveglow)
+            waveglow.cuda().eval()
+
+            if denoiser_strength > 0:
+                denoiser = Denoiser(waveglow).cuda()
+
+            mel = torch.autograd.Variable(mel_outputs_postnet.cuda())
+            # mel = torch.unsqueeze(mel_outputs, 0)
+            with torch.no_grad():
+                audio = waveglow.infer(mel, sigma=sigma)
+                if denoiser_strength > 0:
+                    audio = denoiser(audio, denoiser_strength)
+                audio = audio * max_wav_values
+
+            audio = audio.squeeze()
+            audio = audio.cpu().numpy()
+            audio = audio.astype('int16')
+
+            audio_path = os.path.join(spec.model_files.get_results_dir(), "{}_synthesis.wav".format("test.wav"))
+            scipy.io.wavfile.write(audio_path, sampling_rate, audio)
+
+            # from scipy.io import wavfile
+            # from pesq import pesq
+            #
+            # rate, ref = wavfile.read(audio_path)
+            # rate, deg = wavfile.read("./audio/speech_bab_0dB.wav")
+
+            #  print(pesq(rate, ref, deg, 'wb'))
+            # print(pesq(rate, ref, deg, 'nb'))
+
+            print(audio_path)
         else:
             print("Error: File does not exist {}".format(cmd_args.model_file))
             sys.exit()
+
+
+def load_glow(spec: ExperimentSpecs):
+    """
+
+    :param spec:
+    :return:
+    """
+    glow_path = f"{spec.model_files.get_model_dir()}/waveglow_256channels_universal_v5.pt"
+    model_file = Path(glow_path)
+    if not model_file.exists():
+        print("Please download glow model and put to a results/model dir.")
+        print("url: https://drive.google.com/u/0/uc?id=1rpK8CzAAirq9sWZhe9nlfvxMF1dRgFbF&export=download")
+        return
+
+    from waveglow.denoiser import Denoiser
+    sys.path.insert(0, './waveglow')
+    waveglow = torch.load(str(model_file))['model']
+    waveglow = waveglow.remove_weightnorm(waveglow)
+    waveglow.cuda().eval()
+    return waveglow
+
+
+def glow_inference(waveglow, mel, sigma=1.0, denoiser_strength=0.2, max_wav_valuest=32768.0):
+    """
+
+    :param max_wav_valuest:
+    :param denoiser_strength:
+    :param mel:
+    :param sigma:
+    :param waveglow:
+    :return:
+    """
+    from waveglow.denoiser import Denoiser
+    if denoiser_strength > 0:
+        denoiser = Denoiser(waveglow).cuda()
+
+    mel = torch.autograd.Variable(mel.cuda())
+    # mel = torch.unsqueeze(mel_outputs, 0)
+    with torch.no_grad():
+        audio = waveglow.infer(mel, sigma=sigma)
+        if denoiser_strength > 0:
+            audio = denoiser(audio, denoiser_strength)
+        audio = audio * max_wav_valuest
+
+    audio = audio.squeeze()
+    audio = audio.cpu().numpy()
+    audio = audio.astype('int16')
+
+    return audio
+
+
+def load_dtc(spec: ExperimentSpecs, device,
+             model_path: Optional[str],
+             model_name: Optional[str] = "dtc",
+             layer_name: Optional[str] = "spectrogram_layer"):
+    """
+    :param model_path:
+    :param device:
+    :param model_name:
+    :param layer_name:
+    :param spec:
+    :return:
+    """
+    trainer = Trainer(spec, verbose=False, device=device, is_inference=True)
+    trainer.load_for_inference(model_name=model_name,
+                               layer_name=layer_name,
+                               model_file=model_path)
+    return trainer
+
+
+def metric(spec: ExperimentSpecs, cmd_args, device,
+           model_name: Optional[str] = "dtc",
+           layer_name: Optional[str] = "spectrogram_layer",
+           num_sample: Optional[int] = 10,
+           glow_file_name: Optional[str] = "waveglow_256channels_universal_v5.pt",
+           sampling_rate: Optional[int] = 22050):
+    """
+    Main routine for PESQ computation.
+
+    :param layer_name:
+    :param model_name:
+    :param glow_file_name:
+    :param num_sample:
+    :param sampling_rate:
+    :param spec:
+    :param cmd_args:
+    :param device:
+    :return:
+    """
+    if not cmd_args.model_file:
+        print("Please indicate model file in argument --model_file.")
+        return
+
+    model_path = Path(cmd_args.model_file)
+    if model_path.exists() and model_path.is_file():
+
+        trainer = load_dtc(spec=spec, model_name=model_name,
+                           layer_name=layer_name,
+                           device=device, model_path=str(model_path))
+
+        glow_path = f"{spec.model_files.get_model_dir()}/{glow_file_name}"
+        model_file = Path(glow_path)
+        if not model_file.exists():
+            print("Please download glow model and put to a results/model dir.")
+            print("url: https://drive.google.com/u/0/uc?id=1rpK8CzAAirq9sWZhe9nlfvxMF1dRgFbF&export=download")
+            return
+
+        waveglow = None
+        try:
+            waveglow = load_glow(spec)
+        except Exception as err:
+            print(f"Failed to load glow model. err {err}")
+
+        dataset_files = spec.get_audio_dataset()
+        ds_keys = spec.get_audio_dataset_keys()
+
+        assert len(ds_keys) > 0
+        assert len(dataset_files) > 0
+
+        # for keys ['train_set', 'validation_set', 'test_set'] we sample K times
+        for _, k in enumerate(ds_keys):
+            if k not in dataset_files:
+                continue
+            ds = list(dataset_files[k].values())
+            for i, dataset_rec in enumerate(ds):
+                if i == num_sample:
+                    break
+                print(f"Sampled for {k} {i}-th example")
+
+                text_seq = dataset_rec['meta']
+                print(f"Generating inference for {text_seq.strip()} "
+                      f"original path {dataset_rec['path']}")
+
+                file_name = Path(dataset_rec['path'])
+                mel_outputs, mel_outputs_post, alignments = \
+                    trainer.inference(input_seq=text_seq, model_name=model_name, plot=False)
+                audio = glow_inference(waveglow, mel_outputs_post)
+                audio_path = os.path.join(spec.model_files.get_generated_dir(),
+                                          "{}_synthesis.wav".format(file_name.name))
+                scipy.io.wavfile.write(audio_path, sampling_rate, audio)
+                print(f"Saving audio {audio_path}")
+
+                # down sample since peqq need either 8k or 16k
+                ref, s = librosa.load(dataset_rec['path'], sr=16000)
+                deg, s = librosa.load(audio_path, sr=16000)
+
+                # now we read both files.
+                from pesq import pesq
+                print(f"{file_name.name} : {pesq(16000, ref, deg, 'wb')}")
+                print(f"{file_name.name} : {pesq(16000, ref, deg, 'nb')}")
+
+                break
+            break
+    else:
+        print("Error: File does not exist {}".format(cmd_args.model_file))
+        sys.exit()
 
 
 def main(cmd_args):
@@ -837,6 +1041,10 @@ def main(cmd_args):
             return
 
     trainer_spec.model_files.build_dir()
+    if cmd_args.metric:
+        metric(spec=trainer_spec, cmd_args=cmd_args, device=_device)
+        return
+
     if cmd_args.train:
         train(spec=trainer_spec, cmd_args=cmd_args, device=_device)
         return
@@ -922,6 +1130,10 @@ if __name__ == '__main__':
                                              'note that it much bigger since contain sfts.')
     parser.add_argument('--inference', action="store_true",
                         required=False, help='set model in inference model.')
+
+    parser.add_argument('--metric', action="store_true",
+                        required=False, help='set model in metric model.')
+
     parser.add_argument('--benchmark', type=bool, default=False,
                         required=False, help='set verbose output')
     parser.add_argument('--config', type=str, help='set config file',
@@ -933,7 +1145,7 @@ if __name__ == '__main__':
     parser.add_argument('--load', type=str, default="",
                         help='load model from a file. argument path to a file.', required=False)
     parser.add_argument('--model', type=str, default="dtc", help='model name. note load and model '
-                                                              'name mainly used if we need explicit load from file',
+                                                                 'name mainly used if we need explicit load from file',
                         required=False)
 
     # parser.add_argument('--load', type=bool, default=False,
@@ -968,6 +1180,9 @@ if __name__ == '__main__':
                                                                               os.environ["LOCAL_RANK"],
                                                                               os.environ["WORLD_SIZE"],
                                                                               os.environ["CUDA_VISIBLE_DEVICES"]))
+    if args.metric:
+        args.train = False
+
     if args.inference:
         logger.info("Model in inference mode, switching training off.")
         args.train = False

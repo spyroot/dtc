@@ -87,9 +87,8 @@ class Encoder(nn.Module):
                           self.training)
 
         x = x.transpose(1, 2)
-
-        x = nn.utils.rnn.pack_padded_sequence(
-            x, input_lengths.cpu().numpy(), batch_first=True)
+        x = nn.utils.rnn.pack_padded_sequence(x, input_lengths.cpu().numpy(), batch_first=True)
+        # x = nn.utils.rnn.pack_padded_sequence(x, input_lengths, batch_first=True)
 
         self.lstm.flatten_parameters()
         outputs, _ = self.lstm(x)

@@ -314,21 +314,15 @@ class Decoder(nn.Module):
         return mel_outputs, gate_outputs, alignments
 
     def inference(self, memory):
-        """ Decoder inference
-        PARAMS
-        ------
-        memory: Encoder outputs
+        """
+        Decoder used for inference.
 
-        RETURNS
-        -------
-        mel_outputs: mel outputs from the decoder
-        gate_outputs: gate outputs from the decoder
-        alignments: sequence of attention weights from the decoder
+        :param memory:
+        :return:
         """
         decoder_input = self.get_go_frame(memory)
 
         self.initialize_decoder_states(memory, mask=None)
-
         mel_outputs, gate_outputs, alignments = [], [], []
 
         while True:

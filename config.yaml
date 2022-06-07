@@ -20,6 +20,7 @@ figures_dir: "figures"
 prediction_dir: "prediction"               # where we save prediction
 model_save_dir: "model"                    # where we save model
 metrics_dir: "metrics"                     # metrics dir in case we need store separate metrics
+generated_dir: "generated"
 
 datasets:
   LJSpeech:

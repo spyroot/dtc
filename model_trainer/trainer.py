@@ -120,21 +120,22 @@ class Trainer(AbstractTrainer, ABC):
         # read do we run auto precision mode or not
         self.state.is_amp = trainer_spec.is_amp()
 
-        # set a batch size from spec.
-        self.state.batch_size = data_loader.get_batch_size()
+        if not self.state.is_inference:
+            # set a batch size from spec.
+            self.state.batch_size = data_loader.get_batch_size()
+            assert self.state.batch_size > 0
 
         # this will be to model specific trainer.
         self.model_spec = trainer_spec.get_model_spec()
         self.spectogram_spec = self.model_spec.get_spectrogram()
 
-        assert self.state.batch_size > 0
         # end unit test.
         if config is not None:
             self.hyper_config = config
 
         # if we run hyperparameter tunner, ray need checkpoint dir.
         self.state.is_hyper_tunner = hp_tunner
-
+        # ray config
         self.checkpoint_dir = checkpoint_dir
 
         self.set_logger(verbose)
@@ -217,18 +218,18 @@ class Trainer(AbstractTrainer, ABC):
                                   mode=ReduceMode.MIN,
                                   verbose=False)
 
-        self._callback = BaseCallbacks(callbacks=callback)
-        self._callback.register_trainer(self)
-        self._callback.register_metric(self.metric)
+            self._callback = BaseCallbacks(callbacks=callback)
+            self._callback.register_trainer(self)
+            self._callback.register_metric(self.metric)
 
-        # self.callbacks.set
-        logger.info("Device ID {}".format(self.state.cuda_device_id))
-        # main queue note that train loop can re-add model back for training.
+            # self.callbacks.set
+            logger.info("Device ID {}".format(self.state.cuda_device_id))
+            # main queue note that train loop can re-add model back for training.
 
-        # depend on a strategy how we train models.
-        # in sequential case, train model my_model
-        # than sub-model of model my_model
-        self.q = deque()
+            # depend on a strategy how we train models.
+            # in sequential case, train model my_model
+            # than sub-model of model my_model
+            self.q = deque()
 
         # late we will move this to factory
         # type class that will do all creation.
@@ -236,14 +237,6 @@ class Trainer(AbstractTrainer, ABC):
 
         # init trainer
         self.init_trainer()
-
-    # def __call__(self, checkpoint_dir=None):
-    #     """
-    #
-    #     :return:
-    #     """
-    #
-    #     return self.train()
 
     def get_models(self):
         return self._models
@@ -298,6 +291,8 @@ class Trainer(AbstractTrainer, ABC):
         :return:
         """
         if self.state.is_inference:
+            self.create_models()
+            print("Model in inference state.")
             return
 
         if self.state.trainer_spec.is_distributed_run():
@@ -641,22 +636,40 @@ class Trainer(AbstractTrainer, ABC):
                     "model file name {} to device {}".format(model_name, model_file, self.state.device))
 
         try:
+            self.state.current_layer = layer_name
+            self.state.current_model = model_name
+
+            if model_name not in self._models:
+                self._models = {model_name: {}}
+
             checkpoint = torch.load(model_file, map_location=self.state.device)
             if 'model_state_dict' not in checkpoint:
                 raise TrainerError("model has no state dict")
 
-            self._create_model_layers(model_name)
-            assert model_name in self._models
-            self._models[model_name].load_state_dict(checkpoint['model_state_dict'])
-            if 'model_state_dict' not in checkpoint:
-                raise TrainerError("model has no state dict")
+            creator = self.model_creator[model_name][layer_name]
+            m = creator(False)
 
+            # ignore_layers = ['embedding.weight']
+            model_state_dict = checkpoint['model_state_dict']
             if ignore_layers is not None and len(ignore_layers) > 0:
-                model_dict = {k: v for k, v in self._models[model_name].items()
+                model_dict = {k: v for k, v in model_state_dict.items()
                               if k not in ignore_layers}
-                new_state = self._models[model_name].state_dict()
+                new_state = m.state_dict()
                 new_state.update(model_dict)
-                self._models[model_name] = new_state
+                model_state_dict = new_state
+
+            self._models[model_name][layer_name].load_state_dict(model_state_dict, strict=False)
+            if 'model_state_dict' not in checkpoint:
+                raise TrainerError("model has no state dict.")
+
+            # print(self._models[model_name][layer_name]['model'].item())
+
+            # if ignore_layers is not None and len(ignore_layers) > 0:
+            #     model_dict = {k: v for k, v in self._models[model_name][layer_name].items()
+            #                   if k not in ignore_layers}
+            #     new_state = self._models[model_name][layer_name].state_dict()
+            #     new_state.update(model_dict)
+            #     self._models[model_name][layer_name] = new_state
 
             if 'epoch' not in checkpoint:
                 raise TrainerError("Saved checkpoint has no epoch key.")
@@ -668,7 +681,15 @@ class Trainer(AbstractTrainer, ABC):
 
             self._last_step[layer_name] = checkpoint['it']
             logger.info("Last checkpoint. epoch {} step {}".format(checkpoint['epoch'], checkpoint['it']))
+
+            self.state.current_model = self._models[model_name][layer_name]
+            print(f"Last trained epoch {checkpoint['epoch']}, {checkpoint['it']}")
+
+            #  m = torch.jit.script(m)
+            # self._models[model_name][layer_name] = torch.jit.freeze(m, ["version"])
+            self._models[model_name][layer_name] = m
             return checkpoint['epoch'], checkpoint['it']
+
         except FileNotFoundError as e:
             print("Failed load model files {}. No saved model found. {}".format(model_file, e))
             logger.info("No model file to load model file, return default epoch 0, iteration 0")
@@ -1210,7 +1231,7 @@ class Trainer(AbstractTrainer, ABC):
 
         return last_epoch, last_step
 
-    def inference(self, input_seq=None, model_name='encoder', plot=True,
+    def inference(self, input_seq=None, model_name='dtc', plot=True,
                   mel_output_path="mel_out.png",
                   mel_post_path="mel_post.png",
                   mel_alignment_path="mel_alignment.png"):
@@ -1225,12 +1246,17 @@ class Trainer(AbstractTrainer, ABC):
         :return:
         """
         # model returns  outputs
-        # [mel_outputs, mel_outputs_postnet, gate_outputs, alignments])
         if model_name not in self._models:
             raise TrainerError("You need load model {}".format(model_name))
 
-        model = self._models[model_name]
+        model = self.state.current_model
         model.eval()
+
+        #  model = getattr(models,)().eval()
+        # Tracing the model with example input
+   #     traced_model = torch.jit.trace(model, sample_input)
+        # Invoking torch.jit.freeze
+    #    traced_model = torch.jit.freeze(traced_model)
 
         if isinstance(input_seq, str):
             sequence = np.array(text_to_sequence(input_seq, ['english_cleaners']))[None, :]
@@ -1240,8 +1266,6 @@ class Trainer(AbstractTrainer, ABC):
         # sequence = torch.autograd.Variable(torch.from_numpy(sequence)).cuda().long()
 
         with torch.no_grad():
-            mel_outputs, mel_outputs_postnet, _, alignments = model.inference(sequence)
-
             mel_outputs, mel_outputs_postnet, _, alignments = model.inference(sequence)
             if plot:
                 plot_spectrogram_to_numpy(mel_outputs.data.cpu().numpy()[0],

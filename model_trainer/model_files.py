@@ -72,6 +72,7 @@ class ModelFiles:
         self._dirs["tuner"] = self._dir_result / Path(self.tuner_dir())
         self._dirs["tuner_logs"] = self._dir_result / Path(self.tuner_log_dir())
         self._dirs["tuner_safe_dir"] = self._dir_result / Path(self.tuner_safe_dir())
+        self._dirs["generated_dir"] = self._dir_result / Path(self.generated_dir())
 
         # default dir where we store serialized prediction graph as image
         # self._dir_model_prediction = self._dir_result / Path(self.prediction_dir())
@@ -358,7 +359,6 @@ class ModelFiles:
     def get_model_dir(self) -> str:
         """
         :return: Return dir where model checkpoints must be stored.
-
         """
         return str(self._dirs["model"])
 
@@ -446,6 +446,14 @@ class ModelFiles:
             return self._dirs["figures"]
         return Path("results/figures").resolve()
 
+    def get_generated_dir(self) -> Path:
+        """
+        :return:
+        """
+        if 'generated' in self._dirs:
+            return self._dirs["generated"]
+        return Path("results/generated").resolve()
+
     def get_tuner_dir(self) -> Path:
         """
         :return:
@@ -497,6 +505,14 @@ class ModelFiles:
         if self._config is not None and 'tuner_logs' in self._config:
             return self._config['tuner_logs']
         return 'tuner_logs'
+
+    def generated_dir(self):
+        """
+        :return:
+        """
+        if self._config is not None and 'generated_dir' in self._config:
+            return self._config['generated_dir']
+        return 'generated_dir'
 
     def tuner_safe_dir(self):
         """
