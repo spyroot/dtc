@@ -1144,7 +1144,10 @@ class Trainer(AbstractTrainer, ABC):
                     if self.state.trainer_spec.is_distributed_run():
                         all_reduced_loss[loss_term_key] = self.split_tensor(loss_tensor.data, self.state.n_gpus).item()
                     else:
-                        all_reduced_loss[loss_term_key] = loss_tensor.item()
+                        if isinstance(loss_tensor, float):
+                            all_reduced_loss[loss_term_key] = loss_tensor
+                        else:
+                            all_reduced_loss[loss_term_key] = loss_tensor.item()
 
                 self.metric.update(batch_idx, self.state.step, all_reduced_loss['loss'], validation=True)
 
