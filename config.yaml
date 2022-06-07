@@ -371,9 +371,9 @@ models:
     vocoder:
       name: Test
       state: disabled
-      model: GraphLSTM
-      optimizer: edge_optimizer
-      lr_scheduler: main_lr_scheduler
+      model: SomeModel
+      optimizer: SomeOptimizer
+      lr_scheduler: SomeLar
       input_size: 1
 
 ray:

@@ -2,8 +2,7 @@
 #
 # It for dataset that outputs only one hot vector and mel spectrogram.
 #
-# Mustafa
-#
+# Mus
 import sys
 import time
 import warnings

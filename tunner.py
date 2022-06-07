@@ -1,3 +1,24 @@
+# all main command line tooling
+#
+# I haven't had time finish all possible variation.
+#
+# The main focus, was batch size , lr , grad clipping.
+#
+# ray:
+#  batch_size: [32, 64]
+#  lr_min: 1e-4
+#  lr_max: 1e-1
+#  num_samples: 10
+#  checkpoint_freq: 4
+#  resources:
+#    cpu: 4
+#    gpu: 1
+#  attention_location_filters: 32
+#  attention_kernel_size: 31
+#  grad_clip:
+#    min: 0.5
+#    max: 1.0
+# Mus
 import os
 
 from model_loader.stft_dataloader import SFTFDataloader
@@ -17,7 +38,6 @@ class Trainable(tune.Trainable, Callback):
     """
 
     """
-
     def setup(self, config):
         """
 
