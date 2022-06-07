@@ -1076,6 +1076,24 @@ def set_logger(is_enable: bool) -> None:
         logger.disable(__name__)
 
 
+
+# import numpy as np
+#
+# def v_pesq2mos(p):
+#     a, b, c, d = p
+#     if np.isempty(a):
+#         a= 0.999
+#         b= 4.999 - a
+#         c= -1.4945
+#         d = 4.6607
+#      if nargout > 0:
+#         m= a + b . / (1 + exp (c * p + d))
+#      else
+#         if nargin < 1 or np.isempty(p):
+#             pp=np.linspace(-0.5,4.5,100);
+#         else:
+#             pp=p
+
 if __name__ == '__main__':
     """
     """
