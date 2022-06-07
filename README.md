@@ -381,7 +381,26 @@ models:
       input_size: 1
 ```
 
-``
+Hyperparameters tunner
+
+```yaml
+ray:
+  batch_size: [32, 64]
+  lr_min: 1e-4
+  lr_max: 1e-1
+  num_samples: 10
+  checkpoint_freq: 4
+  resources:
+    cpu: 4
+    gpu: 1
+  attention_location_filters: 32
+  attention_kernel_size: 31
+  grad_clip:
+    min: 0.5
+    max: 1.0
+```
+
+
 ## Trainer logic
 All trainer logic is abstracted in the generic trainer.
 During the initial start, the trainer takes specs i.e., the yaml file invokes 
