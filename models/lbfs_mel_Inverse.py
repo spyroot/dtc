@@ -180,16 +180,14 @@ class DTCInverseSTFS(torch.nn.Module):
 
     def nnls(self, A, B):
         """
+        Computes NNLS.
         :param A:
         :param B:
         :return:
         """
         if B.ndim == 1:
             x = torch.linalg.lstsq(A, B).solution
-            print("x for b.ndim == 1 {}", x.shape)
             return torch.linalg.lstsq(A, B).solution
-            sys.exit()
-            # return scipy.optimize.nnls(A, B)[0]
 
         n_columns = self._block_size // (np.prod(B.shape[:-1]) * A.storage().element_size())
         n_columns = max(n_columns, 1)
