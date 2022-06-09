@@ -1014,8 +1014,8 @@ class Trainer(AbstractTrainer, ABC):
             'epoch': last_epoch, 'it': last_step,
             'model_state_dict': self._models[model_name][layer_name].state_dict(),
             'scaler': self.scaler.state_dict(),
-            'model_name': self.state.model_name,
-            'layer_name': self.state.layer_name
+            'model_name': self.state.current_model_name,
+            'layer_name': self.state.current_model_name
         }
 
         if save_opt:
