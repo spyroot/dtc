@@ -746,7 +746,7 @@ class Trainer(AbstractTrainer, ABC):
         :return:
         """
         if self.state.trainer_spec.is_amp():
-            reduced_loss = self.split_tensor(loss.data).item()
+            reduced_loss = self.split_tensor(loss.data, self.n_gpus).item()
         else:
             reduced_loss = loss.item()
 
@@ -1014,7 +1014,8 @@ class Trainer(AbstractTrainer, ABC):
             'epoch': last_epoch, 'it': last_step,
             'model_state_dict': self._models[model_name][layer_name].state_dict(),
             'scaler': self.scaler.state_dict(),
-            'model_name': self.state.model_name
+            'model_name': self.state.model_name,
+            'layer_name': self.state.layer_name
         }
 
         if save_opt:
@@ -1587,14 +1588,14 @@ class Trainer(AbstractTrainer, ABC):
         """
         Sequential training loop,  each layer of model trainer in Sequential order.
 
-        :param model_name:
-        :param layer_name:
+        :param model_name: model of model that we train
+        :param layer_name: layer of model that we train
         :return:
         """
         assert model_name in self._models
         assert layer_name in self._models[model_name]
-        assert self.state.current_layer == layer_name
-        assert self.state.current_model == model_name
+        assert self.state.current_layer_name == layer_name
+        assert self.state.current_model_name == model_name
 
         model, optimizer, scheduler = self.prepare_trainer(model_name, layer_name)
         self.state.current_model = model
