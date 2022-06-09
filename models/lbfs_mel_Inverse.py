@@ -186,7 +186,6 @@ class DTCInverseSTFS(torch.nn.Module):
         :return:
         """
         if B.ndim == 1:
-            x = torch.linalg.lstsq(A, B).solution
             return torch.linalg.lstsq(A, B).solution
 
         n_columns = self._block_size // (np.prod(B.shape[:-1]) * A.storage().element_size())
