@@ -75,7 +75,7 @@ class Encoder(nn.Module):
                             int(self.embedding_dim / 2), 1,
                             batch_first=True, bidirectional=True)
 
-    def forward(self, x, input_lengths):
+    def forward(self, x, input_lengths) -> Tensor:
         """
         :param x:
         :param input_lengths:
@@ -95,7 +95,7 @@ class Encoder(nn.Module):
         outputs, _ = nn.utils.rnn.pad_packed_sequence(outputs, batch_first=True)
         return outputs
 
-    def inference(self, x):
+    def inference(self, x) -> Tensor:
         """
         Inference block.
         :param x:

@@ -16,14 +16,11 @@
 # import queue
 import random
 from abc import ABC
-# from frozendict import frozendict
 from collections import defaultdict
-# from multiprocessing import Queue
 from collections import deque
 from pathlib import Path
 from typing import Callable, Optional
 
-import matplotlib.pylab as plt
 import numpy as np
 import torch
 import torch.distributed as dist
@@ -46,9 +43,9 @@ from model_trainer.trainer_logger import TensorboardTrainerLogger
 from model_trainer.trainer_metrics import Metrics
 from model_trainer.trainer_specs import ExperimentSpecs
 from model_trainer.utils import fmtl_print, to_gpu
+from models.dtc_loss_function import dtcLoss
 # from distributed import apply_gradient_allreduce
 from models.loss_function import Tacotron2Loss
-from models.dtc_loss_function import dtcLoss
 from models.tacatronv30.model import Tacotron3
 from models.tacotronv25.model import Tacotron25
 from text import text_to_sequence
@@ -218,9 +215,9 @@ class Trainer(AbstractTrainer, ABC):
                                   mode=ReduceMode.MIN,
                                   verbose=False)
 
-            self._callback = BaseCallbacks(callbacks=callback)
-            self._callback.register_trainer(self)
-            self._callback.register_metric(self.metric)
+            self._callbacks = BaseCallbacks(callbacks=callback)
+            self._callbacks.register_trainer(self)
+            self._callbacks.register_metric(self.metric)
 
             # self.callbacks.set
             logger.info("Device ID {}".format(self.state.cuda_device_id))
@@ -559,9 +556,10 @@ class Trainer(AbstractTrainer, ABC):
                         raise TrainerError(f"{model_name} has no optimizer_state_dict.")
 
             # if model has scheduler, re-create.
+            # todo add option to stack schedulers
             if model_name in self._schedulers:
                 if layer_name in self._schedulers[model_name]:
-                    self._schedulers[model_name].load_state_dict(checkpoint['scheduler_state_dict'])
+                    self._schedulers[model_name][layer_name].load_state_dict(checkpoint['scheduler_state_dict'])
                     if 'scheduler_state_dict' not in checkpoint:
                         raise TrainerError("model has no scheduler_state_dict")
 
@@ -573,7 +571,6 @@ class Trainer(AbstractTrainer, ABC):
                 return 0, 0
 
             #  ignore_layers = 'reverse_decoder'
-            #  ignore layers.
             if ignore_layers is not None and len(ignore_layers) > 0:
                 model_dict = {k: v for k, v in self._models[model_name].items()
                               if k not in ignore_layers}
@@ -601,6 +598,9 @@ class Trainer(AbstractTrainer, ABC):
 
             self._last_ckt_epochs[model_name][layer_name] = last_epoch
             self._last_step[layer_name] = last_step
+
+            if self.state.is_amp:
+                self.scaler.load_state_dict(checkpoint["scaler"])
 
             print(f"Last checkpoint: {last_epoch}, step last step {last_step}.")
             logger.info(f"Last checkpoint: {last_epoch}, step last step {last_step}.")
@@ -918,6 +918,8 @@ class Trainer(AbstractTrainer, ABC):
 
     def save(self) -> None:
         """
+        Save all model and model layers.
+
         :return:
         """
         if self.state.rank > 0:
@@ -964,14 +966,19 @@ class Trainer(AbstractTrainer, ABC):
                 if layer_name == layer:
                     self._save_model(model_name=m, layer_name=layer, file_path=file_path)
 
-    def _save_model(self, model_name: str, layer_name: str, file_path: str,
+    def _save_model(self,
+                    model_name: str,
+                    layer_name: str,
+                    file_path: str,
                     epoch: Optional[int] = None,
-                    step: Optional[int] = None) -> None:
+                    step: Optional[int] = None,
+                    save_opt: Optional[bool] = True) -> None:
         """
+        Internal call save model.
 
         :param model_name: a mode saving
         :param layer_name: a layer of model that , trainer saving
-        :param file_path:  a full path to a model
+        :param file_path: a full path to a model
         :param epoch: if we need save epoch
         :param step:  if we need save last step
         :return: nothing
@@ -1000,75 +1007,45 @@ class Trainer(AbstractTrainer, ABC):
 
         resolved_path = str(p.resolve())
         logger.info('Saving node model {}'.format(resolved_path))
-        self._callback.saving_start()
+        self._callbacks.saving_start()
 
         is_saved = False
+        state_dict = {
+            'epoch': last_epoch, 'it': last_step,
+            'model_state_dict': self._models[model_name][layer_name].state_dict(),
+            'scaler': self.scaler.state_dict(),
+            'model_name': self.state.model_name
+        }
+
+        if save_opt:
+            state_dict['optimizer_state_dict'] = self._optimizers[model_name][layer_name].state_dict(),
+
+        if model_name in self._schedulers and layer_name in self._schedulers[model_name]:
+            logger.info("Model saving with optimizer and scheduler state.")
+            state_dict['scheduler_state_dict'] = self._schedulers[model_name][layer_name].state_dict()
+
         # TODO for not dirty fix/ need check no ops for scaled save, because I need store per mode layer.
         if self.state.is_amp:
-            # print(f"Saving model and auto precision state with scheduler state, "
-            #       f"last epoch {last_epoch}, last step {last_step}, model file {resolved_path}.")
             logger.info(f"Saving model and auto precision state with, "
                         f"last epoch {last_epoch}, last step {last_step}, model file {resolved_path}.")
-            if model_name in self._schedulers:
-                logger.info("Model saving with optimizer and scheduler state.")
-                torch.save({'epoch': last_epoch, 'it': last_step,
-                            'model_state_dict': self._models[model_name][layer_name].state_dict(),
-                            'optimizer_state_dict': self._optimizers[model_name][layer_name].state_dict(),
-                            'scheduler_state_dict': self._schedulers[model_name].state_dict(),
-                            'scaler': self.scaler.state_dict(),
-                            'model_name': self.state.model_name,
-                            }, resolved_path)
-                is_saved = True
 
-            else:
-                # print(f"Saving model and auto precision state without scheduler state, "
-                #       f"last epoch {last_epoch}, last step {last_step}, model file {resolved_path}.")
-                logger.info(f"Saving model with without scheduler state, "
-                            f"last epoch {last_epoch}, last step {last_step}, model file {resolved_path}.")
-                logger.info("Model saving with optimizer without a scheduler state.")
-                torch.save({'epoch': last_epoch, 'it': last_step,
-                            'model_state_dict': self._models[model_name][layer_name].state_dict(),
-                            'optimizer_state_dict': self._optimizers[model_name][layer_name].state_dict(),
-                            'scaler': self.scaler.state_dict(),
-                            'model_name': self.state.model_name,
-                            }, resolved_path)
-                is_saved = True
+            state_dict['scaler'] = self.scaler.state_dict()
 
-        else:
-            if model_name in self._schedulers:
-                # print(f"Saving model with scheduler state, "
-                #       f"last epoch {last_epoch}, last step {last_step}, model file {resolved_path}.")
-                logger.info(f"Saving model with scheduler state, "
-                            f"last epoch {last_epoch}, last step {last_step}, model file {resolved_path}.")
-                torch.save({'epoch': last_epoch, 'it': last_step,
-                            'model_state_dict': self._models[model_name][layer_name].state_dict(),
-                            'optimizer_state_dict': self._optimizers[model_name][layer_name].state_dict(),
-                            'scheduler_state_dict': self._schedulers[model_name].state_dict()
-                            }, resolved_path)
-                is_saved = True
-
-            else:
-
-                # print(f"Saving without scheduler state, "
-                #       f"last epoch {last_epoch}, last step {last_step}")
-                # print(f"Model file {resolved_path}.")
-
-                logger.info(f"Saving without scheduler state, "
-                            f"last epoch {last_epoch}, last step {last_step}, model file {resolved_path}.")
-                torch.save({'epoch': last_epoch, 'it': last_step,
-                            'model_state_dict': self._models[model_name][layer_name].state_dict(),
-                            'optimizer_state_dict': self._optimizers[model_name][layer_name].state_dict(),
-                            }, resolved_path)
-                is_saved = True
-
-        if is_saved:
+        if self.state.trainer_spec.is_save_iteration():
             self.state.saved_run = last_step
-            self._last_ckt_epochs[model_name][layer_name] = last_epoch
+        else:
+            self.state.saved_run = epoch
+
+        self.state.saved_run = last_step
+        self._last_ckt_epochs[model_name][layer_name] = last_epoch
 
     def save_if_need(self, step: int) -> bool:
         """
-        Method called by trainer, to check if model 
+        Method called by trainer logic, to check if model
         or model layer need to save or not.
+
+        :param step:  execution step
+        :return: True if saved
         """
         if self.state.is_hyper_tunner:
             print("Hyperparameter tunner, skipping saving.")
@@ -1094,8 +1071,7 @@ class Trainer(AbstractTrainer, ABC):
         # do nothing
         if save_condition % self.state.trainer_spec.epochs_save() == 0:
             self.save()
-            self.state.saved_run = save_condition
-            self._callback.saved()
+            self._callbacks.saved()
             # save metrics
             self.metric.save()
             return True
@@ -1117,7 +1093,7 @@ class Trainer(AbstractTrainer, ABC):
         :return:
         """
         # take a batch.
-        self._callback.validation_start()
+        self._callbacks.validation_start()
         take_batch = self._batch_loader[model_name][layer_name]
 
         model.eval()
@@ -1128,7 +1104,7 @@ class Trainer(AbstractTrainer, ABC):
         else:
             self.tqdm_iter.set_description(f"Validation in progress, {self.state.device}")
 
-        count = 0
+        batch_count = 0
         aggregated_loss_term = defaultdict(float)
         with torch.no_grad():
             current_batch_size = len(self._validation_loader)
@@ -1168,34 +1144,23 @@ class Trainer(AbstractTrainer, ABC):
                 # sum each loss term
                 for k in all_reduced_loss:
                     aggregated_loss_term[k] += all_reduced_loss[k]
-                count += 1
+                batch_count += 1
 
         # normalize at the update key
         for k in aggregated_loss_term:
             aggregated_loss_term[k] = (aggregated_loss_term[k] / (batch_idx + 1))
 
-        self._callback.validation_end()
+        self._callbacks.validation_end()
         self.metric.on_prediction_batch_end()
 
         model.train()
         # update tensorboard
-        if self.state.is_hyper_tunner is False and self.state.rank == 0:
-            # criterions = {
-            #     "train_normal_loss": normal_loss,
-            #     "train_clipped_loss": grad_norm,
-            #     "train_mel_loss": mel_loss.item(),
-            #     "train_gate_loss": mel_loss.item(),
-            #     "total_prediction_loss": total_prediction_loss,
-            # }
-
-            if count > 0:
-                criterions = {
-                    "loss/validation": aggregated_loss_term['loss'],
-                    "validation/validation_mel_loss": aggregated_loss_term['mel_loss'],
-                    "validation/validation_gate_loss": aggregated_loss_term['gate_loss'],
-                }
-                self.tf_logger.log_validation(criterions,
-                                              model, y, y_pred, step=self.state.step)
+        if self.state.is_hyper_tunner is False and self.state.rank == 0 and batch_count > 0:
+            self.tf_logger.log_validation({
+                "loss/validation": aggregated_loss_term['loss'],
+                "validation/validation_mel_loss": aggregated_loss_term['mel_loss'],
+                "validation/validation_gate_loss": aggregated_loss_term['gate_loss'],
+            }, model, y, y_pred, step=self.state.step)
 
         return aggregated_loss_term
 
@@ -1260,15 +1225,14 @@ class Trainer(AbstractTrainer, ABC):
         # traced_model = torch.jit.trace(model, sample_input)
         # Invoking torch.jit.freeze
         # traced_model = torch.jit.freeze(traced_model)
-
-        if isinstance(input_seq, str):
-            sequence = np.array(text_to_sequence(input_seq, ['english_cleaners']))[None, :]
-            sequence = torch.autograd.Variable(
-                    torch.from_numpy(sequence)).to(self.state.device).long()
-
         # sequence = torch.autograd.Variable(torch.from_numpy(sequence)).cuda().long()
 
         with torch.no_grad():
+
+            if isinstance(input_seq, str):
+                sequence = np.array(text_to_sequence(input_seq, ['english_cleaners']))[None, :]
+                sequence = torch.autograd.Variable(torch.from_numpy(sequence)).to(self.state.device).long()
+
             mel_outputs, mel_outputs_postnet, _, alignments = model.inference(sequence)
             if plot:
                 plot_spectrogram_to_numpy(mel_outputs.data.cpu().numpy()[0],
@@ -1287,7 +1251,7 @@ class Trainer(AbstractTrainer, ABC):
     #         param.grad.data /= size
     #
 
-    def rescale_gradients(self) -> float:
+    def rescale_gradients(self) -> Tensor:
         """
         Performs gradient rescaling. Is a no-op if gradient rescaling is not enabled.
 
@@ -1363,7 +1327,7 @@ class Trainer(AbstractTrainer, ABC):
         current_epoch, current_step = self.current_running_state()
         loader_data_size = len(self._train_loader)
         self.metric.update_bach_estimated(loader_data_size)
-        self._callback.on_loader_begin()
+        self._callbacks.on_loader_begin()
         self.metric.on_batch_start()
         # ths main for debug for ray if something went very wrong we can check here.
         if self.state.is_hyper_tunner:
@@ -1376,16 +1340,13 @@ class Trainer(AbstractTrainer, ABC):
         grad_norm = None
         batch_counter = 0
         for batch_idx, batch in enumerate(self._train_loader):
-            self._callback.on_batch_begin()
+            self._callbacks.on_batch_begin()
             model.zero_grad(set_to_none=True)
             with torch.cuda.amp.autocast(enabled=self.state.is_amp):
 
                 x, y = take_batch(batch, device)
                 y_pred = model(x)
-                # print(len(y_pred))
-                # for ret in y_pred:
-                #     print(ret.dtype)
-                # assert ret.dtype is torch.float16
+
                 # if self.state.trainer_spec.is_distributed_run():
                 #     reduced_loss = dist.reduce_tensor(loss.data, n_gpus).item()
 
@@ -1418,7 +1379,7 @@ class Trainer(AbstractTrainer, ABC):
             self.scaler.update()
 
             # optimizer.step()
-            self._callback.on_batch_begin()
+            self._callbacks.on_batch_begin()
             # run lr_scheduler
             if schedulers is not None:
                 for scheduler in schedulers:
@@ -1440,7 +1401,7 @@ class Trainer(AbstractTrainer, ABC):
                                                 'batch': f"{batch_idx}/{loader_data_size}",
                                                 'lr': optimizer.param_groups[0]['lr'],
                                                 'saved': self.state.saved_run})
-            # run prediction only if if need to.
+            # run prediction only if we need to.
             if self.state.trainer_spec.predict_per_iteration():
                 if current_step != 0 and current_step % self.state.trainer_spec.predict() == 0:
                     self.state.step = current_step
@@ -1462,24 +1423,24 @@ class Trainer(AbstractTrainer, ABC):
                     'loss/normal_loss': normal_loss,
                     'loss/grad_loss': grad_norm,
                 }
-                criterions = {
-                    "loss/normal_loss": normal_loss,
-                    "loss/grad_loss": grad_norm,
-                    "loss/mel_loss": mel_loss,
-                    "loss/gate_loss": gate_loss,
-                    "loss/stft_err": stft_err,
-                    "score/stft_err": diag_score,
-                }
 
                 if not self.state.is_hyper_tunner:
-                    self.tf_logger.log_training(criterions, current_step,
-                                                optimizer.param_groups[0]['lr'],
-                                                hparams=hparams, metrics=metrics)
+                    self.tf_logger.log_training({
+                        "loss/normal_loss": normal_loss,
+                        "loss/grad_loss": grad_norm,
+                        "loss/mel_loss": mel_loss,
+                        "loss/gate_loss": gate_loss,
+                        "loss/stft_err": stft_err,
+                        "score/stft_err": diag_score,
+                    }, current_step,
+                            optimizer.param_groups[0]['lr'],
+                            hparams=hparams, metrics=metrics)
+
             current_step += 1
             batch_counter += 1
 
         self.metric.on_batch_end()
-        self._callback.on_loader_end()
+        self._callbacks.on_loader_end()
 
         # update last step trained for a current model.
         self._last_step[layer_name] = current_step
@@ -1624,7 +1585,7 @@ class Trainer(AbstractTrainer, ABC):
 
     def trainer_sequential(self, model_name: str, layer_name: str) -> None:
         """
-        Sequential training loop.
+        Sequential training loop,  each layer of model trainer in Sequential order.
 
         :param model_name:
         :param layer_name:
@@ -1647,7 +1608,7 @@ class Trainer(AbstractTrainer, ABC):
         #     model = dist
 
         model.train()
-        self._callback.on_begin()
+        self._callbacks.on_begin()
         self.metric.on_begin()
 
         if self.state.is_hyper_tunner:
@@ -1661,7 +1622,7 @@ class Trainer(AbstractTrainer, ABC):
                     print(f"Training lr {param_group['lr']} batch_size {self.state.batch_size}")
 
             self.state.epoch = epoch
-            self._callback.on_epoch_begin()
+            self._callbacks.on_epoch_begin()
             if self.state.trainer_spec.is_distributed_run():
                 dist.barrier()
             # train epoch's batch
@@ -1673,15 +1634,15 @@ class Trainer(AbstractTrainer, ABC):
             aggregate_loss = self.validate_epoch(model, model_name, layer_name, epoch)
             for k in aggregate_loss:
                 epochs_loss_terms[k] += aggregate_loss[k]
-            self._callback.on_epoch_end()
+            self._callbacks.on_epoch_end()
             if self.state.is_hyper_tunner and self.hyper_config['epoch'] == epoch:
                 break
 
         self.state.epoch += 1
-        self._callback.on_end()
+        self._callbacks.on_end()
         self.metric.on_end()
 
-        self._callback.on_epoch_end()
+        self._callbacks.on_epoch_end()
         self.metric.total_train_mean_loss()
         return
 
@@ -1719,13 +1680,6 @@ class Trainer(AbstractTrainer, ABC):
                 layer_name = self.q.pop()
                 self.state.current_model = model_name
                 self.state.current_layer = layer_name
-                # update whatever we need
-                # if config is not None:
-                #     if 'batch_size' in config:
-                #         self.state.data_loaders.update(config['batch_size'])
-                #     if 'lr' in config:
-                #         for param_group in self._optimizers[model_name][layer_name].param_groups:
-                #             param_group['lr'] = config["lr"]
                 # run model
                 self.trainer_sequential(model_name=model_name, layer_name=layer_name)
                 self.save()
@@ -1785,7 +1739,7 @@ class Trainer(AbstractTrainer, ABC):
 
     def get_model(self, name: str):
         """
-
+        Return a model from internal dict.
         :param name:
         :return:
         """
