@@ -1077,7 +1077,7 @@ class Trainer(AbstractTrainer, ABC):
         if self.state.trainer_spec.is_save_required() is False:
             return False
 
-        # by default condition to save epoch , if save per iteration we check iteration.
+        # by default condition to save epoch, if save per iteration we check iteration.
         if step == 0:
             return False
 
@@ -1087,7 +1087,7 @@ class Trainer(AbstractTrainer, ABC):
 
         # model save predicate condition, either iteration or epoch counter.
         # for large model it makes sense to track iteration vs epoch counter.
-        save_condition = self.state.epoch if self.state.trainer_spec.is_save_iteration() else self.state.step
+        save_condition = self.state.step if self.state.trainer_spec.is_save_iteration() else self.state.epoch
         if save_condition == 0 or save_condition == self.state.saved_run:
             return False
 
@@ -1257,9 +1257,9 @@ class Trainer(AbstractTrainer, ABC):
 
         #  model = getattr(models,)().eval()
         # Tracing the model with example input
-   #     traced_model = torch.jit.trace(model, sample_input)
+        # traced_model = torch.jit.trace(model, sample_input)
         # Invoking torch.jit.freeze
-    #    traced_model = torch.jit.freeze(traced_model)
+        # traced_model = torch.jit.freeze(traced_model)
 
         if isinstance(input_seq, str):
             sequence = np.array(text_to_sequence(input_seq, ['english_cleaners']))[None, :]
@@ -1287,15 +1287,6 @@ class Trainer(AbstractTrainer, ABC):
     #         param.grad.data /= size
     #
 
-    # with amp.scale_loss(loss, optimizer) as scaled_loss:
-    #     scaled_loss.backward()
-    # # Now it's safe to clip.  Replace
-    # # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
-    # # with
-    # torch.nn.utils.clip_grad_norm_(amp.master_params(optimizer), max_norm)
-    # # or
-    # torch.nn.utils.clip_grad_value_(amp.master_params(optimizer), max_)
-    #
     def rescale_gradients(self) -> float:
         """
         Performs gradient rescaling. Is a no-op if gradient rescaling is not enabled.

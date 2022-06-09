@@ -1095,7 +1095,6 @@ def set_logger(is_enable: bool) -> None:
         logger.disable(__name__)
 
 
-
 # import numpy as np
 #
 # def v_pesq2mos(p):
