@@ -13,7 +13,7 @@
 # Note right trainer is logically executed in a sequence generally backward
 # in torch implementation and can not be executed in parallel anyway.
 #
-# Hence queue is just FIFO.
+# Thus, queue is just FIFO.
 #
 # Ray loaded optionally.
 # Mus
@@ -46,6 +46,7 @@ try:
     from tune.schedulers import ASHAScheduler
     from tunner import Trainable
 except ImportError:
+    print("Ray tunner disabled.")
     pass
 
 from tqdm import tqdm
@@ -158,26 +159,28 @@ def convert_mel_to_data(encoder_spec: SpectrogramLayerSpec,
             raise ConverterError("Unknown version.")
 
         if not torch.equal(mel, mel_from_ds):
-            raise ConverterError("data mismatched.")
+            raise ConverterError("mel data mismatched.")
         if not torch.equal(one_hot, txt_original):
-            raise ConverterError("data mismatched.")
+            raise ConverterError("one hot vector data mismatched.")
 
     print("Done.")
 
 
-def plot_example(trainer_spec, version=3, dataset_name=None, verbose=True, target_dir=None):
+def plot_example(trainer_spec, version=3, dataset_name=None,
+                 verbose=True, target_dir=None, sr=22050, num_examples=1):
     """
     Routine plot dataset example for inspection.
     Each MEl and STFT generated in result folder.  SampleS TFT reconstructed by inverse
     function and serialized in result directory.
 
+    :param sr:
     :param target_dir: where to write plots
     :param version: a dataset version.  since we're serializing a tensor or numpy we need know what feature
                     on top of MEL we extract.
     :param trainer_spec: a trainer spec object.
     :param verbose: verbose output
     :param dataset_name: if empty will use current active one. whatever in config use_dataset: 'mydataset'
-    :param merge: if true merge all datasets to single one.
+    :param num_examples: by default we plot one example
     :return:
     """
 
@@ -188,6 +191,7 @@ def plot_example(trainer_spec, version=3, dataset_name=None, verbose=True, targe
         #     print("Please check configuration, the active dataset not raw audio.")
         #     return
 
+    data = None
     if dataset_name is None or len(dataset_name) == 0:
         data = trainer_spec.get_audio_dataset()
     else:
@@ -199,40 +203,44 @@ def plot_example(trainer_spec, version=3, dataset_name=None, verbose=True, targe
     if data is None:
         raise ConverterError("Dataset not found.")
 
-    dataloader = SFTFDataloader(trainer_spec, batch_size=2, verbose=True)
-    loaders, collate = dataloader.get_loader()
-
-    # get all
     start_time = time.time()
+    dataloader = SFTFDataloader(trainer_spec, batch_size=2, verbose=True)
     data_loaders, collate_fn = dataloader.get_all()
     _train_loader = data_loaders['train_set']
     print(f"Train datasize {dataloader.get_train_dataset_size()}")
     print("--- %s load time, seconds ---" % (time.time() - start_time))
     fig = plt.figure()
 
-    start_time = time.time()
-    # take one batch exampe.
-    for bidx, batch in enumerate(_train_loader):
-        text_padded, input_lengths, mel_padded, gate_padded, \
-        output_lengths, stft_padded = batch
+    default_dir = "results"
+    if target_dir is not None:
+        default_dir = target_dir
+        p = Path(default_dir).expanduser().resolve()
+        if not p.is_dir():
+            print(f"Target {target_dir} is not a dir.")
 
-        plot_spectrogram_to_numpy(mel_padded[0], file_name="results/default_mel.png")
+    start_time = time.time()
+    # take one batch example.
+    for batch_idx, batch in enumerate(_train_loader):
+        if batch_idx == num_examples:
+            break
+        text_padded, input_lengths, mel_padded, gate_padded, out_len, stft_padded = batch
+
+        plot_spectrogram_to_numpy(mel_padded[0], file_name=f"{default_dir}/default_mel{batch_idx}.png")
         plot_spectrogram(stft_padded[0],
                          y_axis_label="mel freq",
-                         file_name="results/default_stft.png")
+                         file_name=f"{default_dir}/default_stft_{batch_idx}.png")
 
         # MEL
         S = librosa.feature.inverse.mel_to_stft(mel_padded[0].numpy())
         y = librosa.griffinlim(S)
-        sf.write('results/default.wav', y, 22050, 'PCM_24')
+        sf.write(f'{default_dir}/default_{batch_idx}.wav', y, sr, 'PCM_24')
 
         # iSTFT
         y_numpy = stft_padded.numpy()
         for i in range(0, y_numpy.shape[0]):
-            n = (y_numpy[bidx].shape[i] * y_numpy[i].shape[1])
+            n = (y_numpy[batch_idx].shape[i] * y_numpy[i].shape[1])
             y_out = librosa.istft(y_numpy[i], length=n)
-            sf.write(f'results/default_stft_{i}.wav', y_out, 22050, 'PCM_24')
-        break
+            sf.write(f'results/default_stft_{batch_idx}_{i}.wav', y_out, sr, 'PCM_24')
 
     fig.show()
     print("--- %s Single batch memory load, load time, seconds ---" % (time.time() - start_time))
@@ -240,40 +248,43 @@ def plot_example(trainer_spec, version=3, dataset_name=None, verbose=True, targe
 
 def convert(trainer_spec, version=3,
             dataset_name=None, merge=True, verbose=True, target_dir=None,
-            ds_ratio=10, exclude=None):
+            ds_ratio=10, exclude=None) -> None:
     """
-    Routine convert dataset to native torch tensor representation.  It takes entire audio dataset.
-    and create single dat file. It supports both Tacotron2 format and DTC.
-
-    Each file serialized to disk and md5 hash provided.  In case we need provide download option.
-    BaseDataset class provide list of url that provide option to fetch url and dataset.
-
-    Each entries require mirror and md5 hash.
-
-    I used this method in my training procedure It significantly increases
+    Routine convert dataset to native torch tensor representation. It takes the entire audio dataset.
+    And create a single dat file. It supports both Tacotron2 format and DTC.
+    Each file is serialized to disk, and md5 hash is provided. In case we need to provide a download option.
+    BaseDataset class provides a list of URLs that provide the option to fetch data from the web, and each has a URL
+    and dataset. Each entry requires a mirror and md5 hash.
+    I used this method in my training procedure. It significantly increases
     batch load to GPU time.
 
-    :param exclude:
-    :param ds_ratio:
-    :param target_dir:
+    :param exclude: if we reduce a size by default validation dataset will exclude from reduction.
+                    (default dataset used for this model has only 100 record, if you have large validation dataset
+                    you can include in reduction as well).
+    :param ds_ratio: a ration. ( percentage 0.5 will drop 50 percent)
+    :param target_dir: where to write a file.
     :param version: a dataset version.  since we're serializing a tensor or numpy
                     we need know what feature on top of MEL we extract.
     :param trainer_spec: a trainer spec object.
+    :param dataset_name: if empty will use current active one. whatever
+                         in config use_dataset: 'mydataset'
+    :param merge:  if true merge all datasets to single file..
     :param verbose: verbose output
-    :param dataset_name: if empty will use current active one. whatever in config use_dataset: 'mydataset'
-    :param merge:  if true merge all datasets to single one.
-    :return:
+    :return: None
     """
     # trainer_spec = ExperimentSpecs(verbose=verbose)
     if exclude is None:
         exclude = ['validation_set']
 
+    # will read from config spec.
     if dataset_name is None or len(dataset_name) == 0:
         ds_spec = trainer_spec.get_active_dataset_spec()
         if not trainer_spec.is_audio_raw(ds_spec):
-            print("Please check configuration, the active dataset not raw audio.")
+            print("Please check configuration, the "
+                  "active dataset must be raw audio dataset.")
             return
 
+    data = None
     if dataset_name is None or len(dataset_name) == 0:
         data = trainer_spec.get_audio_dataset()
     else:
@@ -286,18 +297,19 @@ def convert(trainer_spec, version=3,
         raise ConverterError("Dataset not found.")
 
     if 'data' in data:
-        raise ConverterError("Data has no key ds_type active dataset must be raw audio.")
+        raise ConverterError("Data has no data key, active dataset must be raw audio.")
 
+    test_set = data['test_set']
     training_set = data['train_set']
     validation_set = data['validation_set']
-    test_set = data['test_set']
 
     model_spec: ModelSpecTacotron25 = trainer_spec.get_model_spec()
     encoder_spec = model_spec.get_spectrogram()
 
     train_listified = list(training_set.values())
-    val_listified = list(validation_set.values())
     test_listified = list(test_set.values())
+    val_listified = list(validation_set.values())
+
     if ds_ratio > 0:
         if 'train_set' not in exclude:
             old_sz = len(train_listified)
@@ -312,35 +324,25 @@ def convert(trainer_spec, version=3,
             test_listified = test_listified[0: int(len(test_listified) * (ds_ratio / 100))]
             print(f"Test set reduced from {old_sz} to {len(test_listified)}.")
 
+    listified = [train_listified, val_listified, test_listified]
+
     if merge:
-        final_list = [*train_listified, *val_listified, *test_listified]
-    #
+        listified = [*train_listified, *val_listified, *test_listified]
+
+    datasets = []
     if version == 2:
-        train_dataset = SFTF2Dataset(model_spec=encoder_spec,
-                                     data=train_listified,
-                                     data_format="audio_raw",
-                                     verbose=verbose)
-        validation_dataset = SFTF2Dataset(model_spec=encoder_spec,
-                                          data=val_listified,
-                                          data_format="audio_raw",
-                                          verbose=verbose)
-        test_dataset = SFTF2Dataset(model_spec=encoder_spec,
-                                    data=test_listified,
-                                    data_format="audio_raw",
-                                    verbose=verbose)
+        for data_split in listified:
+            ds = SFTF2Dataset(model_spec=encoder_spec,
+                              data=data_split,
+                              data_format="audio_raw",
+                              verbose=verbose)
+            datasets.append(ds)
     else:
-        train_dataset = SFTF3Dataset(model_spec=encoder_spec,
-                                     data=train_listified,
-                                     data_format="audio_raw",
-                                     verbose=verbose)
-        validation_dataset = SFTF3Dataset(model_spec=encoder_spec,
-                                          data=val_listified,
-                                          data_format="audio_raw",
-                                          verbose=verbose)
-        test_dataset = SFTF3Dataset(model_spec=encoder_spec,
-                                    data=test_listified,
-                                    data_format="audio_raw",
-                                    verbose=verbose)
+        ds = SFTF3Dataset(model_spec=encoder_spec,
+                          data=listified,
+                          data_format="audio_raw",
+                          verbose=verbose)
+        datasets.append(ds)
     #
     if verbose:
         logging.info(f"filter_length {encoder_spec.filter_length()}")
@@ -359,7 +361,7 @@ def convert(trainer_spec, version=3,
         if target_dir.exists() and target_dir.is_dir():
             final_dir = resolved
         else:
-            raise ConverterError("can't resolve target dir.")
+            raise ConverterError("Can't resolve target dir.")
     else:
         final_dir = trainer_spec.get_dataset_dir()
 
@@ -372,24 +374,14 @@ def convert(trainer_spec, version=3,
         Path(ds_spec['dir']).expanduser() / ds_spec['test_meta']
     ]
 
-    # by default we generate 3 seperate files.
-    convert_mel_to_data(encoder_spec, train_dataset,
-                        dataset_name=dataset_name,
-                        meta_file=data['train_meta'],
-                        target_dir=final_dir,
-                        data_type="train")
+    keys = ['train', 'validation', 'test']
 
-    convert_mel_to_data(encoder_spec, validation_dataset,
-                        dataset_name=dataset_name,
-                        target_dir=final_dir,
-                        meta_file=data['validation_meta'],
-                        data_type="validate")
-
-    convert_mel_to_data(encoder_spec, test_dataset,
-                        dataset_name=dataset_name,
-                        target_dir=final_dir,
-                        meta_file=data['test_meta'],
-                        data_type="test")
+    for i, ds in enumerate(datasets):
+        convert_mel_to_data(encoder_spec, ds,
+                            dataset_name=dataset_name,
+                            meta_file=data[f'{keys[i]}_meta'],
+                            target_dir=final_dir,
+                            data_type=f"{keys[i]}")
 
 
 # def handler(a,b=None):
@@ -554,9 +546,9 @@ def tune_hyperparam(spec=None, cmd_args=None, device=None, cudnn_bench=False):
 
     try:
 
-        metric = 'mean_train_loss'
+        _metric = 'mean_train_loss'
         scheduler = ASHAScheduler(
-                metric=metric,
+                metric=_metric,
                 mode="min",
                 max_t=100,
                 grace_period=1,
@@ -615,9 +607,9 @@ def tune_hyperparam(spec=None, cmd_args=None, device=None, cudnn_bench=False):
                                 max_concurrent_trials=1,
                                 progress_reporter=reporter)
 
-        best_trial = tuner_result.get_best_trial(metric, "min", "last")
+        best_trial = tuner_result.get_best_trial(_metric, "min", "last")
         print("Best trial config: {}".format(best_trial.config))
-        print("Best trial final train loss: {}".format(best_trial.last_result[metric]))
+        print("Best trial final train loss: {}".format(best_trial.last_result[_metric]))
 
     except TrainerError as e:
         print("Error: trainer error: ", e)
@@ -658,26 +650,28 @@ def train(spec=None, cmd_args=None, device=None, cudnn_bench=False):
         torch.backends.cudnn.benchmark = True
 
     if args.verbose:
-        logger.debug(f"Torch allow matmul fp16 {torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction}")
-        logger.debug(f"Torch cudnn version, {torch.backends.cudnn.version()}")
-        logger.debug(f"Torch backend openmp {torch.backends.openmp}")
+        logger.debug(f"Torch allow matmul fp16 "
+                     f"{torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction}")
+        logger.debug(f"Torch cudnn version, "
+                     f"{torch.backends.cudnn.version()}")
+        logger.debug(f"Torch backend openmp "
+                     f"{torch.backends.openmp}")
     try:
 
         dataloader = SFTFDataloader(spec, rank=cmd_args.rank,
                                     world_size=cmd_args.world_size,
                                     verbose=args.verbose)
-        dataloader.set_logger(is_enable=True)
-
         trainer = Trainer(spec,
                           dataloader,
                           rank=int(args.rank),
                           world_size=int(cmd_args.world_size),
                           verbose=args.verbose, device=device,
-                          callback=[CheckpointBest()],
-                          hp_tunner=False)
+                          callback=[CheckpointBest()])
 
-        trainer.set_logger(is_enable=True)
-        trainer.metric.set_logger(is_enable=True)
+        dataloader.set_logger(is_enable=cmd_args.verbose)
+        trainer.set_logger(is_enable=cmd_args.verbose)
+        trainer.metric.set_logger(is_enable=cmd_args.verbose)
+
         trainer.train()
 
     except TrainerError as e:
@@ -695,9 +689,8 @@ def dataloader_dry(cmd_args, trainer_specs):
     # TODO add batch size.
     :return:
     """
-    data_loader = SFTFDataloader(trainer_specs, verbose=cmd_args._verbose)
+    data_loader = SFTFDataloader(trainer_specs, verbose=cmd_args.verbose)
     if cmd_args.benchmark:
-        data_loader._create()
         data_loader.benchmark_read()
 
 
@@ -717,7 +710,8 @@ def set_random_seeds(random_seed=1234):
     random.seed(random_seed)
 
 
-def inference(spec: ExperimentSpecs, cmd_args, device, sigma=1.0, sampling_rate=22050, denoiser_strength=0.2,
+def inference(spec: ExperimentSpecs, cmd_args, device, sigma=1.0,
+              sampling_rate=22050, denoiser_strength=0.2,
               max_wav_values=32768.0):
     """
     Main routine for inference.
@@ -743,7 +737,8 @@ def inference(spec: ExperimentSpecs, cmd_args, device, sigma=1.0, sampling_rate=
 
             logger.info("Model loaded.")
             # text = "Hello world, I missed you so much."
-            text = "Meat was no longer issued raw, to be imperfectly cooked before a ward fire and bolted gluttonously, the whole two pounds at one sitting."
+            text = "Meat was no longer issued raw, to be imperfectly cooked before " \
+                   "a ward fire and bolted gluttonously, the whole two pounds at one sitting."
             mel_outputs, mel_outputs_postnet, alignments = \
                 trainer.inference(input_seq=text,
                                   model_name="dtc",
@@ -765,6 +760,7 @@ def inference(spec: ExperimentSpecs, cmd_args, device, sigma=1.0, sampling_rate=
             waveglow = waveglow.remove_weightnorm(waveglow)
             waveglow.cuda().eval()
 
+            denoiser = None
             if denoiser_strength > 0:
                 denoiser = Denoiser(waveglow).cuda()
 
@@ -772,7 +768,7 @@ def inference(spec: ExperimentSpecs, cmd_args, device, sigma=1.0, sampling_rate=
             # mel = torch.unsqueeze(mel_outputs, 0)
             with torch.no_grad():
                 audio = waveglow.infer(mel, sigma=sigma)
-                if denoiser_strength > 0:
+                if denoiser is not None:
                     audio = denoiser(audio, denoiser_strength)
                 audio = audio * max_wav_values
 
@@ -798,16 +794,17 @@ def inference(spec: ExperimentSpecs, cmd_args, device, sigma=1.0, sampling_rate=
             sys.exit()
 
 
-def load_glow(spec: ExperimentSpecs):
+def load_glow(spec: ExperimentSpecs, default_filename="waveglow_256channels_universal_v5.pt"):
     """
-
+    Load Wave glow model.
+    :param default_filename:
     :param spec:
     :return:
     """
-    glow_path = f"{spec.model_files.get_model_dir()}/waveglow_256channels_universal_v5.pt"
+    glow_path = f"{spec.model_files.get_model_dir()}/{default_filename}"
     model_file = Path(glow_path)
     if not model_file.exists():
-        print("Please download glow model and put to a results/model dir.")
+        print("Please download a glow model file and put to a results/model directory.")
         print("url: https://drive.google.com/u/0/uc?id=1rpK8CzAAirq9sWZhe9nlfvxMF1dRgFbF&export=download")
         return
 
@@ -819,17 +816,21 @@ def load_glow(spec: ExperimentSpecs):
     return waveglow
 
 
-def glow_inference(waveglow, mel, sigma=1.0, denoiser_strength=0.2, max_wav_valuest=32768.0):
+def glow_inference(waveglow: torch.nn.Module, mel: torch.Tensor,
+                   sigma: Optional[float] = 1.0, denoiser_strength: Optional[float] = 0.2,
+                   max_wav_value: Optional[float] = 32768.0):
     """
+    Perform glow inference for input given mel spectrogram.
 
-    :param max_wav_valuest:
-    :param denoiser_strength:
-    :param mel:
-    :param sigma:
     :param waveglow:
+    :param mel:
+    :param max_wav_value:
+    :param denoiser_strength:
+    :param sigma:
     :return:
     """
     from waveglow.denoiser import Denoiser
+    denoiser = None
     if denoiser_strength > 0:
         denoiser = Denoiser(waveglow).cuda()
 
@@ -837,9 +838,9 @@ def glow_inference(waveglow, mel, sigma=1.0, denoiser_strength=0.2, max_wav_valu
     # mel = torch.unsqueeze(mel_outputs, 0)
     with torch.no_grad():
         audio = waveglow.infer(mel, sigma=sigma)
-        if denoiser_strength > 0:
+        if denoiser is not None:
             audio = denoiser(audio, denoiser_strength)
-        audio = audio * max_wav_valuest
+        audio = audio * max_wav_value
 
     audio = audio.squeeze()
     audio = audio.cpu().numpy()
@@ -985,7 +986,6 @@ def main(cmd_args):
 
     # similarly active dataset
     if cmd_args.dataset_name is not None and len(cmd_args.dataset_name) > 0:
-        spec = trainer_spec.get_dataset_spec(cmd_args.dataset_name)
         trainer_spec.set_active_dataset(dataset_name=str(cmd_args.dataset_name))
 
     logger.add(trainer_spec.model_files.get_model_log_file_path(remove_old=True),

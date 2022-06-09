@@ -327,7 +327,6 @@ class Metrics:
         self.batch_size = batch_size
 
 
-
 def batch_loss_compute():
     """
     :return:
