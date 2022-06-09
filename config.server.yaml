@@ -153,8 +153,8 @@ settings:
     start_test: 20
     predict: 128                  # will do validation , prediction every 10 iteration .(re-scale based on ds/batch size)
     predict_per_iteration: True   # use epoch or iteration counter, in large batch size we might want to see progress.
-    epochs_save: 1000             # when we save
-    save_per_iteration: True
+    epochs_save: 1                # when we save
+    save_per_iteration: False
     seed: 1234
     fp16: False                      # fp16 run
     distributed: False               # what distributed backend uses.
