@@ -1594,8 +1594,8 @@ class Trainer(AbstractTrainer, ABC):
         """
         assert model_name in self._models
         assert layer_name in self._models[model_name]
-        assert self.state.current_layer_name == layer_name
         assert self.state.current_model_name == model_name
+        assert self.state.current_layer_name == layer_name
 
         model, optimizer, scheduler = self.prepare_trainer(model_name, layer_name)
         self.state.current_model = model
@@ -1679,8 +1679,8 @@ class Trainer(AbstractTrainer, ABC):
                 self.q.append(layer)
             while len(self.q) > 0:
                 layer_name = self.q.pop()
-                self.state.current_model = model_name
-                self.state.current_layer = layer_name
+                self.state.current_model_name = model_name
+                self.state.current_layer_name = layer_name
                 # run model
                 self.trainer_sequential(model_name=model_name, layer_name=layer_name)
                 self.save()
