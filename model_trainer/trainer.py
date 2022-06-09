@@ -428,9 +428,9 @@ class Trainer(AbstractTrainer, ABC):
 
     def load_model_layer(self, layer_name: str, file_path: str):
         """
-        Loads specific mode layer from model.
-        :param layer_name:
-        :param file_path:
+        Loads each specific mode layer.
+        :param layer_name: a model layer
+        :param file_path: path to model.
         :return:
         """
         if self.state.rank > 0:
