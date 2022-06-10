@@ -175,7 +175,7 @@ settings:
         pin_memory: True
         shuffle: False
   small:
-    epochs: 510
+    epochs: 600
     batch_size: 64
     grad_clipping: True
     grad_max_norm : 1.0
@@ -190,7 +190,7 @@ settings:
     predict_per_iteration: False
     # when to save
     epochs_save: 1
-    save_per_iteration: True
+    save_per_iteration: False
     seed: 1234
     fp16: False                      # fp16 run
     distributed: False               # what distributed backend uses.

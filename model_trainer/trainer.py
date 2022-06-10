@@ -547,6 +547,9 @@ class Trainer(AbstractTrainer, ABC):
             if not skip_opt_state:
                 logger.debug(f"Loading optimizer state for model {model_name} layer {layer_name}.")
                 if 'optimizer_state_dict' in checkpoint:
+                    opt_state = checkpoint['optimizer_state_dict']
+                    if 'state' not in opt_state:
+                        print("Optimizer doesn't contain a state")
                     self._optimizers[model_name][layer_name].load_state_dict(checkpoint['optimizer_state_dict'])
                 else:
                     if strict:
@@ -932,7 +935,6 @@ class Trainer(AbstractTrainer, ABC):
                 model_file = self.state.trainer_spec.model_files.get_model_file_path(layer)
                 if not self.state.disable_pbar:
                     self.tqdm_iter.set_description(f"Saving in progress, {self.state.device}")
-                print(f"saving {model_file}")
                 self._save_model(model_name=m, layer_name=layer, file_path=model_file)
 
     def save_models(self, model_files: list[str], step=0):
@@ -1001,7 +1003,7 @@ class Trainer(AbstractTrainer, ABC):
 
         p = Path(file_path).expanduser()
         if p.is_dir():
-            raise TrainerError("Invalid file_path.")
+            raise TrainerError(f"Invalid {file_path}.")
 
         resolved_path = str(p.resolve())
         self._callbacks.saving_start()
@@ -1009,13 +1011,15 @@ class Trainer(AbstractTrainer, ABC):
         state_dict = {
             'epoch': last_epoch, 'it': last_step,
             'model_state_dict': self._models[model_name][layer_name].state_dict(),
-            'scaler': self.scaler.state_dict(),
             'model_name': self.state.current_model_name,
-            'layer_name': self.state.current_model_name
+            'layer_name': self.state.current_layer_name
         }
 
         if save_opt:
-            state_dict['optimizer_state_dict'] = self._optimizers[model_name][layer_name].state_dict(),
+            opt_state = self._optimizers[model_name][layer_name].state_dict()
+            print("Saving optimizer")
+            state_dict['optimizer_state_dict'] = opt_state
+            print(state_dict['optimizer_state_dict'].keys())
 
         if model_name in self._schedulers and layer_name in self._schedulers[model_name]:
             logger.info("Model saving with optimizer and scheduler state.")
@@ -1032,10 +1036,11 @@ class Trainer(AbstractTrainer, ABC):
 
         if self.state.trainer_spec.is_save_iteration():
             self.state.saved_run = last_step
+            print(f"last saved epoch {last_step}")
         else:
-            self.state.saved_run = epoch
+            print(f"last saved epoch {last_epoch}")
+            self.state.saved_run = last_epoch
 
-        self.state.saved_run = last_step
         self._last_ckt_epochs[model_name][layer_name] = last_epoch
 
     def save_if_need(self, step: int) -> bool:
@@ -1047,7 +1052,7 @@ class Trainer(AbstractTrainer, ABC):
         :return: True if saved
         """
         if self.state.is_hyper_tunner:
-            print("Hyperparameter tunner, skipping saving.")
+            logger.debug("Hyperparameter tunner, skipping saving.")
             return False
 
         if self.state.trainer_spec.is_save_required() is False:
@@ -1063,15 +1068,20 @@ class Trainer(AbstractTrainer, ABC):
 
         # model save predicate condition, either iteration or epoch counter.
         # for large model it makes sense to track iteration vs epoch counter.
-        save_condition = self.state.step if self.state.trainer_spec.is_save_iteration() else self.state.epoch
+        if self.state.trainer_spec.is_save_iteration():
+            save_condition = self.state.step
+        else:
+            save_condition = self.state.epoch
+
+        # condition either epoch or current state.
         if save_condition == 0 or save_condition == self.state.saved_run:
+            logger.debug("Skipping saving.")
             return False
 
-        # do nothing
         if save_condition % self.state.trainer_spec.epochs_save() == 0:
             self.save()
             self._callbacks.saved()
-            # save metrics
+            # saves metrics
             self.metric.save()
             return True
 

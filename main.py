@@ -39,14 +39,15 @@ import torch.distributed as dist
 from loguru import logger
 import soundfile as sf
 
+
 try:
     import ray
     from ray import tune
-    from tune import CLIReporter
-    from tune.schedulers import ASHAScheduler
+    from ray.tune import CLIReporter
+    from ray.tune.schedulers import ASHAScheduler
     from tunner import Trainable
-except ImportError:
-    print("Ray tunner disabled.")
+except ImportError as err:
+    print(f"Ray tunner disabled.{err}")
     pass
 
 from tqdm import tqdm
