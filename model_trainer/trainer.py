@@ -502,9 +502,6 @@ class Trainer(AbstractTrainer, ABC):
         logger.info(f"Loading model node rank {self.state.rank} "
                     f"'{model_name}' model {layer_name} fro file {resolved_path}.")
 
-        # original saved file with DataParallel
-        # state_dict = torch.load('myfile.pth.tar')
-        # create new OrderedDict that does not contain `module.`
 
         # from collections import OrderedDict
         # new_state_dict = OrderedDict()
@@ -935,6 +932,7 @@ class Trainer(AbstractTrainer, ABC):
                 model_file = self.state.trainer_spec.model_files.get_model_file_path(layer)
                 if not self.state.disable_pbar:
                     self.tqdm_iter.set_description(f"Saving in progress, {self.state.device}")
+                print(f"saving {model_file}")
                 self._save_model(model_name=m, layer_name=layer, file_path=model_file)
 
     def save_models(self, model_files: list[str], step=0):
@@ -974,9 +972,9 @@ class Trainer(AbstractTrainer, ABC):
                     step: Optional[int] = None,
                     save_opt: Optional[bool] = True) -> None:
         """
-        Internal call save model.
+        Internal call saves model.
 
-        :param model_name: a mode saving
+        :param model_name: a mode name, saved dict will have a separate entry what model saved.
         :param layer_name: a layer of model that , trainer saving
         :param file_path: a full path to a model
         :param epoch: if we need save epoch
@@ -1006,10 +1004,8 @@ class Trainer(AbstractTrainer, ABC):
             raise TrainerError("Invalid file_path.")
 
         resolved_path = str(p.resolve())
-        logger.info('Saving node model {}'.format(resolved_path))
         self._callbacks.saving_start()
 
-        is_saved = False
         state_dict = {
             'epoch': last_epoch, 'it': last_step,
             'model_state_dict': self._models[model_name][layer_name].state_dict(),
@@ -1025,12 +1021,14 @@ class Trainer(AbstractTrainer, ABC):
             logger.info("Model saving with optimizer and scheduler state.")
             state_dict['scheduler_state_dict'] = self._schedulers[model_name][layer_name].state_dict()
 
-        # TODO for not dirty fix/ need check no ops for scaled save, because I need store per mode layer.
         if self.state.is_amp:
             logger.info(f"Saving model and auto precision state with, "
                         f"last epoch {last_epoch}, last step {last_step}, model file {resolved_path}.")
-
             state_dict['scaler'] = self.scaler.state_dict()
+
+        print(f"Saving {resolved_path}")
+        logger.info('Saving node model {}'.format(resolved_path))
+        torch.save(state_dict, resolved_path)
 
         if self.state.trainer_spec.is_save_iteration():
             self.state.saved_run = last_step

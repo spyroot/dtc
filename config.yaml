@@ -1,7 +1,7 @@
 train: True                 # train or not,  default is True for generation we only need load pre-trained model
 #active: 'grid_small'       # dataset set generated.
 #use_dataset: 'LJSpeechSmallPkl'     # dataset set generated.
-use_dataset: 'LJSpeech'     # dataset set generated.
+use_dataset: 'lj_speech_full'     # dataset set generated.
 use_model: 'dtc'     # model to use , it must be defined in models section.
 draw_prediction: True       # at the of training draw.
 load_model: True            # load model or not, and what
@@ -102,7 +102,6 @@ datasets:
     file_type: "wav"
     format: raw
     dir: "~/Dropbox/Datasets/LJSpeech-1.1"
-    #    dir: "~/Dropbox/Datasets/LJSpeechSmall"
     training_meta: ljs_audio_text_train_filelist_1000.txt
     validation_meta: ljs_audio_text_val_filelist.txt
     test_meta: ljs_audio_text_test_filelist.txt
@@ -111,7 +110,6 @@ datasets:
   LJSpeechMiniRaw:
     ds_type: "audio"
     dir: "~/Dropbox/Datasets/LJSpeechSmall"
-#    dir: "~/Dropbox/Datasets/LJSpeechSmall"
     format: raw
     training_meta: ljs_audio_text_train_filelist.txt
     validation_meta: ljs_audio_text_val_filelist.txt
@@ -138,7 +136,6 @@ settings:
     epochs_test: 2
     epochs_save: 2
     tensorboard_update: 10
-  # baseline
   # baseline
   baseline:
     epochs: 500
@@ -178,8 +175,8 @@ settings:
         pin_memory: True
         shuffle: False
   small:
-    epochs: 500
-    batch_size: 32
+    epochs: 510
+    batch_size: 64
     grad_clipping: True
     grad_max_norm : 1.0
     tensorboard_update: 100       # update rate for tensorboard
@@ -192,8 +189,8 @@ settings:
     # use epoch or iteration counter, in large batch size we might want to see progress.
     predict_per_iteration: False
     # when to save
-    epochs_save: 2
-    save_per_iteration: False
+    epochs_save: 1
+    save_per_iteration: True
     seed: 1234
     fp16: False                      # fp16 run
     distributed: False               # what distributed backend uses.
