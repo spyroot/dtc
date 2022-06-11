@@ -35,6 +35,7 @@ class TensorboardTrainerLogger(SummaryWriter):
         self.update_rate = trainer_spec.tensorboard_update_rate()
         self.spectrogram_spec = trainer_spec.get_model_spec().get_spectrogram()
         self.is_reverse_decoder = self.spectrogram_spec.is_reverse_decoder()
+        self.run_name = {model_name}/{batch_size}/{precision}
 
     def log_training(self, criterions: dict, step=None, lr=None, hparams=None, metrics=None, extra_data=None) -> None:
         """
@@ -57,7 +58,7 @@ class TensorboardTrainerLogger(SummaryWriter):
         self.add_scalar("learning.rate", lr, global_step=step)
 
         if hparams is not None and metrics is not None:
-            self.add_hparams(hparams, metrics)
+            self.add_hparams(hparams, metrics, run_name=self.run_name)
 
         if extra_data is not None:
             for k in extra_data:
