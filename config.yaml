@@ -175,7 +175,7 @@ settings:
         pin_memory: True
         shuffle: False
   small:
-    epochs: 1000
+    epochs: 2000
     batch_size: 64
     grad_clipping: True
     grad_max_norm : 1.0

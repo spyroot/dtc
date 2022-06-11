@@ -1447,7 +1447,6 @@ class Trainer(AbstractTrainer, ABC):
         self.tqdm_iter.set_description(f"Training in progress, {self.state.device}")
 
         current_epoch, current_step = self.current_running_state()
-        print(f"Loaded step epoch {current_epoch} step {current_step}")
         loader_data_size = len(self._train_loader)
         self.metric.update_bach_estimated(loader_data_size)
         self._callbacks.on_loader_begin()
