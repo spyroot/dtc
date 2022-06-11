@@ -39,11 +39,13 @@ datasets:
     file_type: "torch"
     dataset_files:
       - "LJSpeech_train_num_sam_12500_filter_80_3.pt"
-      - "LJSpeech_validate_num_sam_100_filter_80_3.pt"
       - "LJSpeech_test_num_sam_500_filter_80_3.pt"
+      - "LJSpeech_validate_num_sam_100_filter_80_3.pt"
     training_meta: LJSpeech_train_num_sam_12500_filter_80_3.pt
-    validation_meta: LJSpeech_validate_num_sam_100_filter_80_3.pt
-    test_meta: LJSpeech_test_num_sam_500_filter_80_3.pt
+    validation_meta: LJSpeech_test_num_sam_500_filter_80_3.pt
+    test_meta: LJSpeech_validate_num_sam_100_filter_80_3.pt
+#    validation_meta: LJSpeech_validate_num_sam_100_filter_80_3.pt
+#    test_meta: LJSpeech_test_num_sam_500_filter_80_3.pt
     checksums:
       - "7bc0f1bac289cfd1ba8ea1c390bddf8f"
       - "5d3b94b131c08afcca993dfbec54c63a"
