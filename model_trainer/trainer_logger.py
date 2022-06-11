@@ -36,7 +36,7 @@ class TensorboardTrainerLogger(SummaryWriter):
         self.spectrogram_spec = trainer_spec.get_model_spec().get_spectrogram()
         self.is_reverse_decoder = self.spectrogram_spec.is_reverse_decoder()
 
-    def log_training(self, criterions: dict, step, lr, hparams=None, metrics=None, extra_data=None) -> None:
+    def log_training(self, criterions: dict, step=None, lr=None, hparams=None, metrics=None, extra_data=None) -> None:
         """
         Log trainer result to tensorboard.
         :param metrics: metric all term attach to hparams.

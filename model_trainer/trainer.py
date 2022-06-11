@@ -1187,7 +1187,7 @@ class Trainer(AbstractTrainer, ABC):
                 "loss/validation": aggregated_loss_term['loss'],
                 "validation/validation_mel_loss": aggregated_loss_term['mel_loss'],
                 "validation/validation_gate_loss": aggregated_loss_term['gate_loss'],
-            }, model, y, y_pred, step=self.state.step)
+            }, model, y, y_pred, step=current_step)
 
         return aggregated_loss_term
 
@@ -1464,8 +1464,8 @@ class Trainer(AbstractTrainer, ABC):
                         "loss/gate_loss": gate_loss,
                         "loss/stft_err": stft_err,
                         "score/diag_score": diag_score,
-                    }, current_step,
-                            optimizer.param_groups[0]['lr'],
+                    }, step=current_step,
+                            lr=optimizer.param_groups[0]['lr'],
                             hparams=hparams, metrics=metrics)
 
             current_step += 1
