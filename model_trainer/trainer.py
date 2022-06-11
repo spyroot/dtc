@@ -1135,6 +1135,7 @@ class Trainer(AbstractTrainer, ABC):
         with torch.no_grad():
             current_batch_size = len(self._validation_loader)
             for batch_idx, batch in enumerate(self._validation_loader):
+                print(f"validation at epoch {step}")
                 x, y = take_batch(batch, self.state.device)
                 y_pred = model(x)
                 # our loss mel_loss + gate_loss
@@ -1152,7 +1153,6 @@ class Trainer(AbstractTrainer, ABC):
                             all_reduced_loss[loss_term_key] = loss_tensor.item()
 
                 self.metric.update(batch_idx, self.state.step, all_reduced_loss['loss'], validation=True)
-                print(all_reduced_loss['loss'])
                 if not self.state.is_hyper_tunner:
                     if self.state.rank == 0 and batch_idx % self.state.tbar_update_rate == 0:
                         tqdm_update_dict = {'step': current_step,
@@ -1436,7 +1436,7 @@ class Trainer(AbstractTrainer, ABC):
             if self.state.trainer_spec.predict_per_iteration():
                 if current_step != 0 and current_step % self.state.trainer_spec.predict() == 0:
                     self.state.step = current_step
-                    self.validate_epoch(model, model_name, layer_name)
+                    self.validate_epoch(model, model_name, layer_name, step=current_step)
 
             # save model checkpoint if needed
             # ray has issue with torch and tensorboard.
