@@ -221,7 +221,7 @@ class Trainer(AbstractTrainer, ABC):
             # depend on a strategy how we train models.
             # in sequential case, train model my_model
             # than sub-model of model my_model
-            self.q = deque()
+            self._trainer_queue = deque()
 
         # late we will move this to factory
         # type class that will do all creation.
@@ -428,18 +428,6 @@ class Trainer(AbstractTrainer, ABC):
         for m in _models:
             self._create_model_layers(active_model, m)
 
-    # def load_models(self, to_device=True, ignore_layers=None):
-    #     """
-    #     Load al models.
-    #     :return:
-    #     """
-    #     if self.state.rank > 0:
-    #         print(f"Skipping loading. node rank {self.rank}")
-    #
-    #     for model in self._models:
-    #         for layer in self._models[model]:
-    #             self.load(model_name=model, layer_name=layer, to_device=to_device, ignore_layers=ignore_layers)
-
     def load_model_layer(self,
                          layer_name: str,
                          file_path: str):
@@ -451,23 +439,22 @@ class Trainer(AbstractTrainer, ABC):
         :return:
         """
         if self.state.rank > 0:
-            print(f"Skipping loading. node rank {self.state.rank}")
+            print(f"Skipping loading. node rank {self.state.rank}.")
 
         if layer_name is None or len(layer_name) == 0:
-            raise TrainerError("Empty layer name.")
+            raise TrainerError("Empty layer name argument.")
 
         if file_path is None or len(file_path) == 0:
-            raise TrainerError("Empty file_path.")
-
-        for layer in self._models.items():
-            print("Load ## layer", layer)
+            raise TrainerError("Empty file_path argument.")
 
         for model in self._models:
             for layer in self._models[model]:
                 if layer_name == layer:
                     self._load_model(model_name=model,
-                                     layer_name=layer, file_path=file_path,
-                                     to_device=True, ignore_layers=None)
+                                     layer_name=layer,
+                                     file_path=file_path,
+                                     to_device=True,
+                                     ignore_layers=None)
 
     def load(self) -> None:
         """
@@ -478,15 +465,15 @@ class Trainer(AbstractTrainer, ABC):
         :return: None
         """
         if self.state.rank > 0:
-            print(f"Skipping loading. node rank {self.state.rank}")
+            print(f"Skipping loading. node rank {self.state.rank}.")
 
-        for layer in self._models.keys():
-            print("Load2  ## layer", layer)
-
+        spec = self.state.trainer_spec
         for m in self._models:
             for layer in self._models[m]:
-                model_file = self.state.trainer_spec.model_files.get_model_file_path(layer)
-                self._load_model(model_name=m, layer_name=layer, file_path=model_file)
+                model_file = spec.model_files.get_model_file_path(layer)
+                self._load_model(model_name=m,
+                                 layer_name=layer,
+                                 file_path=model_file)
 
     def _load_model(self, model_name: str,
                     layer_name: str,
@@ -559,8 +546,10 @@ class Trainer(AbstractTrainer, ABC):
                     self._models[model_name][layer_name].to(self.state.device)
 
             if to_device:
-                print(f"Loading checkpoint to device and map location {self.state.device}")
-                checkpoint = torch.load(resolved_path, map_location=self.state.device)
+                print(f"Loading checkpoint to device "
+                      f"and map location {self.state.device}")
+                checkpoint = torch.load(resolved_path,
+                                        map_location=self.state.device)
             else:
                 print(f"Loading checkpoint from {resolved_path}.")
                 checkpoint = torch.load(resolved_path)
@@ -804,7 +793,10 @@ class Trainer(AbstractTrainer, ABC):
 
         return reduced_loss
 
-    def _create_optimizer(self, model_name: str, layer_name: str, alias_name: str):
+    def _create_optimizer(self,
+                          model_name: str,
+                          layer_name: str,
+                          alias_name: str):
         """
         Creates an optimizer based on model specification.
         Each layer in model might have different optimizers.
@@ -815,15 +807,18 @@ class Trainer(AbstractTrainer, ABC):
 
         For example, we want train model X n epochs and then move to our main model.
 
-        We want to define different scenarios and observers as a result. Hence, we can define a spec for optimizer
+        We want to define different scenarios and observers as a result.
+        Hence, we can define a spec for optimizer
         a, b, and c and bind them to the same model and observer result.
 
         Internally we store dict that store model -> layer -> optimizer
 
         :param model_name: main model name
-        :param layer_name: layer name in that model. For example in case GAN you have two sub-model ie layers
+        :param layer_name: layer name in that model. For example
+                           in case GAN you have two sub-model ie layers
         :param alias_name: alias name, bind specific configuration.
-        :return:
+                           it must be defined in config spec.
+        :return: torch.Optimizer
         """
         if model_name is None or len(model_name) == 0:
             raise TrainerError("Can't create optimizer, empty model name.")
@@ -900,33 +895,36 @@ class Trainer(AbstractTrainer, ABC):
         self._optimizers[model_name][layer_name] = opt
         return opt
 
-    # @logger.catch()
     def create_optimizers(self) -> None:
         """
-          Creates all required optimizers based on model specification.
-          Read comment for create_optimizer
-
-        :return:
+        Creates all required optimizers based on model specification.
+        Read comment for create_optimizer.
+        :return: None
         """
-        model_name = self.state.trainer_spec.get_active_model()
-        model_layers = self.state.trainer_spec.get_active_sub_models()
+        spec = self.state.trainer_spec
+
+        model_name = spec.get_active_model()
+        model_layers = spec.get_active_sub_models()
         if len(model_layers) == 0:
             logger.warning("Trainer spec has no model layer defined..")
 
         for model_layer_name in model_layers:
             logger.debug(f"Loading {model_layer_name} optimizer settings.")
-            opt_spec_alias = self.state.trainer_spec.get_sub_model_optimizer(model_layer_name)
+            opt_spec_alias = spec.get_sub_model_optimizer(model_layer_name)
             self._create_optimizer(model_name, model_layer_name, opt_spec_alias)
 
-    def create_lr_scheduler(self, model_name: str, model_layer: str, optimizer: torch.optim.Optimizer) -> None:
+    def create_lr_scheduler(self,
+                            model_name: str,
+                            model_layer: str,
+                            optimizer: torch.optim.Optimizer) -> None:
         """
         Creates lr scheduler based on specs and attach to target optimizer.
         Note we can attach many scheduler.
 
-        :param model_name:
-        :param model_layer:
-        :param optimizer:
-        :return:
+        :param model_name: str, a model name.
+        :param model_layer: str, model sub layer name
+        :param optimizer: optimizer that already attached to a model.
+        :return: None
         """
         # scheduler is optional
         alias_name = self.state.trainer_spec.get_sub_model_lr_scheduler(model_layer)
@@ -940,11 +938,17 @@ class Trainer(AbstractTrainer, ABC):
 
         lr_scheduler_type = self.state.trainer_spec.lr_scheduler_type(alias_name)
         if lr_scheduler_type == 'CosineAnnealingLR':
-            logger.info(f"Creating cos lr scheduler. model: {model_name} layer: {model_layer} spec: {alias_name}")
+            logger.info(f"Creating cos lr scheduler. model: "
+                        f"{model_name} layer: {model_layer} "
+                        f"spec: {alias_name}")
             t_max = self.state.trainer_spec.t_max(alias_name)
             eta = self.state.trainer_spec.eta_min(alias_name)
             scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=t_max, eta_min=eta)
         elif lr_scheduler_type == "CosineAnnealingWarmRestarts":
+            logger.info(f"Creating CosineAnnealingWarmRestarts "
+                        f"lr scheduler. model: "
+                        f"{model_name} layer: {model_layer} "
+                        f"spec: {alias_name}")
             T_0 = self.state.trainer_spec.t_0(alias_name)
             if T_0 == 0.0:
                 T_0 = len(self._train_loader)
@@ -985,25 +989,27 @@ class Trainer(AbstractTrainer, ABC):
         Note each model's sublayer bounded to single optimizer.
         :return: None
         """
-        model_name = self.state.trainer_spec.get_active_model_name()
+        spec = self.state.trainer_spec
+        model_name = spec.get_active_model_name()
         if model_name not in self._optimizers:
             raise TrainerError(f"Model {model_name} must be created first.")
 
-        model_name = self.state.trainer_spec.get_active_model()
-        model_layers = self.state.trainer_spec.get_active_sub_models()
+        model_name = spec.get_active_model()
+        model_layers = spec.get_active_sub_models()
         if len(model_layers) == 0:
             logger.warning("Trainer spec has no model layer defined..")
 
         for layer_name in model_layers:
             if layer_name not in self._optimizers[model_name]:
                 raise TrainerError("Can't bind a scheduler, optimizer undefined.")
-            self.create_lr_scheduler(model_name, layer_name, self._optimizers[model_name][layer_name])
+            self.create_lr_scheduler(model_name,
+                                     layer_name,
+                                     self._optimizers[model_name][layer_name])
 
     def save(self) -> None:
         """
         Save all model and model layers.
-
-        :return:
+        :return: None
         """
         if self.state.rank > 0:
             logger.info(f"Skipping saving, node rank {self.state.rank}")
@@ -1013,12 +1019,15 @@ class Trainer(AbstractTrainer, ABC):
             logger.info("Skipping saving, hyperparameter tunner.")
             return
 
+        spec = self.state.trainer_spec
         for m in self._models:
             for layer in self._models[m]:
-                model_file = self.state.trainer_spec.model_files.get_model_file_path(layer)
+                model_file = spec.model_files.get_model_file_path(layer)
                 if not self.state.disable_pbar:
                     self.tqdm_iter.set_description(f"Saving in progress, {self.state.device}")
-                self._save_model(model_name=m, layer_name=layer, file_path=model_file)
+                self._save_model(model_name=m,
+                                 layer_name=layer,
+                                 file_path=model_file)
 
     def save_models(self, model_files: list[str]) -> None:
         """
@@ -1780,7 +1789,10 @@ class Trainer(AbstractTrainer, ABC):
 
         return
 
-    def train(self, model_name=None, config=None, checkpoint_dir=None):
+    def train(self,
+              model_name=None,
+              config=None,
+              checkpoint_dir=None):
         """
         Main routine for model training.
 
@@ -1795,35 +1807,37 @@ class Trainer(AbstractTrainer, ABC):
         # torch.cuda.set_device(self.state.device)
 
         torch.cuda.empty_cache()
-        model_name = self.state.trainer_spec.get_active_model()
-        model_layers = self.state.trainer_spec.get_active_sub_models()
+        spec = self.state.trainer_spec
+        model_name = spec.get_active_model()
+        model_layers = spec.get_active_sub_models()
 
         self.load()
         if self.is_trained(model_name):
             print(f"It looks like model {model_name} already trained.")
             for layer in model_layers:
-                print(f"Last saved file {self.state.trainer_spec.model_files.get_model_file_path(layer)}")
+                print(f"Last saved file {spec.model_files.get_model_file_path(layer)}")
             return
 
         # last_step = 0
         strategy = self.state.trainer_spec.get_training_strategy(model_name)
         if strategy == 'sequential':
             for layer in model_layers:
-                self.q.append(layer)
-            while len(self.q) > 0:
-                layer_name = self.q.pop()
+                self._trainer_queue.append(layer)
+            while len(self._trainer_queue) > 0:
+                layer_name = self._trainer_queue.pop()
                 self.state.current_model_name = model_name
                 self.state.current_layer_name = layer_name
                 # run model
-                self.trainer_sequential(model_name=model_name, layer_name=layer_name)
+                self.trainer_sequential(model_name=model_name,
+                                        layer_name=layer_name)
                 self.save()
-                logger.info(f"Saved last epoch {self.state.trainer_spec.epochs()}")
+                logger.info(f"Saved last epoch {spec.epochs()}")
 
         self.cleanup()
 
     def train_optimizer(self, config):
         """
-
+        Main method called by Ray.
         :return:
         """
         logger.info("Hyper parameters tunner invoked.")
@@ -1835,9 +1849,9 @@ class Trainer(AbstractTrainer, ABC):
         strategy = self.state.trainer_spec.get_training_strategy(model_name)
         if strategy == 'sequential':
             for layer in model_layers:
-                self.q.append(layer)
-            while len(self.q) > 0:
-                layer_name = self.q.pop()
+                self._trainer_queue.append(layer)
+            while len(self._trainer_queue) > 0:
+                layer_name = self._trainer_queue.pop()
                 self.state.current_model = model_name
                 self.state.current_layer = layer_name
                 # update whatever we need
@@ -1874,8 +1888,8 @@ class Trainer(AbstractTrainer, ABC):
     def get_model(self, name: str):
         """
         Return a model from internal dict.
-        :param name:
-        :return:
+        :param name: model name
+        :return: return model,  each entry key is sub-layer and value a nn.Module
         """
         if name in self._models:
             return self._models[name]
@@ -1885,8 +1899,8 @@ class Trainer(AbstractTrainer, ABC):
     def set_logger(is_enable: bool) -> None:
         """
         Sets logging level.
-        :param is_enable:
-        :return:
+        :param is_enable: if true , will enable trainer logging.
+        :return: None
         """
         if is_enable:
             logger.enable(__name__)
