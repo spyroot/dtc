@@ -321,8 +321,8 @@ class Trainer(AbstractTrainer, ABC):
                         "{} torch device {} device received {}".format(self.cuda_device_id, device, self.state.device))
             model = Tacotron25(self.state.trainer_spec, device).cuda()
             model = DistributedDataWrapper(model,
-                                           device_ids=[self.cuda_device_id],
-                                           output_device=self.cuda_device_id).cuda()
+                                           device_ids=[self.state.cuda_device_id],
+                                           output_device=self.state.cuda_device_id).cuda()
 
         else:
             model = Tacotron25(self.state.trainer_spec, self.state.device).to(self.state.device)
