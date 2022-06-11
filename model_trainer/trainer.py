@@ -1041,7 +1041,6 @@ class Trainer(AbstractTrainer, ABC):
                         f"last epoch {last_epoch}, last step {last_step}, model file {resolved_path}.")
             state_dict['scaler'] = self.scaler.state_dict()
 
-        print(f"Saving {resolved_path}")
         logger.info('Saving node model {}'.format(resolved_path))
         torch.save(state_dict, resolved_path)
 
