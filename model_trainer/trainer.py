@@ -176,7 +176,7 @@ class Trainer(AbstractTrainer, ABC):
         self.scaler = None
 
         # tqdm_iter, if we need fix post or pre or update state.
-        # only rank 0 upate that.
+        # only rank 0 update that.
         self.tqdm_iter = None
 
         self.clip_grad = False
@@ -898,8 +898,6 @@ class Trainer(AbstractTrainer, ABC):
             lr_lambdas = self.state.trainer_spec.lr_lambdas(alias_name)
             scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambdas)
         elif lr_scheduler_type == 'none' or lr_scheduler is None:
-            if self.state.verbose:
-                fmtl_print("Creating {} optimizer.".format(alias_name), "none")
             scheduler = None
         else:
             raise ValueError("unknown scheduler: {}".format(lr_scheduler_type))
