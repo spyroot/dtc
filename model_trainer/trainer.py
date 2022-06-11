@@ -1452,8 +1452,8 @@ class Trainer(AbstractTrainer, ABC):
                     'batch_size': self.state.batch_size,
                 }
                 metrics = {
-                    'hp_loss/normal_loss': normal_loss,
-                    'hp_loss/grad_loss': grad_norm,
+                    'loss/normal_loss': normal_loss,
+                    'loss/grad_loss': grad_norm,
                 }
 
                 if not self.state.is_hyper_tunner:

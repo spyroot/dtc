@@ -1,3 +1,4 @@
+import os
 import random
 from typing import Optional
 import torch
@@ -8,6 +9,7 @@ from model_trainer.plotting_utils import plot_alignment_to_numpy
 from model_trainer.plotting_utils import plot_spectrogram_to_numpy
 from model_trainer.plotting_utils import plot_gate_outputs_to_numpy
 from model_trainer.trainer_specs import ExperimentSpecs
+import time
 
 
 class TensorboardTrainerLogger(SummaryWriter):
@@ -37,6 +39,67 @@ class TensorboardTrainerLogger(SummaryWriter):
         self.is_reverse_decoder = self.spectrogram_spec.is_reverse_decoder()
         self.run_name = f"results/tensorboard/{model_name}/{batch_size}/{precision}"
 
+    def add_hparams_and_step(self, hparam_dict, metric_dict, hparam_domain_discrete=None,
+                             run_name=None, global_step=None, epoch=None):
+
+        """Add a set of hyperparameters to be compared in TensorBoard.
+
+        Args:
+            hparam_dict (dict): Each key-value pair in the dictionary is the
+              name of the hyper parameter and it's corresponding value.
+              The type of the value can be one of `bool`, `string`, `float`,
+              `int`, or `None`.
+            metric_dict (dict): Each key-value pair in the dictionary is the
+              name of the metric and it's corresponding value. Note that the key used
+              here should be unique in the tensorboard record. Otherwise the value
+              you added by ``add_scalar`` will be displayed in hparam plugin. In most
+              cases, this is unwanted.
+            hparam_domain_discrete: (Optional[Dict[str, List[Any]]]) A dictionary that
+              contains names of the hyperparameters and all discrete values they can hold
+            run_name (str): Name of the run, to be included as part of the logdir.
+              If unspecified, will use current timestamp.
+
+        Examples::
+
+            from torch.utils.tensorboard import SummaryWriter
+            with SummaryWriter() as w:
+                for i in range(5):
+                    w.add_hparams({'lr': 0.1*i, 'bsize': i},
+                                  {'hparam/accuracy': 10*i, 'hparam/loss': 10*i})
+
+        Expected result:
+
+        .. image:: _static/img/tensorboard/add_hparam.png
+           :param epoch:
+           :param hparam_dict:
+           :param metric_dict:
+           :param hparam_domain_discrete:
+           :param run_name:
+           :param global_step:
+           :scale: 50 %
+
+        """
+        torch._C._log_api_usage_once("tensorboard.logging.add_hparams")
+        if type(hparam_dict) is not dict or type(metric_dict) is not dict:
+            raise TypeError('hparam_dict and metric_dict should be dictionary.')
+        exp, ssi, sei = self.hparams(hparam_dict, metric_dict, hparam_domain_discrete)
+
+        if not run_name:
+            if epoch is not None:
+                run_name = epoch
+            else:
+                run_name = str(time.time())
+        logdir = os.path.join(self._get_file_writer().get_logdir(), run_name)
+        with SummaryWriter(log_dir=logdir) as w_hp:
+            w_hp.file_writer.add_summary(exp)
+            w_hp.file_writer.add_summary(ssi)
+            w_hp.file_writer.add_summary(sei)
+            for k, v in metric_dict.items():
+                if global_step is not None:
+                    w_hp.add_scalar(k, v, global_step=global_step)
+                else:
+                    w_hp.add_scalar(k, v)
+
     def log_training(self, criterions: dict, step=None, lr=None, hparams=None, metrics=None, extra_data=None) -> None:
         """
         Log trainer result to tensorboard.
@@ -58,7 +121,7 @@ class TensorboardTrainerLogger(SummaryWriter):
         self.add_scalar("learning.rate", lr, global_step=step)
 
         if hparams is not None and metrics is not None:
-            self.add_hparams(hparams, metrics, run_name=self.run_name)
+            self.add_hparams_and_step(hparams, metrics, run_name=self.run_name, global_step=step)
 
         if extra_data is not None:
             for k in extra_data:
