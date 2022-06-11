@@ -442,13 +442,13 @@ class Trainer(AbstractTrainer, ABC):
                     self._load_model(model_name=model, layer_name=layer,
                                      file_path=file_path, to_device=True, ignore_layers=None)
 
-    def load(self):
+    def load(self) -> None:
         """
-        Load all model and model layer to internal state.
+        Load all model and model's layer to internal state.
         This method external hence caller can load and save
         a state of trainer.
 
-        :return:
+        :return: None
         """
         if self.state.rank > 0:
             print(f"Skipping loading. node rank {self.rank}")
@@ -547,6 +547,7 @@ class Trainer(AbstractTrainer, ABC):
             if not skip_opt_state:
                 logger.debug(f"Loading optimizer state for model {model_name} layer {layer_name}.")
                 if 'optimizer_state_dict' in checkpoint:
+                    print("Loading optimizer from checkpoint.")
                     opt_state = checkpoint['optimizer_state_dict']
                     if 'state' not in opt_state:
                         print("Optimizer doesn't contain a state")
@@ -1017,9 +1018,7 @@ class Trainer(AbstractTrainer, ABC):
 
         if save_opt:
             opt_state = self._optimizers[model_name][layer_name].state_dict()
-            print("Saving optimizer")
             state_dict['optimizer_state_dict'] = opt_state
-            print(state_dict['optimizer_state_dict'].keys())
 
         if model_name in self._schedulers and layer_name in self._schedulers[model_name]:
             logger.info("Model saving with optimizer and scheduler state.")
@@ -1036,9 +1035,7 @@ class Trainer(AbstractTrainer, ABC):
 
         if self.state.trainer_spec.is_save_iteration():
             self.state.saved_run = last_step
-            print(f"last saved epoch {last_step}")
         else:
-            print(f"last saved epoch {last_epoch}")
             self.state.saved_run = last_epoch
 
         self._last_ckt_epochs[model_name][layer_name] = last_epoch
