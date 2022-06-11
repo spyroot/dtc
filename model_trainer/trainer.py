@@ -34,7 +34,7 @@ from torch.nn.utils import clip_grad_norm_
 from tqdm import tqdm, tnrange
 
 from model_loader.stft_dataloader import SFTFDataloader
-from model_trainer.distributed_wrapper import DistributedDataWrapper
+from model_trainer.distributed_wrapper import DistributedDataWrapper as DDPWrapper
 from model_trainer.internal.abstract_trainer import TrainerError, AbstractTrainer
 from model_trainer.internal.call_interface import BaseCallbacks
 from model_trainer.internal.const import ReduceMode, MetricType
@@ -189,23 +189,24 @@ class Trainer(AbstractTrainer, ABC):
             # clip or not grad
             self.clip_grad = trainer_spec.is_grad_clipped()
 
+            spec = trainer_spec
             if self.state.is_hyper_tunner is False:
                 # by default, we log model name currently trainer and batch size.
                 precision = "fp32" if not self.state.is_amp else "fp16"
                 self.tf_logger = \
                     TensorboardTrainerLogger(trainer_spec=trainer_spec,
-                                             model_name=trainer_spec.get_active_model(),
-                                             batch_size=trainer_spec.batch_size(),
+                                             model_name=spec.get_active_model(),
+                                             batch_size=spec.batch_size(),
                                              precision=precision,
-                                             comments=f"{trainer_spec.get_active_model()}_"
-                                                      f"{trainer_spec.batch_size()}")
-
-            self.metric = Metrics(metric_step_file_path=trainer_spec.model_files.get_metric_file_path(),
-                                  metric_batch_file_path=trainer_spec.model_files.get_metric_batch_file_path(),
-                                  metric_perf_trace_path=trainer_spec.model_files.get_time_file_path(),
-                                  num_epochs=self.state.trainer_spec.epochs(),
+                                             comments=f"{spec.get_active_model()}_"
+                                                      f"{spec.batch_size()}")
+            model_files = spec.model_files
+            self.metric = Metrics(metric_step_file_path=model_files.get_metric_file_path(),
+                                  metric_batch_file_path=model_files.get_metric_batch_file_path(),
+                                  metric_perf_trace_path=model_files.get_time_file_path(),
+                                  num_epochs=spec.epochs(),
                                   num_batches=self.total_batches,
-                                  batch_size=self.state.trainer_spec.batch_size(),
+                                  batch_size=spec.batch_size(),
                                   metric_type=MetricType.MEAN,
                                   mode=ReduceMode.MIN,
                                   verbose=False)
@@ -331,10 +332,8 @@ class Trainer(AbstractTrainer, ABC):
                         f"torch device {device} device "
                         f"received {self.state.device}")
             model = Tacotron25(self.state.trainer_spec, device).cuda()
-            model = \
-                DistributedDataWrapper(model,
-                                       device_ids=[self.state.cuda_device_id],
-                                       output_device=self.state.cuda_device_id).cuda()
+            model = DDPWrapper(model, device_ids=[self.state.cuda_device_id],
+                               output_device=self.state.cuda_device_id).cuda()
 
         else:
             model = Tacotron25(self.state.trainer_spec,
@@ -361,10 +360,8 @@ class Trainer(AbstractTrainer, ABC):
                         f"torch device {device} "
                         f"device received {self.state.device}.")
             model = Tacotron3(self.state.trainer_spec, device).cuda()
-            model = \
-                DistributedDataWrapper(model,
-                                       device_ids=[self.state.cuda_device_id],
-                                       output_device=self.state.cuda_device_id).cuda()
+            model = DDPWrapper(model, device_ids=[self.state.cuda_device_id],
+                               output_device=self.state.cuda_device_id).cuda()
         else:
             model = Tacotron3(self.state.trainer_spec,
                               self.state.device).to(self.state.device)
@@ -399,12 +396,12 @@ class Trainer(AbstractTrainer, ABC):
         if model_name not in self._models:
             self._models[model_name] = {}
 
-        m = creator(is_set_cuda)
-        if m is None:
+        _model = creator(is_set_cuda)
+        if _model is None:
             raise TrainerError("Failed create a model. "
                                "{}.".format(creator.__name__))
 
-        self._models[model_name][layer_name] = m
+        self._models[model_name][layer_name] = _model
         logger.debug(f"Added model layer {layer_name} "
                      f"to a model {model_name}")
         if model_name not in self._last_ckt_epochs:
@@ -416,17 +413,18 @@ class Trainer(AbstractTrainer, ABC):
         self._last_step[layer_name] = 0
         self.criterion = self.model_creator[model_name]['loss']
 
-    def create_models(self):
+    def create_models(self) -> None:
         """
         For each active model, which might consist two or more models.
         Each model store in internal dict.
 
-        :return: nothing, create_model will add each model to a dict[model_name] = model
+        :return: None, create_model will add each model
+                       to a dict[model_name] = model
         """
         active_model = self.state.trainer_spec.get_active_model()
         _models = self.state.trainer_spec.get_active_sub_models()
-        for m in _models:
-            self._create_model_layers(active_model, m)
+        for _model in _models:
+            self._create_model_layers(active_model, _model)
 
     def load_model_layer(self,
                          layer_name: str,
@@ -468,6 +466,7 @@ class Trainer(AbstractTrainer, ABC):
             print(f"Skipping loading. node rank {self.state.rank}.")
 
         spec = self.state.trainer_spec
+
         for m in self._models:
             for layer in self._models[m]:
                 model_file = spec.model_files.get_model_file_path(layer)
@@ -514,10 +513,11 @@ class Trainer(AbstractTrainer, ABC):
             self._last_ckt_epochs[model_name][layer_name] = last_epoch
             self._last_step[layer_name] = last_step
             return False
+
         if not resolved_path.is_file():
             raise TrainerError(f"Provided path is not a file {file_path}.")
-        resolved_path = str(resolved_path)
 
+        resolved_path = str(resolved_path)
         print(f"Loading model node rank {self.state.rank} '{model_name}' "
               f"model {layer_name} fro file {resolved_path}.")
 
@@ -546,8 +546,6 @@ class Trainer(AbstractTrainer, ABC):
                     self._models[model_name][layer_name].to(self.state.device)
 
             if to_device:
-                print(f"Loading checkpoint to device "
-                      f"and map location {self.state.device}")
                 checkpoint = torch.load(resolved_path,
                                         map_location=self.state.device)
             else:
@@ -634,8 +632,10 @@ class Trainer(AbstractTrainer, ABC):
             logger.info(f"Last checkpoint: {last_epoch}, step last step {last_step}.")
 
             if last_epoch > 0 or last_step > 0:
-                print(f"Resuming training from from epoch {last_epoch}, step {last_step}.")
-                logger.info(f"Resuming training from epoch {last_epoch}, step {last_step}.")
+                print(f"Resuming training from "
+                      f"from epoch {last_epoch}, step {last_step}.")
+                logger.info(f"Resuming training "
+                            f"from epoch {last_epoch}, step {last_step}.")
 
             # load metric
             self.metric.load()
@@ -1498,7 +1498,7 @@ class Trainer(AbstractTrainer, ABC):
             else:
                 current_total_loss += normal_loss
                 self.metric.update(batch_idx, current_epoch,
-                                   normal_loss, grad_norm=None, validation=False)
+                                   loss=normal_loss, grad_norm=None, validation=False)
 
             self.scaler.step(optimizer)
             self.scaler.update()
@@ -1534,13 +1534,15 @@ class Trainer(AbstractTrainer, ABC):
                              })
             # run prediction only if we need to.
             if self.state.trainer_spec.predict_per_iteration():
-                if current_step != 0 and current_step % self.state.trainer_spec.predict() == 0:
+                if current_step != 0 and \
+                        current_step % self.state.trainer_spec.predict() == 0:
                     self.state.step = current_step
                     self.validate_epoch(model, model_name, layer_name, step=current_step)
 
             # save model checkpoint if needed
             # ray has issue with torch and tensorboard.
-            if self.state.rank == 0 and self.state.is_hyper_tunner is False:
+            if self.state.rank == 0 and \
+                    self.state.is_hyper_tunner is False:
                 self.save_if_need(step=current_step)
                 self.tqdm_iter.set_description(f"Training in progress, {self.state.device}")
 
