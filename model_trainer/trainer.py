@@ -116,7 +116,7 @@ class Trainer(AbstractTrainer, ABC):
 
         # this will be to model specific trainer.
         self.model_spec = trainer_spec.get_model_spec()
-        self.spectogram_spec = self.model_spec.get_spectrogram()
+        self.spectrogram_spec = self.model_spec.get_spectrogram()
 
         # end unit test.
         if config is not None:
@@ -129,10 +129,11 @@ class Trainer(AbstractTrainer, ABC):
 
         self.set_logger(verbose)
 
-        # dict that hold all schedulers that trainer need to use. TODO This will be moved.
+        # dict that hold all schedulers that trainer need to use.
         self._schedulers = {}
 
-        # dict hold all optimizers. ( note trainer can train 2 model like in gan settings)
+        # dict hold all optimizers.
+        # (Note trainer can train 2 model like in gan settings)
         self._optimizers = {}
 
         if not is_inference:
@@ -224,12 +225,16 @@ class Trainer(AbstractTrainer, ABC):
 
         # late we will move this to factory
         # type class that will do all creation.
-        self.model_creator, self.trainer_dispatcher, self._batch_loader = self.create_model_dispatch()
+        self.model_creator, self.trainer_dispatcher, self._batch_loader \
+            = self.create_model_dispatch()
 
         # init trainer
         self.init_trainer()
 
-    def get_models(self):
+    def get_models(self) -> dict:
+        """
+        :return:
+        """
         return self._models
 
     def create_model_dispatch(self) -> tuple[dict[str, dict[str: Callable]],
@@ -404,10 +409,10 @@ class Trainer(AbstractTrainer, ABC):
         if model_name not in self._last_ckt_epochs:
             self._last_ckt_epochs[model_name] = {}
 
-        # update last epoch and step, initially it 0, during load this state update.
+        # updates last epoch and step, initially it 0,
+        # during load this state update.
         self._last_ckt_epochs[model_name][layer_name] = 0
         self._last_step[layer_name] = 0
-
         self.criterion = self.model_creator[model_name]['loss']
 
     def create_models(self):
@@ -551,10 +556,12 @@ class Trainer(AbstractTrainer, ABC):
                 checkpoint = torch.load(resolved_path)
 
             if 'model_state_dict' not in checkpoint:
-                raise TrainerError(f"{model_name} layer {layer_name} has no state dict.")
+                raise TrainerError(f"{model_name}, "
+                                   f"layer {layer_name} has no state dict.")
 
             if model_name not in self._models:
-                raise TrainerError(f"{model_name} not created. You need first create model.")
+                raise TrainerError(f"{model_name} not created. "
+                                   f"You need first create model.")
 
             if layer_name not in self._models[model_name]:
                 raise TrainerError(f"{layer_name} not in model create.")
@@ -1591,7 +1598,7 @@ class Trainer(AbstractTrainer, ABC):
         output_lengths = to_gpu(output_lengths, device).long()
 
         # this only make sense with cuda otherwise.
-        if self.spectogram_spec.is_stft_loss_enabled():
+        if self.spectrogram_spec.is_stft_loss_enabled():
             mel_padded = mel_padded.contiguous().cuda(non_blocking=True)
             stft_padded = stft.contiguous().cuda(non_blocking=True)
             return (text_padded, input_lengths, mel_padded, max_len, output_lengths), \
@@ -1658,7 +1665,7 @@ class Trainer(AbstractTrainer, ABC):
             device = self.state.device
 
         assert self.criterion is not None
-        self.criterion = self.criterion(spec=self.spectogram_spec, device=device)
+        self.criterion = self.criterion(spec=self.spectrogram_spec, device=device)
         self.criterion.to(device)
 
         self.tqdm_iter = self.trainer_iterator(model_name, layer_name)
