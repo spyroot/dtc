@@ -56,7 +56,7 @@ class TensorboardTrainerLogger(SummaryWriter):
 
         self.add_scalar("learning.rate", lr, global_step=step)
 
-        if hparams is not None:
+        if hparams is not None and metrics is not None:
             self.add_hparams(hparams, metrics)
 
         if extra_data is not None:
