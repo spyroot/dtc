@@ -52,16 +52,16 @@ class TensorboardTrainerLogger(SummaryWriter):
 
         # make sure key not overlap with validation.
         for k in criterions:
-            self.add_scalar(k, criterions[k], step)
+            self.add_scalar(k, criterions[k], global_step=step)
 
-        self.add_scalar("learning.rate", lr, step)
+        self.add_scalar("learning.rate", lr, global_step=step)
 
         if hparams is not None:
             self.add_hparams(hparams, metrics)
 
         if extra_data is not None:
             for k in extra_data:
-                self.add_scalar(k, extra_data[k])
+                self.add_scalar(k, extra_data[k], global_step=step)
 
     def log_hparams(self, step, hp_dict, metrics) -> None:
         """
