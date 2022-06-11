@@ -39,7 +39,6 @@ import torch.distributed as dist
 from loguru import logger
 import soundfile as sf
 
-
 try:
     import ray
     from ray import tune
@@ -1217,10 +1216,11 @@ if __name__ == '__main__':
         os.environ["CUDA_VISIBLE_DEVICES"] = str(args.device_id)
 
     logger.info("Training setting  "
-                "rank: {} local rank: {} world_size {} cuda device {}".format(os.environ["RANK"],
-                                                                              os.environ["LOCAL_RANK"],
-                                                                              os.environ["WORLD_SIZE"],
-                                                                              os.environ["CUDA_VISIBLE_DEVICES"]))
+                "rank: {} local rank: {} world_size "
+                "{} cuda device {}".format(os.environ["RANK"],
+                                           os.environ["LOCAL_RANK"],
+                                           os.environ["WORLD_SIZE"],
+                                           os.environ["CUDA_VISIBLE_DEVICES"]))
     if args.metric:
         args.train = False
 

@@ -400,18 +400,25 @@ ray:
     max: 1.0
 ```
 
+## Large scale training.
+
+If you have large GPU 48Gb you should be able to fit 128 batch size. My recommendation save per single epoch.
+In case you want save incrementally adjust save_per_iteration flag and set value 500. So every 500 steps trainer will 
+a model.
 
 ## Trainer logic
 All trainer logic is abstracted in the generic trainer.
-During the initial start, the trainer takes specs i.e., the yaml file invokes 
-the factory method.  That creates a model, a model-specific optimizer, and a scheduler.
-Note my assumption that the model can be stacked. Hence internally, it queues.
-So, for example, if you have two models and you train, you can define two sub-layers.
+During the initial start, the trainer takes specs, i.e., the yaml file invokes 
+the factory method. That creates a model, a model-specific optimizer, and a scheduler. 
+Note my assumption that the model can be stacked. Hence, internally, it queues. So, for example, if you have two models 
+and train both, you can define two sub-layers. A good example is if you want to train DTC with a different Vocoder or,  
+for instance, Tacotron 2 and WaveGlow. Note that trainers execute epochs in a sequence. Hence, queue is just FIFO.
 
-A good example is if you want to train DTC with a different Vocoder, or, 
-for instance, Tacotron 2 and WaveGlow
- 
-Note right trainer is logically executed in a sequence generally backward in torch 
-implementation and can not be executed in parallel anyway. Hence queue is just FIFO.
+### Tensorboard 
 
+All logs serialize in results/tensorboard
 
+```
+cd results
+tensorboard --logdir=tensorboard --bind_all 
+```

@@ -1106,7 +1106,7 @@ class ExperimentSpecs:
 
         return None
 
-    def get_sub_model_lr_scheduler(self, model_layer) -> str:
+    def get_sub_model_lr_scheduler(self, model_layer: str) -> str:
         """
         Method return scheduler for a given models sub layer.
 
@@ -1431,22 +1431,17 @@ class ExperimentSpecs:
 
         return False
 
-    def eta_min(self, alias_name: str):
+    def eta_min(self, alias_name: str) -> float:
         """
-        Minimum learning rate. Default: 0.
-
-        Args:
-            alias_name:
-
-        Returns:
-
+        CosineAnnealingLR Minimum learning rate. Default: 0
+        :param alias_name: a name alias defined in config.
+        :return: 0 or value indicate in spec.
         """
         scheduler_spec = self.lr_scheduler(alias_name)
         if scheduler_spec is not None:
             if 'eta_min' in scheduler_spec:
-                return scheduler_spec['eta_min']
-
-        return 0
+                return float(scheduler_spec['eta_min'])
+        return float(0)
 
     def gamma(self, alias_name: str) -> float:
         """

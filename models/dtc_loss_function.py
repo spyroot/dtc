@@ -1,15 +1,14 @@
 import logging
 
-import librosa
 import numpy as np
 import torch
 from torch import nn
 from torch.distributions.kl import kl_divergence
 from torch.distributions.normal import Normal
 from torch.nn import functional as F
+
 from model_trainer.specs.spectrogram_layer_spec import SpectrogramLayerSpec
 from models.lbfs_mel_Inverse import DTCInverseSTFS
-from loguru import logger
 
 
 def tiny(x):
@@ -125,8 +124,8 @@ class dtcLoss(nn.Module):
 
         self.sr = torch.tensor(self.sample_rate, device=device, requires_grad=False)
         self.n_fft = torch.tensor(self.filter_length, device=device, requires_grad=False)
-        self.fmin = torch.tensor(150.0, device=device, requires_grad=False)
-        self.fmax = torch.tensor(fmax, device=device, requires_grad=False)
+        self.f_min = torch.tensor(mel_fmin, device=device, requires_grad=False)
+        self.f_max = torch.tensor(fmax, device=device, requires_grad=False)
         self.threshold = torch.tensor(0.1, device=device, requires_grad=False)
         self.device = device
 
@@ -149,7 +148,7 @@ class dtcLoss(nn.Module):
         return kl_divergence(q_dist, Normal(torch.zeros_like(q_dist.mean),
                                             torch.ones_like(q_dist.stddev))).sum(-1)
 
-    def alignment_diagonal_score(self, alignments, binary=False):
+    def alignment_diagonal_error(self, alignments, binary=False):
         """
         Computes alignment prediction score. diagonal alignment
         of encoder.
@@ -183,7 +182,7 @@ class dtcLoss(nn.Module):
 
             mel_loss = nn.MSELoss()(mel_out, mel_target) + nn.MSELoss()(mel_out_post_net, mel_target)
             gate_loss = nn.BCEWithLogitsLoss()(gate_outs, gate_targets)
-            alignment_score = self.alignment_diagonal_score(alignment)
+            alignment_score = self.alignment_diagonal_error(alignment)
             total = mel_loss + gate_loss
 
             if self.is_stft_compute:
@@ -191,72 +190,68 @@ class dtcLoss(nn.Module):
                 stft.requires_grad = False
 
                 mel_padded = F.pad(mel_out, (1, 1), "constant", 0)
+                mel_out_post_net = F.pad(mel_out_post_net, (1, 1), "constant", 0)
+
                 with torch.no_grad():
-                    x = self.dts_inverse(mel_padded)
-                    abs_error = nn.L1Loss()(x, stft)
-                    # print("l1 abs error", abs_error)
+                    x1 = self.dts_inverse(mel_padded)
+                    x2 = self.dts_inverse(mel_out_post_net)
 
-                # S_inv_target = librosa.feature.inverse.mel_to_stft(
-                #         mel_target_padded.detach().cpu().numpy(),
-                #         n_fft=self.filter_length, sr=self.sample_rate)
-
-                # S_inv_generated = librosa.feature.inverse.mel_to_stft(
-                #         mel_out_post_net_padded.detach().cpu().numpy(), n_fft=self.filter_length, sr=self.sample_rate)
-                # S_inv_generated2 = librosa.feature.inverse.mel_to_stft(
-                #         mel_out_padded.detach().cpu().numpy(), n_fft=self.filter_length, sr=self.sample_rate)
-
-                # sf_loss1 = nn.L1Loss()(torch.from_numpy(S_inv_target).to(self.device), S)
+                abs_error = nn.L1Loss()(x1, stft) + nn.L1Loss()(x2, stft)
                 total += abs_error
 
+                return {
+                    'loss': total,
+                    'mel_loss': mel_loss,
+                    'gate_loss': gate_loss,
+                    'diagonal_score': alignment_score,
+                    'abs_error': abs_error
+                }
             return {
                 'loss': total,
                 'mel_loss': mel_loss,
                 'gate_loss': gate_loss,
                 'diagonal_score': alignment_score,
-                'abs_error': abs_error
             }
         else:
             mel_out, mel_out_post_net, gate_out, alignment, rev = model_output
             gate_targets = gate_target.view(-1, 1)
 
             rev_mel_out, reverse_gate, alignment_rev = rev
-            # rev_mel_out = gate_out_rev.view(-1, 1)
             gate_outs = gate_out.view(-1, 1)
 
-            # reversed_mel_out = torch.flip(rev_mel_out, dims=(1,))
-            # second_gate_loss = nn.BCEWithLogitsLoss()(rev_mel_out, gate_targets)
-            # second_mse_loss = nn.MSELoss()(rev_mel_out, mel_target)
+            # l1 loss for alignment
             l1_loss = nn.L1Loss()(alignment_rev, alignment)
 
-            # alignment_loss = nn.L1Loss()(alignment, rev_alignments)
             mel_loss = nn.MSELoss()(mel_out, mel_target) + nn.MSELoss()(mel_out_post_net, mel_target)
             gate_loss = nn.BCEWithLogitsLoss()(gate_outs, gate_targets)
+            alignment_score = self.alignment_diagonal_error(alignment)
             total = mel_loss + gate_loss + l1_loss
 
-            # target mel, we padded to match stft dim. it edge padded.
-            # mel_out_post_net_padded = F.pad(mel_out_post_net,  (1, 1), "constant", 0)
-            # mel_out_padded = F.pad(mel_out,  (1, 1), "constant", 0)
-
             if self.is_stft_compute:
+
                 stft = targets[2]
                 stft.requires_grad = False
-                mel_target_padded = F.pad(mel_target, (1, 1), "constant", 0)
-                # stft complex64, we take abs and it float32
-                S = torch.abs(stft).to(self.device)
+                mel_padded = F.pad(mel_out, (1, 1), "constant", 0)
+                mel_out_post_net = F.pad(mel_out_post_net, (1, 1), "constant", 0)
 
-                S_inv_target = librosa.feature.inverse.mel_to_stft(
-                        mel_target_padded.detach().cpu().numpy(), n_fft=self.filter_length, sr=self.sample_rate)
+                with torch.no_grad():
+                    x1 = self.dts_inverse(mel_padded)
+                    x2 = self.dts_inverse(mel_out_post_net)
 
-                # S_inv_generated = librosa.feature.inverse.mel_to_stft(
-                #         mel_out_post_net_padded.detach().cpu().numpy(), n_fft=self.filter_length, sr=self.sample_rate)
-                # S_inv_generated2 = librosa.feature.inverse.mel_to_stft(
-                #         mel_out_padded.detach().cpu().numpy(), n_fft=self.filter_length, sr=self.sample_rate)
+                abs_error = nn.L1Loss()(x1, stft) + nn.L1Loss()(x2, stft)
+                total += abs_error
 
-                sf_loss1 = nn.L1Loss()(torch.from_numpy(S_inv_target).to(self.device), S)
-                total += sf_loss1
-
+                return {
+                    'loss': total,
+                    'mel_loss': mel_loss,
+                    'gate_loss': gate_loss,
+                    'diagonal_score': alignment_score,
+                    'abs_error': abs_error
+                }
             return {
                 'loss': total,
                 'mel_loss': mel_loss,
-                'gate_loss': gate_loss
+                'gate_loss': gate_loss,
+                'diagonal_score': alignment_score,
             }
+

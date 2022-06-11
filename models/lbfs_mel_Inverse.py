@@ -1,12 +1,11 @@
 #
-#  It my implementation pleas emake sure you use lbfgs include.
-#  It has 3 fixes , current torch implementation has 3 bugs
+#  It is my implementation please emake sure you use lbfgs include.
+#  It has 3 fixes, current torch implementation has bugs related to a tensor shapes.
 #
 #  I'll do push request.
 #
 #  Mus
 #
-import sys
 import time
 from typing import Optional
 
@@ -25,15 +24,18 @@ from models.torch_mel_inverse import LibrosaInverseMelScale
 
 
 class InverseSTFSObjective(torch.autograd.Function):
+    """
+    Forward and backward pass
+    """
     @staticmethod
     def forward(ctx, x, shape, A: Tensor, B: Tensor):
         """
-        Compute the difference matrix
+        Compute forward pass.  We solving for B.
         :param ctx:
-        :param x:
-        :param shape:
-        :param A:
-        :param B:
+        :param x: Ax=B
+        :param shape: shpae of x.
+        :param A: A matrix
+        :param B: B we are solving hence forward pass we compute.
         :return:
         """
         x = x.reshape(shape)
@@ -44,6 +46,12 @@ class InverseSTFSObjective(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
+        """
+        On backward pass we compute gradient .
+        :param ctx:
+        :param grad_output:
+        :return:
+        """
         A, B, diff = ctx.saved_tensors
         grad = (1 / B.storage().size()) * torch.einsum("mf,...mt->...ft", A, diff)
         return (grad_output * grad), None, None, None
@@ -89,7 +97,7 @@ class DTCInverseSTFS(torch.nn.Module):
         sample_rate: int = 22050,
         f_min: float = 0.0,
         f_max: Optional[float] = None,
-        max_iter: int = 100000,
+        max_iter: int = 500,
         tolerance_loss: float = 1e-5,
         tolerance_change: float = 1e-8,
         sgdargs: Optional[dict] = None,
@@ -100,7 +108,7 @@ class DTCInverseSTFS(torch.nn.Module):
         """
 
         :param n_stft:  n_stft (int): Number of bins in STFT. See ``n_fft`` in :class:`Spectrogram`.
-        :param n_mels:  (int, optional): Number of mel filterbanks. (Default: ``80``)
+        :param n_mels:  (int, optional): Number of mel filter banks. (Default: ``80``)
         :param sample_rate:    sample_rate (int, optional): Sample rate of audio signal. (Default: ``22050``)
         :param f_min:  f_min (float, optional): Minimum frequency. (Default: ``0.``)
         :param f_max:  f_max (float or None, optional): Maximum frequency. (Default: ``sample_rate // 2``)
@@ -135,6 +143,8 @@ class DTCInverseSTFS(torch.nn.Module):
         self.sgdargs = sgdargs or {"lr": 0.1, "momentum": 0.9}
         #
         self._block_size = 2 ** 8 * 2 ** 10
+
+        self.default_max_iter = 500
         #
         assert f_min <= self.f_max, "Require f_min: {} < f_max: {}".format(f_min, self.f_max)
 
@@ -144,13 +154,16 @@ class DTCInverseSTFS(torch.nn.Module):
         #
         self.register_buffer("fb", fb)
 
-    @staticmethod
-    def lbfgs_block(A: Tensor, B: Tensor, x_init: Optional[Tensor] = None, attach_grad=False) -> Tensor:
+    def lbfgs_block(self,
+                    A: Tensor,
+                    B: Tensor,
+                    x_init: Optional[Tensor] = None,
+                    attach_grad=False) -> Tensor:
         """
-        :param attach_grad:
         :param A:
         :param B: regression target
         :param x_init:
+        :param attach_grad: if x_init empy we need attach grad.
         :return:
         """
         if x_init is None:
@@ -164,12 +177,16 @@ class DTCInverseSTFS(torch.nn.Module):
         shape = x_init.shape
         optimizer = LBFGS_FIXED([x_init],
                                 lr=0.1,
-                                max_iter=500,
+                                max_iter=self.max_iter,
                                 tolerance_grad=1e-3,
                                 history_size=10,
                                 line_search_fn="strong_wolfe")
 
         def closure():
+            """
+            Objective function that LBFGS_FIXED minimizing.
+            :return:
+            """
             optimizer.zero_grad()
             loss = InverseSTFSObjective.apply(x_init, shape, A, B)
             loss.backward()
@@ -188,10 +205,11 @@ class DTCInverseSTFS(torch.nn.Module):
         if B.ndim == 1:
             return torch.linalg.lstsq(A, B).solution
 
+        # num block
         n_columns = self._block_size // (np.prod(B.shape[:-1]) * A.storage().element_size())
         n_columns = max(n_columns, 1)
 
-        # Process in blocks:
+        # if block less num colum space:
         if B.shape[-1] <= n_columns:
             return self.lbfgs_block(A, B, attach_grad=True)
 

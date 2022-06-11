@@ -1,16 +1,17 @@
-# SFTS, Mel dataset
+# Short-time Fourier transform, and Mel dataset
 #
-# It for dataset that outputs only one hot vector and mel spectrogram.
+# This dataset contains one hot vector, mel spectrogram
+# and Short-time Fourier transform.
+#
+# Batch collate pack all and output N bathes.
 #
 # Mustafa
 from abc import ABC
 from typing import Callable, Optional
-
 import torch
 import torch.utils.data
 from loguru import logger
 from torch import Tensor
-
 from model_loader.base_stft_dataset import BaseSFTFDataset
 from model_loader.tacotron_stft30 import TacotronSTFT3
 from model_trainer.specs.spectrogram_layer_spec import SpectrogramLayerSpec
@@ -36,6 +37,28 @@ class SFTF3Dataset(BaseSFTFDataset, ABC):
                  target_transform: Optional[Callable] = None,
                  verbose: Optional[bool] = False,
                  overwrite: Optional[bool] = False) -> None:
+        """
+          Data formats
+             tensor_mel  Use case, entire dataset passed, batchified via data loader and saved on disk.
+             numpy_mel   Use case, entire dataset already in numpy format.
+             numpy_file  Use case, entire dataset saved. i.e. each record one hot encoded text, mel,
+                         other spectrum data.
+             torch_file  Use case, entire dataset saved.
+             audio_raw   Raw audio file that already annotated with text.
+
+          :param model_spec:
+          :param data: if data format is audio it must be a list that hold dict_keys(['path', 'meta', 'label'])
+                       if data format torch, data must contain tensor is must dict must hold key data.
+                       if data format numpy  and string it must point to dataset file
+                       if data format torch_file and data string it path to a file.
+
+          :param data_format: tensor_mel, numpy_mel, audio_raw
+          :param is_trace_time:
+          :param fixed_seed: if we want shuffle dataset
+          :param shuffle: shuffle or not,  in case DDP you must not shuffle
+          :param in_memory: store entire dataset in memory. (expect raw audio)
+                 if in_memory is false, len can't return value, hence you need iterate manually.
+          """
         super(SFTF3Dataset, self).__init__(model_spec,
                                            root=root,
                                            data=data,
@@ -63,9 +86,8 @@ class SFTF3Dataset(BaseSFTFDataset, ABC):
 
     def audiofile_to_mel(self, filename: str, callback: callable = None) -> tuple[Tensor, Tensor]:
         """
-        Take audio file and convert to mel spectrogram.
+        It takes audio file and convert to mel spectrogram and Short-time Fourier transform
         Each audio file normalized.
-
         :param callback: if called pass callback transformed mel passed to callback.
         :param filename:
         :return:
@@ -76,55 +98,32 @@ class SFTF3Dataset(BaseSFTFDataset, ABC):
 
         self.normalize_audio(filename)
 
-        mel_spec, spectral_flatness = self.stft.mel_spectrogram(normalized_audio)
+        mel_spec, stft = self.stft.mel_spectrogram(normalized_audio)
         if callback is not None:
-            callback(mel_spec, spectral_flatness)
+            callback(mel_spec, stft)
 
         mel_spec = torch.squeeze(mel_spec, 0)
-        #  print(spectral_flatness.shape)
-        return mel_spec, spectral_flatness
+        return mel_spec, stft
 
-    # def numpy_to_mel(self, filename):
-    #     """
-    #     :param filename:
-    #     :return:
-    #     """
-    #     mel_spec = torch.from_numpy(np.load(filename))
-    #     assert mel_spec.size(0) == self.stft.n_mel_channels, (
-    #         'Mel dimension mismatch: given {}, expected {}'.format(
-    #                 mel_spec.size(0), self.stft.n_mel_channels))
-    #
-    #     return mel_spec, spectral_flatness
-
-    # def text_to_tensor(self, text):
-    #     """
-    #     One hot encoder for text seq
-    #     :param text:
-    #     :return:
-    #     """
-    #     text_norm = torch.IntTensor(text_to_sequence(text, self.text_cleaners))
-    #     return text_norm
-
-    def __getitem__(self, idx):
+    def __getitem__(self, idx) -> tuple[Tensor, Tensor, Tensor]:
         """
-        :param index:
+        :param idx: index of dataset record.
         :return:
         """
         if self.is_a_tensor:
             text, mel, spectral_flatness = self._data[idx]
             return text, mel, spectral_flatness
-
-        if self.is_audio:
+        elif self.is_audio:
             if 'meta' not in self._data[idx]:
                 raise Exception("Each data entry, must contain a meta key.")
             if 'path' not in self._data[idx]:
                 raise Exception("Each data entry must contain path key.")
 
             text = self.text_to_tensor(self._data[idx]['meta'])
-            mel, spectral_flatness = self.audiofile_to_mel(self._data[idx]['path'])
-            return text, mel, spectral_flatness
-
-        return None, None, None
+            mel, stft = self.audiofile_to_mel(self._data[idx]['path'])
+            return text, mel, stft
+        else:
+            raise ValueError("Unknown dataset format")
 
     def tensor_data(self, index) -> torch.Tensor:
         """

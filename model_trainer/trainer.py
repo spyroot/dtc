@@ -494,7 +494,6 @@ class Trainer(AbstractTrainer, ABC):
         logger.info(f"Loading model node rank {self.state.rank} "
                     f"'{model_name}' model {layer_name} fro file {resolved_path}.")
 
-
         # from collections import OrderedDict
         # new_state_dict = OrderedDict()
         # for k, v in state_dict.items():
@@ -859,22 +858,30 @@ class Trainer(AbstractTrainer, ABC):
             logger.info(f"Model {model_layer} layer {model_layer} no scheduler attached.")
             return
 
+        self._schedulers[model_name] = {}
         if optimizer is None:
             raise TrainerError("Can't create lr scheduler. Optimizer is None.")
 
         lr_scheduler_type = self.state.trainer_spec.lr_scheduler_type(alias_name)
-        if lr_scheduler_type == 'cos':
+        if lr_scheduler_type == 'CosineAnnealingLR':
             logger.info(f"Creating cos lr scheduler. model: {model_name} layer: {model_layer} spec: {alias_name}")
-            scheduler = lr_scheduler.CosineAnnealingLR(optimizer,
-                                                       T_max=self.state.trainer_spec.t_max(alias_name),
-                                                       eta_min=self.state.trainer_spec.eta_min(alias_name))
+            t_max = self.state.trainer_spec.t_max(alias_name)
+            eta = self.state.trainer_spec.eta_min(alias_name)
+            scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=t_max, eta_min=eta)
+        elif lr_scheduler_type == "CosineAnnealingWarmRestarts":
+            T_0
+            T_mult
+            t_max = self.state.trainer_spec.t_max(alias_name)
+            eta = self.state.trainer_spec.eta_min(alias_name)
+            scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=t_max, eta_min=eta)
+
         elif lr_scheduler_type == 'multistep':
             logger.info(f"Creating multistep lr scheduler. model: {model_name} "
                         f"layer: {model_layer} spec: {alias_name}")
             logger.info(f"Creating {self.state.trainer_spec.milestones(alias_name)} milestone.")
-            scheduler = lr_scheduler.MultiStepLR(optimizer,
-                                                 milestones=self.state.trainer_spec.milestones(alias_name),
-                                                 gamma=self.state.trainer_spec.gamma(alias_name))
+            milestones = self.state.trainer_spec.milestones(alias_name)
+            gamma = self.state.trainer_spec.gamma(alias_name)
+            scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=milestones, gamma=gamma)
         elif lr_scheduler_type == 'exp-warmup':
             logger.info(f"Creating exp-warmup lr scheduler. model: {model_name} "
                         f"layer: {model_layer} spec: {alias_name}")
@@ -887,27 +894,40 @@ class Trainer(AbstractTrainer, ABC):
         else:
             raise ValueError("unknown scheduler: {}".format(lr_scheduler_type))
 
-        self._schedulers[model_name] = scheduler
+        self._schedulers[model_name][model_layer] = scheduler
+        print(f"Attached {lr_scheduler_type} a scheduler for {model_name} {model_layer}.")
+
         return scheduler
 
     def create_lr_schedulers(self) -> None:
         """
-
-        Create all scheduler and bind to optimizer.
-
+        Create all schedulers and bind each to respected models  sub-layer optimizer.
+        Note each model's sublayer bounded to single optimizer.
         :return:
         """
         model_name = self.state.trainer_spec.get_active_model_name()
         if model_name not in self._optimizers:
             raise TrainerError(f"Model {model_name} must be created first.")
 
+        model_name = self.state.trainer_spec.get_active_model()
+        model_layers = self.state.trainer_spec.get_active_sub_models()
+        if len(model_layers) == 0:
+            logger.warning("Trainer spec has no model layer defined..")
+
+        for layer_name in model_layers:
+            if layer_name not in self._optimizers[model_name]:
+                raise TrainerError("Can't bind a scheduler, optimizer undefined.")
+            self.create_lr_scheduler(model_name, layer_name, self._optimizers[model_name][layer_name])
+
+        #     self._create_optimizer(model_name, model_layer_name, opt_spec_alias)
+        #
         # model_layers = self.state.trainer_spec.get_active_sub_models()
         # for layer in model_layers:
         #     if layer not in self._optimizers[model_name]:
-        #         raise TrainerError(f"Model {model_name}, model layer {layer} must contain attached optimizer.")
-        #     opt = self._optimizers[model_name][layer]
-        #     logger.debug("Attaching lr scheduler.")
-        #     self.create_lr_scheduler(model_name, layer, opt)
+        #     #     raise TrainerError(f"Model {model_name}, model layer {layer} must contain attached optimizer.")
+        #     # opt = self._optimizers[model_name][layer]
+        #     # logger.debug("Attaching lr scheduler.")
+        #     # self.create_lr_scheduler(model_name, layer, opt)
 
     def save(self) -> None:
         """
@@ -1293,7 +1313,7 @@ class Trainer(AbstractTrainer, ABC):
         if anneal_steps is not None:
             for _, a_step in enumerate(anneal_steps):
                 if epoch >= int(a_step):
-                    p = p + 1
+                    p += 1
 
         if anneal_factor == 0.3:
             lr = learning_rate * ((0.1 ** (p // 2)) * (1.0 if p % 2 == 0 else 0.3))
@@ -1342,8 +1362,10 @@ class Trainer(AbstractTrainer, ABC):
 
         grad_norm = None
         batch_counter = 0
+
         for batch_idx, batch in enumerate(self._train_loader):
             self._callbacks.on_batch_begin()
+
             model.zero_grad(set_to_none=True)
             with torch.cuda.amp.autocast(enabled=self.state.is_amp):
 
@@ -1386,19 +1408,22 @@ class Trainer(AbstractTrainer, ABC):
             # run lr_scheduler
             if schedulers is not None:
                 for scheduler in schedulers:
-                    scheduler.step()
+                    if isinstance(scheduler, torch.optim.lr_scheduler.CosineAnnealingWarmRestarts):
+                        next_step = self.state.epoch + batch_idx / loader_data_size
+                        scheduler.step(next_step)
+                    else:
+                        scheduler.step()
 
             if not self.state.is_hyper_tunner:
                 if self.state.rank == 0 and current_step != 0 and current_step % self.state.tbar_update_rate == 0:
                     self.state.step = current_step
                     self.tqdm_iter.set_postfix({'step': current_step,
-                                                'grad': grad_norm.item(),
-                                                'b_mean': self.metric.batch_grad_loss.mean(),
+                                                'grad_loss': grad_norm.item(),
+                                                'batch_mean': self.metric.batch_grad_loss.mean(),
                                                 'loss': normal_loss,
                                                 'diag': diag_score,
                                                 'stft_err': stft_err.item(),
                                                 'epoch': self.metric.epoch_train_gn_loss.mean(),
-                                                # 'spectral_loss': spectral_loss.item(),
                                                 'mel': mel_loss.item(),
                                                 'gate': gate_loss.item(),
                                                 'batch': f"{batch_idx}/{loader_data_size}",
@@ -1434,7 +1459,7 @@ class Trainer(AbstractTrainer, ABC):
                         "loss/mel_loss": mel_loss,
                         "loss/gate_loss": gate_loss,
                         "loss/stft_err": stft_err,
-                        "score/stft_err": diag_score,
+                        "score/diag_score": diag_score,
                     }, current_step,
                             optimizer.param_groups[0]['lr'],
                             hparams=hparams, metrics=metrics)
@@ -1618,6 +1643,10 @@ class Trainer(AbstractTrainer, ABC):
             print(f"Training in hyperparameter tunner mode.")
 
         epochs_loss_terms = defaultdict(float)
+        loader_data_size = len(self._train_loader)
+        print("loader data_size", loader_data_size)
+        scheduler_1 = lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=loader_data_size)
+
         for epoch in self.tqdm_iter:
             if self.state.is_hyper_tunner:
                 print(f"Training in hyperparameter tunner mode. {epoch} max epoch {len(self.tqdm_iter)}")
@@ -1630,7 +1659,7 @@ class Trainer(AbstractTrainer, ABC):
                 dist.barrier()
             # train epoch's batch
             self.metric.on_epoch_begin()
-            self.train_epoch(model, model_name, layer_name, optimizer)
+            self.train_epoch(model, model_name, layer_name, optimizer, schedulers=[scheduler_1])
             self.metric.on_epoch_end()
             # if self._brake_epoch_loop == epoch:
             #     sys.exit(1)            # if self._brake_epoch_loop == epoch:
