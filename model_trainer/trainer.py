@@ -9,7 +9,7 @@
 # Each model specific.
 #
 #
-# Mustafa. B
+# Mus
 #
 #
 # import torch.distributed as dist
@@ -744,6 +744,8 @@ class Trainer(AbstractTrainer, ABC):
             reduced_loss = self.split_tensor(loss.data, self.state.n_gpus).item()
         else:
             reduced_loss = loss.item()
+
+        return reduced_loss
 
     def _create_optimizer(self, model_name: str, layer_name: str, alias_name: str):
         """
@@ -1638,7 +1640,7 @@ class Trainer(AbstractTrainer, ABC):
         self.metric.on_begin()
 
         if self.state.is_hyper_tunner:
-            print(f"Training in hyperparameter tunner mode.")
+            print("Training in hyperparameter tunner mode.")
 
         epochs_loss_terms = defaultdict(float)
 
@@ -1774,6 +1776,7 @@ class Trainer(AbstractTrainer, ABC):
         """
         if name in self._models:
             return self._models[name]
+        return None
 
     @staticmethod
     def set_logger(is_enable: bool) -> None:
