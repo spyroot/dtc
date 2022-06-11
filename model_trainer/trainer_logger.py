@@ -35,7 +35,7 @@ class TensorboardTrainerLogger(SummaryWriter):
         self.update_rate = trainer_spec.tensorboard_update_rate()
         self.spectrogram_spec = trainer_spec.get_model_spec().get_spectrogram()
         self.is_reverse_decoder = self.spectrogram_spec.is_reverse_decoder()
-        self.run_name = {model_name}/{batch_size}/{precision}
+        self.run_name = f"results/tensorboard/{model_name}/{batch_size}/{precision}"
 
     def log_training(self, criterions: dict, step=None, lr=None, hparams=None, metrics=None, extra_data=None) -> None:
         """
