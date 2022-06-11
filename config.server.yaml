@@ -212,6 +212,8 @@ lr_schedulers:
       mode: 'min'   #min, max
       patience: 10
       name: dtc_scheduler
+    - type: CosineAnnealingWarmRestarts
+      name: cosine_annealing_warm
 #
 # Training strategy
 strategy:
@@ -288,7 +290,7 @@ models:
     spectrogram_layer:
       model: tacotron3
       optimizer: dtc_optimizer
-      #      lr_scheduler: main_lr_scheduler
+      lr_scheduler: cosine_annealing_warm
       reverse_decoder: False
       enable_stft_loss: True
       has_input: True
