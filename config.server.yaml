@@ -1,7 +1,7 @@
 train: True                     # train or not,  default is True for generation we only need load pre-trained model
 use_dataset: 'lj_speech_full'   # dataset set generated.
 use_model: 'dtc'                # model to use , it must be defined in models section.
-draw_prediction: True               # at the of training draw.
+draw_prediction: True           # at the of training draw.
 load_model: True            # load model or not, and what
 load_epoch: 500             # load model,  last epoch
 save_model: True            # save model,
@@ -76,17 +76,6 @@ datasets:
     meta: metadata.csv
     recursive: False
     file_type: "torch"
-  LJSpeechMiniRaw:
-    ds_type: "audio"
-    dir: "~/Dropbox/Datasets/LJSpeechSmall"
-#    dir: "~/Dropbox/Datasets/LJSpeechSmall"
-    format: raw
-    training_meta: ljs_audio_text_train_filelist.txt
-    validation_meta: ljs_audio_text_val_filelist.txt
-    test_meta: ljs_audio_text_test_filelist.txt
-    meta: metadata.csv
-    recursive: False
-    file_type: "wav"
   LJSpeechSmallPkl:
     ds_type: "audio"
     dir: "~/Dropbox/Datasets/LJSpeechSmall"
@@ -151,7 +140,7 @@ settings:
     early_stopping: True          # early stopping
     console_log_rate: 20          # when to log to console
     start_test: 20
-    predict: 128                  # will do validation , prediction every 10 iteration .(re-scale based on ds/batch size)
+    predict: 64                   # will do validation , prediction every 64-th iteration .(re-scale based on ds/batch size)
     predict_per_iteration: True   # use epoch or iteration counter, in large batch size we might want to see progress.
     epochs_save: 1                # when we save
     save_per_iteration: False
