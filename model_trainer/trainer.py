@@ -880,6 +880,7 @@ class Trainer(AbstractTrainer, ABC):
             T_mult = self.state.trainer_spec.t_mult(alias_name)
             eta_min = self.state.trainer_spec.eta_min(alias_name)
             last_epoch = self.state.trainer_spec.scheduler_last_epoch(alias_name)
+            print(f"Creating cosine warm restart {T_0} {T_mult} {eta_min} {last_epoch}")
             scheduler = lr_scheduler.CosineAnnealingWarmRestarts(optimizer,
                                                                  T_0=T_0,
                                                                  T_mult=T_mult,
@@ -1151,7 +1152,7 @@ class Trainer(AbstractTrainer, ABC):
                             all_reduced_loss[loss_term_key] = loss_tensor.item()
 
                 self.metric.update(batch_idx, self.state.step, all_reduced_loss['loss'], validation=True)
-
+                print(all_reduced_loss['loss'])
                 if not self.state.is_hyper_tunner:
                     if self.state.rank == 0 and batch_idx % self.state.tbar_update_rate == 0:
                         tqdm_update_dict = {'step': current_step,
@@ -1596,11 +1597,13 @@ class Trainer(AbstractTrainer, ABC):
         #     logger.info("Running in distributed model. applying gradient reduce.".format(model_name))
         #     model = apply_gradient_allreduce(model)
 
-        last_epoch, last_step = self.update_running_state(model_name=model_name, layer_name=layer_name)
+        last_epoch, last_step = self.update_running_state(model_name=model_name,
+                                                          layer_name=layer_name)
         if last_epoch == self.state.trainer_spec.epochs():
             print("Model trainer, warm up validation pass.")
             self.validate_epoch(model, model_name, layer_name, warmup=True)
 
+       # self.state.step = last_step
         # TODO add option if epoch changed after save
         self.metric.set_num_iteration(self.state.trainer_spec.epochs() * self.total_batches)
         self.metric.init()
