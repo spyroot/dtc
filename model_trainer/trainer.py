@@ -42,7 +42,7 @@ from model_trainer.plotting_utils import plot_alignment_to_numpy, plot_spectrogr
 from model_trainer.trainer_logger import TensorboardTrainerLogger
 from model_trainer.trainer_metrics import Metrics
 from model_trainer.trainer_specs import ExperimentSpecs
-from model_trainer.utils import fmtl_print, to_gpu
+from model_trainer.utils import to_gpu
 from models.dtc_loss_function import dtcLoss
 # from distributed import apply_gradient_allreduce
 from models.loss_function import Tacotron2Loss
@@ -148,9 +148,10 @@ class Trainer(AbstractTrainer, ABC):
         if not self.state.is_inference:
             if data_loader is None:
                 raise TrainerError("Trainer need torch data loader.")
-            self.state.data_loader = data_loader
-            self.state.data_loaders, self.state.collate_fn = self.state.data_loader.get_all()
 
+            self.state.data_loader = data_loader
+            self.state.data_loaders, self.state.collate_fn \
+                = self.state.data_loader.get_all()
             self._train_loader = self.state.data_loaders[self._tkey]
             self._validation_loader = self.state.data_loaders[self._vkey]
 
@@ -190,12 +191,13 @@ class Trainer(AbstractTrainer, ABC):
             if self.state.is_hyper_tunner is False:
                 # by default, we log model name currently trainer and batch size.
                 precision = "fp32" if not self.state.is_amp else "fp16"
-                self.tf_logger = TensorboardTrainerLogger(trainer_spec=trainer_spec,
-                                                          model_name=trainer_spec.get_active_model(),
-                                                          batch_size=trainer_spec.batch_size(),
-                                                          precision=precision,
-                                                          comments=f"{trainer_spec.get_active_model()}_"
-                                                                   f"{trainer_spec.batch_size()}")
+                self.tf_logger = \
+                    TensorboardTrainerLogger(trainer_spec=trainer_spec,
+                                             model_name=trainer_spec.get_active_model(),
+                                             batch_size=trainer_spec.batch_size(),
+                                             precision=precision,
+                                             comments=f"{trainer_spec.get_active_model()}_"
+                                                      f"{trainer_spec.batch_size()}")
 
             self.metric = Metrics(metric_step_file_path=trainer_spec.model_files.get_metric_file_path(),
                                   metric_batch_file_path=trainer_spec.model_files.get_metric_batch_file_path(),
@@ -277,7 +279,9 @@ class Trainer(AbstractTrainer, ABC):
 
     def init_trainer(self) -> None:
         """
-        :return:
+        Initialize trainer, init method create a model and all sub-layers.
+        optimizers and scheduler. It called once during initial __init__
+        :return: None
         """
         if self.state.is_inference:
             self.create_models()
@@ -309,7 +313,7 @@ class Trainer(AbstractTrainer, ABC):
         TODO this one will be moved out of trainer.
         So we will have clear separation between trainer state , creation
         etc.
-        :return:
+        :return: nn.Module
         """
         logger.debug("Creating tacotron25 model.")
         if self.state.is_inference:
@@ -317,15 +321,19 @@ class Trainer(AbstractTrainer, ABC):
         elif self.state.trainer_spec.is_distributed_run():
             # device = torch.device(f"cuda:{dist.get_rank()}")
             device = self._loop_up_device(is_set_cuda)
-            logger.info("Creating DDP on cuda device "
-                        "{} torch device {} device received {}".format(self.state.cuda_device_id, device, self.state.device))
+            logger.info(f"Creating DDP on cuda device "
+                        f"{self.state.cuda_device_id} "
+                        f"torch device {device} device "
+                        f"received {self.state.device}")
             model = Tacotron25(self.state.trainer_spec, device).cuda()
-            model = DistributedDataWrapper(model,
-                                           device_ids=[self.state.cuda_device_id],
-                                           output_device=self.state.cuda_device_id).cuda()
+            model = \
+                DistributedDataWrapper(model,
+                                       device_ids=[self.state.cuda_device_id],
+                                       output_device=self.state.cuda_device_id).cuda()
 
         else:
-            model = Tacotron25(self.state.trainer_spec, self.state.device).to(self.state.device)
+            model = Tacotron25(self.state.trainer_spec,
+                               self.state.device).to(self.state.device)
 
         if self.state.trainer_spec.is_amp():
             model.decoder.attention_layer.score_mask_value = finfo('float16').min
@@ -339,25 +347,31 @@ class Trainer(AbstractTrainer, ABC):
         """
         logger.debug("Creating tacotron30 model.")
         if self.state.is_inference:
-            model = Tacotron3(self.state.trainer_spec, self.state.device).to(self.state.device)
+            model = Tacotron3(self.state.trainer_spec,
+                              self.state.device).to(self.state.device)
         elif self.state.trainer_spec.is_distributed_run():
             device = self._loop_up_device(is_set_cuda)
-            logger.info("Creating DDP on cuda device "
-                        "{} torch device {} device received {}".format(self.state.cuda_device_id,
-                                                                       device, self.state.device))
+            logger.info(f"Creating DDP on cuda device "
+                        f"{self.state.cuda_device_id,} "
+                        f"torch device {device} "
+                        f"device received {self.state.device}.")
             model = Tacotron3(self.state.trainer_spec, device).cuda()
-            model = DistributedDataWrapper(model,
-                                           device_ids=[self.state.cuda_device_id],
-                                           output_device=self.state.cuda_device_id).cuda()
+            model = \
+                DistributedDataWrapper(model,
+                                       device_ids=[self.state.cuda_device_id],
+                                       output_device=self.state.cuda_device_id).cuda()
         else:
-            model = Tacotron3(self.state.trainer_spec, self.state.device).to(self.state.device)
+            model = Tacotron3(self.state.trainer_spec,
+                              self.state.device).to(self.state.device)
 
         if self.state.trainer_spec.is_amp():
             model.decoder.attention_layer.score_mask_value = finfo('float16').min
 
         return model
 
-    def _create_model_layers(self, model_name: str, layer_name: Optional[str] = None, is_set_cuda=False):
+    def _create_model_layers(self, model_name: str,
+                             layer_name: Optional[str] = None,
+                             is_set_cuda=False):
         """
           Method lookup model from dispatch and call factory method.
           Later will move to a separate dispatcher creator or maybe
@@ -372,7 +386,8 @@ class Trainer(AbstractTrainer, ABC):
         if model_name not in self.model_creator:
             raise ValueError("Unknown {} model for a "
                              "trainer, supported"
-                             " models are {}".format(model_name, list(self.model_creator.keys())))
+                             " models are {}"
+                             "".format(model_name, list(self.model_creator.keys())))
 
         creator = self.model_creator[model_name][layer_name]
         if model_name not in self._models:
@@ -380,10 +395,12 @@ class Trainer(AbstractTrainer, ABC):
 
         m = creator(is_set_cuda)
         if m is None:
-            raise TrainerError("Failed create a model. {}.".format(creator.__name__))
+            raise TrainerError("Failed create a model. "
+                               "{}.".format(creator.__name__))
 
         self._models[model_name][layer_name] = m
-        logger.debug(f"Added model layer {layer_name} to a model {model_name}")
+        logger.debug(f"Added model layer {layer_name} "
+                     f"to a model {model_name}")
         if model_name not in self._last_ckt_epochs:
             self._last_ckt_epochs[model_name] = {}
 
@@ -420,6 +437,7 @@ class Trainer(AbstractTrainer, ABC):
     def load_model_layer(self, layer_name: str, file_path: str):
         """
         Loads each specific mode layer.
+
         :param layer_name: a model layer
         :param file_path: path to model.
         :return:
@@ -427,11 +445,18 @@ class Trainer(AbstractTrainer, ABC):
         if self.state.rank > 0:
             print(f"Skipping loading. node rank {self.state.rank}")
 
+        if layer_name is None or len(layer_name) == 0:
+            raise TrainerError("Empty layer name.")
+
+        if file_path is None or len(file_path) == 0:
+            raise TrainerError("Empty file_path.")
+
         for model in self._models:
             for layer in self._models[model]:
                 if layer_name == layer:
-                    self._load_model(model_name=model, layer_name=layer,
-                                     file_path=file_path, to_device=True, ignore_layers=None)
+                    self._load_model(model_name=model,
+                                     layer_name=layer, file_path=file_path,
+                                     to_device=True, ignore_layers=None)
 
     def load(self) -> None:
         """
@@ -449,9 +474,13 @@ class Trainer(AbstractTrainer, ABC):
                 model_file = self.state.trainer_spec.model_files.get_model_file_path(layer)
                 self._load_model(model_name=m, layer_name=layer, file_path=model_file)
 
-    def _load_model(self, model_name: str, layer_name: str, to_device=True,
-                    ignore_layers=None, file_path=None, skip_opt_state=False,
-                    strict=False):
+    def _load_model(self, model_name: str,
+                    layer_name: str,
+                    to_device: Optional[bool] = True,
+                    ignore_layers=None,
+                    file_path: Optional[str] = None,
+                    skip_opt_state: Optional[bool] = False,
+                    strict: Optional[bool] = False):
         """
         Method loads model from a checkpoint.  It will update internal state,
         that include model, last epoch, last step.
@@ -459,7 +488,7 @@ class Trainer(AbstractTrainer, ABC):
         :param model_name: - mode name that method need to load
         :param layer_name: - layer of model that we need load.
         :param file_path:  - path to a particular model file.
-        :param ignore_layers: - a list contain of layers we skip
+        :param ignore_layers: - a list contain of layers that method need skip
         :param to_device: - if true will load to device indicate as main device
         :param skip_opt_state:  by default we always load optimizer, if skip we skip
         :return: epoch, step
@@ -535,7 +564,8 @@ class Trainer(AbstractTrainer, ABC):
                 raise TrainerError("model has no state dict.")
 
             if not skip_opt_state:
-                logger.debug(f"Loading optimizer state for model {model_name} layer {layer_name}.")
+                logger.debug(f"Loading optimizer state "
+                             f"for model {model_name} layer {layer_name}.")
                 if 'optimizer_state_dict' in checkpoint:
                     print("Loading optimizer from a checkpoint.")
                     opt_state = checkpoint['optimizer_state_dict']
@@ -606,13 +636,20 @@ class Trainer(AbstractTrainer, ABC):
             return last_epoch, last_step
 
         except FileNotFoundError as e:
-            print("Failed load model files {}. No saved model found.".format(file_path))
-            logger.error(f"No model file to load model file, return default epoch 0, iteration 0 {e}")
+            print("Failed load model files {}. "
+                  "No saved model found.".format(file_path))
+            logger.error(f"No model file to load model "
+                         f"file, return default epoch 0, iteration 0 {e}")
             logger.error(e)
 
         return last_epoch, last_step
 
-    def load_for_inference(self, model_name: str, layer_name: str, model_file=None, to_device=True, ignore_layers=None):
+    def load_for_inference(self,
+                           model_name: str,
+                           layer_name: str,
+                           model_file: Optional[str] = None,
+                           to_device: Optional[bool] = True,
+                           ignore_layers=None):
         """
         Method loads model from a checkpoint for inference.
 
@@ -624,8 +661,9 @@ class Trainer(AbstractTrainer, ABC):
         :return: epoch, step
         """
 
-        logger.info("Loading model '{}' "
-                    "model file name {} to device {}".format(model_name, model_file, self.state.device))
+        logger.info(f"Loading model '{model_name}' "
+                    f"model file name {model_file} "
+                    f"to device {self.state.device}")
 
         try:
             self.state.current_layer = layer_name
@@ -634,12 +672,13 @@ class Trainer(AbstractTrainer, ABC):
             if model_name not in self._models:
                 self._models = {model_name: {}}
             if to_device:
-                checkpoint = torch.load(model_file, map_location=self.state.device)
+                checkpoint = torch.load(model_file,
+                                        map_location=self.state.device)
             else:
                 checkpoint = torch.load(model_file)
 
             if 'model_state_dict' not in checkpoint:
-                raise TrainerError("model has no state dict")
+                raise TrainerError(f"model {model_file} has no state dict.")
 
             creator = self.model_creator[model_name][layer_name]
             m = creator(False)
@@ -653,12 +692,10 @@ class Trainer(AbstractTrainer, ABC):
                 new_state.update(model_dict)
                 model_state_dict = new_state
 
-            self._models[model_name][layer_name].load_state_dict(model_state_dict, strict=False)
-            if 'model_state_dict' not in checkpoint:
-                raise TrainerError("model has no state dict.")
+            self._models[model_name][layer_name].load_state_dict(model_state_dict,
+                                                                 strict=False)
 
             # print(self._models[model_name][layer_name]['model'].item())
-
             # if ignore_layers is not None and len(ignore_layers) > 0:
             #     model_dict = {k: v for k, v in self._models[model_name][layer_name].items()
             #                   if k not in ignore_layers}
@@ -675,10 +712,14 @@ class Trainer(AbstractTrainer, ABC):
                 raise TrainerError("Saved checkpoint has no last step key.")
 
             self._last_step[layer_name] = checkpoint['it']
-            logger.info("Last checkpoint. epoch {} step {}".format(checkpoint['epoch'], checkpoint['it']))
+            logger.info(f"Last checkpoint. "
+                        f"epoch {checkpoint['epoch']} "
+                        f"step {checkpoint['it']}")
 
             self.state.current_model = self._models[model_name][layer_name]
-            print(f"Last trained epoch {checkpoint['epoch']}, {checkpoint['it']}")
+            print(f"Last trained epoch "
+                  f"{checkpoint['epoch']}, "
+                  f"{checkpoint['it']}")
 
             #  m = torch.jit.script(m)
             # self._models[model_name][layer_name] = torch.jit.freeze(m, ["version"])
@@ -686,18 +727,26 @@ class Trainer(AbstractTrainer, ABC):
             return checkpoint['epoch'], checkpoint['it']
 
         except FileNotFoundError as e:
-            print("Failed load model files {}. No saved model found. {}".format(model_file, e))
-            logger.info("No model file to load model file, return default epoch 0, iteration 0")
+            print("Failed load model files {}. "
+                  "No saved model found. {}".format(model_file, e))
+            logger.info("No model file to load model file, "
+                        "return default epoch 0, iteration 0")
 
         return 0, 0
 
-    def trainer_iterator(self, model_name: str, layer_name: str, last_epoch=0, max_epochs=0):
+    def trainer_iterator(self,
+                         model_name: str,
+                         layer_name: str,
+                         last_epoch: Optional[int] = 0,
+                         max_epochs: Optional[int] = 0):
         """
-        Method return iterator, i.e if you need compute, offset , update tqdm etc.
-        :param model_name:
-        :param layer_name:
-        :param last_epoch:
-        :param max_epochs:
+        Method returns tqdm iterator. ie it computes offset,
+        update tqdm start and max epoch range.
+
+        :param model_name: mode name.
+        :param layer_name: model's layer name
+        :param last_epoch: last epoch. if we are resuming this star position.
+        :param max_epochs: max epoch. adjusted max epoch.
         :return:
         """
         # for notebook, we need a bit of hack for tqdm_iter.
@@ -712,7 +761,9 @@ class Trainer(AbstractTrainer, ABC):
 
         max_epochs = self.state.trainer_spec.epochs()
         # what tqdm to use notebook for colab or normal one.
-        logger.info(f"Creating tqdm last epoch {last_epoch} max epoch {max_epochs}")
+        logger.info(f"Creating tqdm "
+                    f"last epoch {last_epoch} "
+                    f"max epoch {max_epochs}")
 
         if self.state.is_notebook:
             tqdm_iter = tnrange(last_epoch, max_epochs)
@@ -721,18 +772,7 @@ class Trainer(AbstractTrainer, ABC):
                              desc=f"Training in progress, device {self.state.device}, "
                                   f"batch size {self.state.batch_size}",
                              disable=self.state.disable_pbar)
-
-        # tqdm_iter.set_postfix({'total_epoch_loss': 0})
         return tqdm_iter
-
-    # def load_models(self) -> None:
-    #     """
-    #     For each active model, which might consist of more than one model.
-    #     :return:
-    #     """
-    #     models = self.state.trainer_spec.get_active_sub_models()
-    #     for m in models:
-    #         self.load(m)
 
     def reduce_if_needed(self, loss):
         """
@@ -752,8 +792,9 @@ class Trainer(AbstractTrainer, ABC):
         Creates an optimizer based on model specification.
         Each layer in model might have different optimizers.
 
-        For example,  we train GAN we might optimize for Generator and Optimizer for Discriminator.
-        Thus,  we define spec for each and strategy.
+        For example,  we train GAN we might optimize for
+        Generator and Optimizer for Discriminator. Thus,
+        we define spec for each and strategy.
 
         For example, we want train model X n epochs and then move to our main model.
 
@@ -774,7 +815,8 @@ class Trainer(AbstractTrainer, ABC):
             raise TrainerError("Can't create optimizer empty model layer.")
 
         if model_name not in self._models:
-            raise TrainerError(f"Can't create optimizer, {model_name} not found in model list.")
+            raise TrainerError(f"Can't create optimizer, "
+                               f"{model_name} not found in model list.")
 
         if layer_name not in self._models[model_name]:
             raise TrainerError(f"{str(self.state.trainer_spec.config_file_name)} "
@@ -782,25 +824,26 @@ class Trainer(AbstractTrainer, ABC):
                                f"Failed create '{model_name}' model")
 
         logger.info(f"Creating optimizer for {model_name} layer {layer_name} "
-                    f"and optimizer type {self.state.trainer_spec.optimizer_type(alias_name)}")
+                    f"and optimizer "
+                    f"type {self.state.trainer_spec.optimizer_type(alias_name)}")
 
         model_layer = self._models[model_name][layer_name]
 
         optimizer_type = self.state.trainer_spec.optimizer_type(alias_name)
-        spec = self.state.trainer_spec
+        spec: ExperimentSpecs = self.state.trainer_spec
 
         if optimizer_type == 'Adam':
             logger.debug(f"Adam {alias_name} "
                          f"rl:{spec.optimizer_learning_rate(alias_name)} "
                          f"betas:{spec.adam_betas(alias_name)} "
                          f"eps: {spec.adam_eps(alias_name)} "
-                         f"decays: {spec.weight_decay(alias_name)} "
+                         f"decays: {spec.adam_weight_decay(alias_name)} "
                          f"amsgrad: {spec.amsgrad(alias_name)}")
             opt = optim.Adam(list(model_layer.parameters()),
                              lr=spec.optimizer_learning_rate(alias_name),
                              betas=spec.adam_betas(alias_name),
                              eps=spec.adam_eps(alias_name),
-                             weight_decay=spec.weight_decay(alias_name),
+                             weight_decay=spec.adam_weight_decay(alias_name),
                              amsgrad=spec.amsgrad(alias_name))
 
         elif optimizer_type == 'SGD':
@@ -808,15 +851,26 @@ class Trainer(AbstractTrainer, ABC):
                          f"rl:{spec.optimizer_learning_rate(alias_name)} "
                          f"momentum:{spec.momentum(alias_name)} "
                          f"eps: {spec.dampening(alias_name)} "
-                         f"weight_decay: {spec.weight_decay(alias_name)} "
+                         f"weight_decay: {spec.adam_weight_decay(alias_name)} "
                          f"nesterov: {spec.nesterov(alias_name)}")
-
             opt = optim.opt = optim.SGD(list(self._models[model_name].parameters(alias_name)),
                                         lr=spec.optimizer_learning_rate(alias_name),
                                         momentum=spec.momentum(alias_name),
                                         dampening=spec.dampening(alias_name),
-                                        weight_decay=spec.weight_decay(alias_name),
+                                        weight_decay=spec.adam_weight_decay(alias_name),
                                         nesterov=spec.nesterov(alias_name))
+        elif optimizer_type == 'torch.optim.Adamax':
+            opt = optim.opt = optim.Adamax(list(self._models[model_name].parameters(alias_name)),
+                                           lr=spec.optimizer_learning_rate(alias_name),
+                                           betas=spec.adam_betas(alias_name),
+                                           eps=spec.adam_eps(alias_name),
+                                           weight_decay=spec.adam_weight_decay(alias_name))
+        elif optimizer_type == 'torch.optim.Adadelta':
+            opt = optim.opt = optim.Adadelta(list(self._models[model_name].parameters(alias_name)),
+                                             lr=spec.optimizer_learning_rate(alias_name),
+                                             rho=spec.adam_delta_rho(alias_name),
+                                             eps=spec.adam_delta_eps(alias_name),
+                                             weight_decay=spec.adam_weight_decay(alias_name))
         elif self.state.trainer_spec.optimizer_type == 'none':
             opt = None
         else:

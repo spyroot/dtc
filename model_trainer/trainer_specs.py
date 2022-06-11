@@ -2,7 +2,7 @@ import os
 import sys
 import warnings
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import torch
 import yaml
@@ -1302,55 +1302,82 @@ class ExperimentSpecs:
 
         return None
 
-    def adam_betas(self, alias_name, default=False) -> [float, float]:
+    def adam_betas(self, alias_name, default=False) -> Tuple[float, float]:
         """
          adam coefficients used for computing running averages of gradient
          and its square (default: (0.9, 0.999))
 
-        :param alias_name:
+        :param alias_name: optimizer configuration alias name
         :param default:
         :return:
         """
         if default is False:
             opt = self.get_optimizer(alias_name)
-            if 'betas' in opt:
+            if opt is not None and 'betas' in opt:
                 return opt['betas']
 
-        return [0.9, 0.999]
+        return 0.9, 0.999
 
     def adam_eps(self, alias_name, default=False) -> float:
         """
         Term added to the denominator to improve numerical stability
+
         Default: 1e-8
-
-        Args:
-            alias_name: optimizer name
-            default: return default value
-
-        Returns:
-
+        :param alias_name: optimizer configuration alias name
+        :param default:
+        :return:
         """
         if default is False:
             opt = self.get_optimizer(alias_name)
-            if 'eps' in opt:
+            if opt is not None and 'eps' in opt:
                 return float(opt['eps'])
 
-        return 1e-8
+        return float(1e-8)
 
-    def weight_decay(self, alias_name: str, default=False) -> float:
+    def adam_delta_eps(self, alias_name, default=False) -> float:
         """
-            Adam or SGD weight decay (L2 penalty) (default: 0)
+        Adam delta added to the denominator to improve numerical stability
 
-        Args:
-            alias_name: optimize alias name
-            default: true if ams grad must be enabled, default False
-
-        Returns:
-
+        Default: 1e-6
+        :param alias_name: optimizer configuration alias name
+        :param default:
+        :return:
         """
         if default is False:
             opt = self.get_optimizer(alias_name)
-            if 'weight_decay' in opt:
+            if opt is not None and 'eps' in opt:
+                return float(opt['eps'])
+
+        return float(1e-6)
+
+    def adam_delta_rho(self, alias_name, default=False) -> float:
+        """
+        Adam delta coefficient used for computing a running average
+        of squared gradients (default: 0.9)
+
+        Default: 1e-8
+        :param alias_name: optimizer configuration alias name
+        :param default:
+        :return:
+        """
+        if default is False:
+            opt = self.get_optimizer(alias_name)
+            if opt is not None and 'rho' in opt:
+                return float(opt['rho'])
+
+        return float(0.9)
+
+    def adam_weight_decay(self, alias_name: str, default=False) -> float:
+        """
+        Adam or SGD weight decay (L2 penalty) (default: 0)
+
+        :param alias_name: optimizer configuration alias name
+        :param default:
+        :return:
+        """
+        if default is False:
+            opt = self.get_optimizer(alias_name)
+            if opt is not None and 'weight_decay' in opt:
                 return float(opt['weight_decay'])
 
         return float(0)
