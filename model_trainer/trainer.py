@@ -318,7 +318,7 @@ class Trainer(AbstractTrainer, ABC):
             # device = torch.device(f"cuda:{dist.get_rank()}")
             device = self._loop_up_device(is_set_cuda)
             logger.info("Creating DDP on cuda device "
-                        "{} torch device {} device received {}".format(self.cuda_device_id, device, self.state.device))
+                        "{} torch device {} device received {}".format(self.state.cuda_device_id, device, self.state.device))
             model = Tacotron25(self.state.trainer_spec, device).cuda()
             model = DistributedDataWrapper(model,
                                            device_ids=[self.state.cuda_device_id],
@@ -343,13 +343,12 @@ class Trainer(AbstractTrainer, ABC):
         elif self.state.trainer_spec.is_distributed_run():
             device = self._loop_up_device(is_set_cuda)
             logger.info("Creating DDP on cuda device "
-                        "{} torch device {} device received {}".format(self.cuda_device_id,
+                        "{} torch device {} device received {}".format(self.state.cuda_device_id,
                                                                        device, self.state.device))
             model = Tacotron3(self.state.trainer_spec, device).cuda()
             model = DistributedDataWrapper(model,
-                                           device_ids=[self.cuda_device_id],
-                                           output_device=self.cuda_device_id).cuda()
-
+                                           device_ids=[self.state.cuda_device_id],
+                                           output_device=self.state.cuda_device_id).cuda()
         else:
             model = Tacotron3(self.state.trainer_spec, self.state.device).to(self.state.device)
 
@@ -426,7 +425,7 @@ class Trainer(AbstractTrainer, ABC):
         :return:
         """
         if self.state.rank > 0:
-            print(f"Skipping loading. node rank {self.rank}")
+            print(f"Skipping loading. node rank {self.state.rank}")
 
         for model in self._models:
             for layer in self._models[model]:
@@ -443,7 +442,7 @@ class Trainer(AbstractTrainer, ABC):
         :return: None
         """
         if self.state.rank > 0:
-            print(f"Skipping loading. node rank {self.rank}")
+            print(f"Skipping loading. node rank {self.state.rank}")
 
         for m in self._models:
             for layer in self._models[m]:
@@ -558,7 +557,7 @@ class Trainer(AbstractTrainer, ABC):
 
             # if run hyperparameter tunner we never do resume.
             if self.state.is_hyper_tunner:
-                print(f"Hyperparameter tunner running, loading only states.")
+                print("Hyperparameter tunner running, loading only states.")
                 self._last_ckt_epochs[model_name][layer_name] = 0
                 self._last_step[layer_name] = 0
                 return 0, 0
@@ -742,7 +741,7 @@ class Trainer(AbstractTrainer, ABC):
         :return:
         """
         if self.state.trainer_spec.is_amp():
-            reduced_loss = self.split_tensor(loss.data, self.n_gpus).item()
+            reduced_loss = self.split_tensor(loss.data, self.state.n_gpus).item()
         else:
             reduced_loss = loss.item()
 
@@ -899,7 +898,7 @@ class Trainer(AbstractTrainer, ABC):
             lr_lambdas = self.state.trainer_spec.lr_lambdas(alias_name)
             scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambdas)
         elif lr_scheduler_type == 'none' or lr_scheduler is None:
-            if self.verbose:
+            if self.state.verbose:
                 fmtl_print("Creating {} optimizer.".format(alias_name), "none")
             scheduler = None
         else:
@@ -941,7 +940,7 @@ class Trainer(AbstractTrainer, ABC):
             return
 
         if self.state.is_hyper_tunner:
-            logger.info(f"Skipping saving, hyperparameter tunner.")
+            logger.info("Skipping saving, hyperparameter tunner.")
             return
 
         for m in self._models:
@@ -1008,7 +1007,7 @@ class Trainer(AbstractTrainer, ABC):
             last_step = step
 
         if model_name is None or len(model_name) == 0:
-            raise TrainerError(f"Can't save model, model name argument is empty.")
+            raise TrainerError("Can't save model, model name argument is empty.")
         if layer_name is None or len(layer_name) == 0:
             raise TrainerError(f"Can't save model {model_name}, layer name argument is empty.")
         if file_path is None or len(file_path) == 0:
@@ -1075,7 +1074,7 @@ class Trainer(AbstractTrainer, ABC):
             return False
 
         # in case we run distributed no need save.
-        if self.state.trainer_spec.is_distributed_run() and self.rank > 0:
+        if self.state.trainer_spec.is_distributed_run() and self.state.rank > 0:
             return False
 
         # model save predicate condition, either iteration or epoch counter.
