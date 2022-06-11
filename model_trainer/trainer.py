@@ -948,31 +948,28 @@ class Trainer(AbstractTrainer, ABC):
                     self.tqdm_iter.set_description(f"Saving in progress, {self.state.device}")
                 self._save_model(model_name=m, layer_name=layer, file_path=model_file)
 
-    def save_models(self, model_files: list[str], step=0):
+    def save_models(self, model_files: list[str]) -> None:
         """
-        Save's all models, each sub model requires own file. Hence, caller need provide
-        list of files.
-
-        :param model_files:
-        :param step:
-        :return:
+        Save's all models layers, each sub model requires own file. Hence, caller need provide
+        list of files. This is mainly for external usage. (Ray etc.)
+        :param model_files: list of files
+        :return: None
         """
         for m in self._models:
             if len(self._models[m]) == len(model_files):
                 for i, layer in enumerate(self._models[m]):
-                    self.save_model(model_name=m, layer_name=layer,
-                                    model_file=model_files[i], tep=step)
+                    self.save_model_layer(layer_name=layer, file_path=model_files[i])
             else:
                 raise TrainerError(f"Model contains {len(self._models[m])} layers, "
                                    f"each sub-layer must have must have one file per model.")
 
-    def save_model_layer(self, layer_name: str, file_path: str):
+    def save_model_layer(self, layer_name: str, file_path: str) -> None:
         """
         Save's specific model's layer to a file_path.
 
-        :param layer_name:
+        :param layer_name: model layer. (sub-layer or parent model)
         :param file_path:
-        :return:
+        :return: None
         """
         for m in self._models:
             for layer in self._models[m]:
