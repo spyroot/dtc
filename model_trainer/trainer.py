@@ -1135,12 +1135,9 @@ class Trainer(AbstractTrainer, ABC):
         with torch.no_grad():
             current_batch_size = len(self._validation_loader)
             for batch_idx, batch in enumerate(self._validation_loader):
-                print(f"validation at epoch {step}")
                 x, y = take_batch(batch, self.state.device)
                 y_pred = model(x)
-                # our loss mel_loss + gate_loss
                 criterion_out = self.criterion(y_pred, y)
-
                 all_reduced_loss = {}
                 for loss_term_key in criterion_out:
                     loss_tensor = criterion_out[loss_term_key]

@@ -37,23 +37,16 @@ class TensorboardTrainerLogger(SummaryWriter):
         self.update_rate = trainer_spec.tensorboard_update_rate()
         self.spectrogram_spec = trainer_spec.get_model_spec().get_spectrogram()
         self.is_reverse_decoder = self.spectrogram_spec.is_reverse_decoder()
-        self.run_name = f"results/tensorboard/{model_name}/{batch_size}/{precision}"
+        self.run_name = f"{model_name}/{batch_size}/{precision}"
 
     def add_hparams_and_step(self, hparam_dict, metric_dict, hparam_domain_discrete=None,
                              run_name=None, global_step=None, epoch=None):
-
-        """Add a set of hyperparameters to be compared in TensorBoard.
+        """
+         This a fix for tensorboard util to include proper step.
+         Add a set of hyperparameters to be compared in TensorBoard.
 
         Args:
-            hparam_dict (dict): Each key-value pair in the dictionary is the
-              name of the hyper parameter and it's corresponding value.
-              The type of the value can be one of `bool`, `string`, `float`,
-              `int`, or `None`.
-            metric_dict (dict): Each key-value pair in the dictionary is the
-              name of the metric and it's corresponding value. Note that the key used
-              here should be unique in the tensorboard record. Otherwise the value
-              you added by ``add_scalar`` will be displayed in hparam plugin. In most
-              cases, this is unwanted.
+
             hparam_domain_discrete: (Optional[Dict[str, List[Any]]]) A dictionary that
               contains names of the hyperparameters and all discrete values they can hold
             run_name (str): Name of the run, to be included as part of the logdir.
@@ -70,14 +63,21 @@ class TensorboardTrainerLogger(SummaryWriter):
         Expected result:
 
         .. image:: _static/img/tensorboard/add_hparam.png
-           :param epoch:
-           :param hparam_dict:
-           :param metric_dict:
-           :param hparam_domain_discrete:
-           :param run_name:
+           :param epoch:        If specified instead of time, run = epoch
+           :param hparam_dict:  Each key-value pair in the dictionary is the name of the
+                                hyperparameter, and it's corresponding value.
+                                The type of the value can be one of `bool`, `string`, `float`,
+                                `int`, or `None`.
+           :param metric_dict:  (dict): Each key-value pair in the dictionary is the
+                                name of the metric, and it's corresponding value. Note that the key used
+                                here should be unique in the tensorboard record. Otherwise, the value
+                                you added by ``add_scalar`` will be displayed in hparam plugin. In most
+                                cases, this is unwanted.
+           :param run_name:     overwrite default run
            :param global_step:
-           :scale: 50 %
-
+           :param hparam_domain_discrete: (Optional[Dict[str, List[Any]]]) A dictionary that
+                                contains names of the hyperparameters
+                                and all discrete values they can hold
         """
         torch._C._log_api_usage_once("tensorboard.logging.add_hparams")
         if type(hparam_dict) is not dict or type(metric_dict) is not dict:
