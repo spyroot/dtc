@@ -136,9 +136,9 @@ class Trainer(AbstractTrainer, ABC):
         # (Note trainer can train 2 model like in gan settings)
         self._optimizers = {}
 
-        if not is_inference:
-            if not trainer_spec.is_initialized():
-                raise TrainerError("you need initialize trainer specs first.")
+        if not is_inference and not trainer_spec.is_initialized():
+            raise TrainerError("Model in training state, "
+                               "Trainer specs uninitialized.")
 
         # if self.state.trainer_spec.is_distributed_run():
         #     self.init_distributed()
@@ -374,7 +374,8 @@ class Trainer(AbstractTrainer, ABC):
 
         return model
 
-    def _create_model_layers(self, model_name: str,
+    def _create_model_layers(self,
+                             model_name: str,
                              layer_name: Optional[str] = None,
                              is_set_cuda=False):
         """
@@ -439,7 +440,9 @@ class Trainer(AbstractTrainer, ABC):
     #         for layer in self._models[model]:
     #             self.load(model_name=model, layer_name=layer, to_device=to_device, ignore_layers=ignore_layers)
 
-    def load_model_layer(self, layer_name: str, file_path: str):
+    def load_model_layer(self,
+                         layer_name: str,
+                         file_path: str):
         """
         Loads each specific mode layer.
 
@@ -455,6 +458,9 @@ class Trainer(AbstractTrainer, ABC):
 
         if file_path is None or len(file_path) == 0:
             raise TrainerError("Empty file_path.")
+
+        for layer in self._models.items():
+            print("Load ## layer", layer)
 
         for model in self._models:
             for layer in self._models[model]:
@@ -473,6 +479,9 @@ class Trainer(AbstractTrainer, ABC):
         """
         if self.state.rank > 0:
             print(f"Skipping loading. node rank {self.state.rank}")
+
+        for layer in self._models.keys():
+            print("Load2  ## layer", layer)
 
         for m in self._models:
             for layer in self._models[m]:
@@ -502,17 +511,18 @@ class Trainer(AbstractTrainer, ABC):
         last_epoch = 0
         last_step = 0
 
-        if not self.state.trainer_spec.is_load_model():
+        spec = self.state.trainer_spec
+        if not spec.is_load_model():
             print("Configuration set to skip loading models.")
             return last_epoch, last_step
 
         # by default, we use layer_name
         if file_path is None:
-            p = Path(self.state.trainer_spec.model_files.get_model_file_path(layer_name))
+            path_to_file = Path(spec.model_files.get_model_file_path(layer_name))
         else:
-            p = Path(file_path).expanduser()
+            path_to_file = Path(file_path).expanduser()
 
-        resolved_path = p.resolve()
+        resolved_path = path_to_file.resolve()
         if not resolved_path.exists():
             self._last_ckt_epochs[model_name][layer_name] = last_epoch
             self._last_step[layer_name] = last_step
@@ -538,7 +548,7 @@ class Trainer(AbstractTrainer, ABC):
         # load trained optimizer state_dict
         try:
             if to_device:
-                if self.state.trainer_spec.is_distributed_run():
+                if spec.is_distributed_run():
                     self._models[model_name][layer_name].to(self.state.rank)
                 else:
                     if {self.state.device} == "cpu":
@@ -556,19 +566,18 @@ class Trainer(AbstractTrainer, ABC):
                 checkpoint = torch.load(resolved_path)
 
             if 'model_state_dict' not in checkpoint:
-                raise TrainerError(f"{model_name}, "
+                raise TrainerError(f"{model_name}, {resolved_path}, "
                                    f"layer {layer_name} has no state dict.")
 
             if model_name not in self._models:
-                raise TrainerError(f"{model_name} not created. "
+                raise TrainerError(f"{model_name} model uninitialized. "
                                    f"You need first create model.")
 
             if layer_name not in self._models[model_name]:
-                raise TrainerError(f"{layer_name} not in model create.")
+                raise TrainerError(f"{layer_name} model layer uninitialized.")
 
-            self._models[model_name][layer_name].load_state_dict(checkpoint['model_state_dict'], strict=False)
-            if 'model_state_dict' not in checkpoint:
-                raise TrainerError("model has no state dict.")
+            model_state = checkpoint['model_state_dict']
+            self._models[model_name][layer_name].load_state_dict(model_state, strict=False)
 
             if not skip_opt_state:
                 logger.debug(f"Loading optimizer state "
@@ -578,7 +587,7 @@ class Trainer(AbstractTrainer, ABC):
                     opt_state = checkpoint['optimizer_state_dict']
                     if 'state' not in opt_state:
                         print("Optimizer doesn't contain a state")
-                    self._optimizers[model_name][layer_name].load_state_dict(checkpoint['optimizer_state_dict'])
+                    self._optimizers[model_name][layer_name].load_state_dict(opt_state)
                 else:
                     if strict:
                         raise TrainerError(f"{model_name} has no optimizer_state_dict.")
@@ -587,7 +596,8 @@ class Trainer(AbstractTrainer, ABC):
             if model_name in self._schedulers:
                 if layer_name in self._schedulers[model_name]:
                     if 'scheduler_state_dict' in checkpoint:
-                        if model_name in self._schedulers and layer_name in self._schedulers[model_name]:
+                        if model_name in self._schedulers \
+                                and layer_name in self._schedulers[model_name]:
                             sched_state = checkpoint['scheduler_state_dict']
                             sched = self._schedulers[model_name][layer_name]
                             sched.load_state_dict(sched_state)
