@@ -968,7 +968,7 @@ class Trainer(AbstractTrainer, ABC):
         Save's specific model's layer to a file_path.
 
         :param layer_name: model layer. (sub-layer or parent model)
-        :param file_path:
+        :param file_path: path to a model.
         :return: None
         """
         for m in self._models:
@@ -1051,10 +1051,10 @@ class Trainer(AbstractTrainer, ABC):
 
     def save_if_need(self, step: int) -> bool:
         """
-        Method called by trainer logic, to check if model
-        or model layer need to save or not.
+        Method called by trainer logic, it checks if model
+        or model layer should be saved or not.
 
-        :param step:  execution step
+        :param step: current execution step.
         :return: True if saved
         """
         if self.state.is_hyper_tunner:
@@ -1097,14 +1097,14 @@ class Trainer(AbstractTrainer, ABC):
                        layer_name: str, step: Optional[int] = None,
                        warmup: Optional[bool] = False):
         """
-        Validation epoch
+        Validation epoch, run without grad.
 
         :param model: model we are training.
-        :param model_name:  model_name a model we are training.
-        :param layer_name:  layer in that model we are training.
+        :param model_name: model_name a model we are training.
+        :param layer_name: layer in that model we are training.
         :param step: optional,  if we do validation in some n step before
                                 end of epoch, we want log and track.
-        :param warmup:
+        :param warmup: in case model trained we just do warmup pass.
         :return:
         """
         # take a batch.
