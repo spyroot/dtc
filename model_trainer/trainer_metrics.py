@@ -25,6 +25,7 @@ class Metrics:
                  batch_size=0,
                  metric_type: Optional[MetricType] = "mean",
                  mode: Optional[ReduceMode] = "min",
+                 is_grad_loss: Optional[bool] = True,
                  verbose=False):
         """
 
@@ -35,16 +36,22 @@ class Metrics:
         :param num_batches: num total batches
         :param num_iteration: num total iteration
         :param verbose:  verbose or not
+        :param is_grad_loss: Optional default true,  if a track loss from clipped gradient.
         """
+        # last batch loss
 
+        self.last_epoch_loss = None
+        self.is_grad_loss = is_grad_loss
         self.metric_type = metric_type
 
         if mode == ReduceMode.MIN:
             self.default_metric_val = np.inf
             self.monitor_op = np.less
+            self.last_epoch_loss = np.inf
         elif mode == ReduceMode.MAX:
             self.default_metric_val = -np.inf
             self.monitor_op = np.greater
+            self.last_epoch_loss = -np.inf
         else:
             raise ValueError(f"Unknown {mode} metric.")
 
@@ -98,7 +105,7 @@ class Metrics:
 
     def on_prediction_batch_end(self):
         """
-        called on prediction batch end , it updates an epoch validation stats.
+        called on prediction batch end, It updates an epoch validation stats.
         :return:
         """
         logger.info(f"{self.batch_val_loss.sum():5.2f} "
@@ -114,7 +121,7 @@ class Metrics:
 
     def on_batch_start(self):
         """
-
+        Call on batch start.  All value set to default either -inf or inf+
         :return:
         """
         self.batch_loss = np.ones((self.num_batches, 1)) * self.default_metric_val
@@ -130,12 +137,25 @@ class Metrics:
 
         # on batch end we update initial value.
         if self.metric_type == MetricType.MEAN:
-            self.epoch_train_loss[self._epoc_counter] = self.batch_loss.mean()
-            self.epoch_train_gn_loss[self._epoc_counter] = self.batch_grad_loss.mean()
+            bath_mean_loss = self.batch_loss.mean()
+            batch_grad_norm_loss = self.batch_grad_loss.mean()
+            self.epoch_train_loss[self._epoc_counter] = bath_mean_loss
+            self.epoch_train_gn_loss[self._epoc_counter] = batch_grad_norm_loss
+            if self.is_grad_loss:
+                self.last_epoch_loss = batch_grad_norm_loss
+            else:
+                self.last_epoch_loss = bath_mean_loss
 
         if self.metric_type == MetricType.SUM:
-            self.epoch_train_loss[self._epoc_counter] = self.batch_loss.sum()
+            bath_sum_loss = self.batch_loss.sum()
+            batch_grad_sum_loss = self.batch_grad_loss.sum()
+            self.epoch_train_loss[self._epoc_counter] = bath_sum_loss
             self.epoch_train_gn_loss[self._epoc_counter] = self.batch_grad_loss.sum()
+            self.last_epoch_loss = batch_grad_sum_loss
+            if self.is_grad_loss:
+                self.last_epoch_loss = batch_grad_sum_loss
+            else:
+                self.last_epoch_loss = bath_sum_loss
 
     def on_prediction_epoch_end(self):
         """
@@ -176,7 +196,7 @@ class Metrics:
         self.epoch_timer = np.zeros((self.num_epochs, 1))
 
     def on_end(self):
-        pass
+        self.save()
 
     def update(self, batch_idx, step, loss: float, grad_norm=None, validation=True):
         """
@@ -205,7 +225,7 @@ class Metrics:
 
     def update_bach_estimated(self, num_batches):
         """
-        Updates number of total batches.  i.e if batch size reduce
+        Updates number of total batches. i.e if batch size reduce
         we reflect in size of matrix used to calculate batch stats.
 
         :param num_batches: - should total batches
@@ -223,7 +243,7 @@ class Metrics:
             logger.info("Creating metric data, num batches {} ".format(self.num_batches))
 
             # initial value initialized either as + or - INF
-            # initilized batch size of batch size.
+            # initialized batch size of batch size.
             self.batch_loss = np.ones((self.num_batches, 1)) * self.default_metric_val
             self.batch_grad_loss = np.ones((self.num_batches, 1)) * self.default_metric_val
             # per epoch stats matrix , size of num total epochs
@@ -269,30 +289,29 @@ class Metrics:
         self.batch_loss = np.load(self.metric_batch_file_path)
         self.epoch_timer = np.load(self.metric_perf_trace_path)
 
-    def total_train_mean_loss(self):
-        """Return mean loss, compute mean from entire loss history.
+    def total_train_avg_loss(self):
+        """Return mean loss, computed over entire history of all epochs.
+           For a first epoch it either -inf or inf+
         :return:
         """
         if self.epoch_train_loss is None:
             return self.default_metric_val
-
         return self.epoch_train_loss.mean()
 
     def epoch_average_loss(self):
-        """
-        Compute average loss
+        """Returns last epoch mean loss.
         :return:
         """
-        return self.epoch_train_loss.mean()
+        return self.last_epoch_loss
 
-    def total_prediction_mean_loss(self):
-        """
-        :return:
-        """
-        if self.epoch_train_loss is None:
-            return self.default_metric_val
-
-        return self.epoch_val_loss.mean()
+    # def total_prediction_mean_loss(self):
+    #     """
+    #     :return:
+    #     """
+    #     if self.epoch_val_loss is None:
+    #         return self.default_metric_val
+    #
+    #     return self.epoch_val_loss.mean()
 
     def get_metric_value(self, monitor):
         """
@@ -320,7 +339,7 @@ class Metrics:
 
     def update_batch_size(self, batch_size):
         """
-
+        Update batch size.
         :param batch_size:
         :return:
         """
@@ -347,7 +366,6 @@ def batch_loss_compute():
 
     metric.set_num_iteration(spec.epochs() * total_batches)
     metric.init()
-
     # metric.update(batch_idx, step, normal_loss, grad_norm=grad_norm.item())
 
 

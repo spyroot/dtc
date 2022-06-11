@@ -158,9 +158,10 @@ class dtcLoss(nn.Module):
         :param binary:
         :return:
         """
-        maxs = alignments.max(dim=1)[0]
-        if binary:
-            maxs[maxs > 0] = 1
+        with torch.no_grad():
+            maxs = alignments.max(dim=1)[0]
+            if binary:
+                maxs[maxs > 0] = 1
         return maxs.mean(dim=1).mean(dim=0).item()
 
     def forward(self, model_output, targets, is_validation=False):
@@ -176,7 +177,7 @@ class dtcLoss(nn.Module):
         gate_target.requires_grad = False
 
         if not self.is_reverse_encoder:
-            mel_out, mel_out_post_net, gate_out, alignment, = model_output
+            mel_out, mel_out_post_net, gate_out, alignment = model_output
             gate_targets = gate_target.view(-1, 1)
             gate_outs = gate_out.view(-1, 1)
 

@@ -538,7 +538,7 @@ class Trainer(AbstractTrainer, ABC):
             if not skip_opt_state:
                 logger.debug(f"Loading optimizer state for model {model_name} layer {layer_name}.")
                 if 'optimizer_state_dict' in checkpoint:
-                    print("Loading optimizer from checkpoint.")
+                    print("Loading optimizer from a checkpoint.")
                     opt_state = checkpoint['optimizer_state_dict']
                     if 'state' not in opt_state:
                         print("Optimizer doesn't contain a state")
@@ -548,12 +548,13 @@ class Trainer(AbstractTrainer, ABC):
                         raise TrainerError(f"{model_name} has no optimizer_state_dict.")
 
             # if model has scheduler, re-create.
-            # todo add option to stack schedulers
             if model_name in self._schedulers:
                 if layer_name in self._schedulers[model_name]:
-                    self._schedulers[model_name][layer_name].load_state_dict(checkpoint['scheduler_state_dict'])
-                    if 'scheduler_state_dict' not in checkpoint:
-                        raise TrainerError("model has no scheduler_state_dict")
+                    if 'scheduler_state_dict' in checkpoint:
+                        if model_name in self._schedulers and layer_name in self._schedulers[model_name]:
+                            sched_state = checkpoint['scheduler_state_dict']
+                            sched = self._schedulers[model_name][layer_name]
+                            sched.load_state_dict(sched_state)
 
             # if run hyperparameter tunner we never do resume.
             if self.state.is_hyper_tunner:
@@ -633,8 +634,11 @@ class Trainer(AbstractTrainer, ABC):
 
             if model_name not in self._models:
                 self._models = {model_name: {}}
+            if to_device:
+                checkpoint = torch.load(model_file, map_location=self.state.device)
+            else:
+                checkpoint = torch.load(model_file)
 
-            checkpoint = torch.load(model_file, map_location=self.state.device)
             if 'model_state_dict' not in checkpoint:
                 raise TrainerError("model has no state dict")
 
@@ -869,12 +873,18 @@ class Trainer(AbstractTrainer, ABC):
             eta = self.state.trainer_spec.eta_min(alias_name)
             scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=t_max, eta_min=eta)
         elif lr_scheduler_type == "CosineAnnealingWarmRestarts":
-            T_0
-            T_mult
-            t_max = self.state.trainer_spec.t_max(alias_name)
-            eta = self.state.trainer_spec.eta_min(alias_name)
-            scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=t_max, eta_min=eta)
+            T_0 = self.state.trainer_spec.t_0(alias_name)
+            if T_0 == 0.0:
+                T_0 = len(self._train_loader)
 
+            T_mult = self.state.trainer_spec.t_mult(alias_name)
+            eta_min = self.state.trainer_spec.eta_min(alias_name)
+            last_epoch = self.state.trainer_spec.scheduler_last_epoch(alias_name)
+            scheduler = lr_scheduler.CosineAnnealingWarmRestarts(optimizer,
+                                                                 T_0=T_0,
+                                                                 T_mult=T_mult,
+                                                                 eta_min=eta_min,
+                                                                 last_epoch=last_epoch)
         elif lr_scheduler_type == 'multistep':
             logger.info(f"Creating multistep lr scheduler. model: {model_name} "
                         f"layer: {model_layer} spec: {alias_name}")
@@ -895,7 +905,7 @@ class Trainer(AbstractTrainer, ABC):
             raise ValueError("unknown scheduler: {}".format(lr_scheduler_type))
 
         self._schedulers[model_name][model_layer] = scheduler
-        print(f"Attached {lr_scheduler_type} a scheduler for {model_name} {model_layer}.")
+        print(f"Attaching {lr_scheduler_type} a scheduler for model {model_name} layer {model_layer}.")
 
         return scheduler
 
@@ -918,16 +928,6 @@ class Trainer(AbstractTrainer, ABC):
             if layer_name not in self._optimizers[model_name]:
                 raise TrainerError("Can't bind a scheduler, optimizer undefined.")
             self.create_lr_scheduler(model_name, layer_name, self._optimizers[model_name][layer_name])
-
-        #     self._create_optimizer(model_name, model_layer_name, opt_spec_alias)
-        #
-        # model_layers = self.state.trainer_spec.get_active_sub_models()
-        # for layer in model_layers:
-        #     if layer not in self._optimizers[model_name]:
-        #     #     raise TrainerError(f"Model {model_name}, model layer {layer} must contain attached optimizer.")
-        #     # opt = self._optimizers[model_name][layer]
-        #     # logger.debug("Attaching lr scheduler.")
-        #     # self.create_lr_scheduler(model_name, layer, opt)
 
     def save(self) -> None:
         """
@@ -952,7 +952,9 @@ class Trainer(AbstractTrainer, ABC):
 
     def save_models(self, model_files: list[str], step=0):
         """
-        Save's all models.
+        Save's all models, each sub model requires own file. Hence, caller need provide
+        list of files.
+
         :param model_files:
         :param step:
         :return:
@@ -992,8 +994,9 @@ class Trainer(AbstractTrainer, ABC):
         :param model_name: a mode name, saved dict will have a separate entry what model saved.
         :param layer_name: a layer of model that , trainer saving
         :param file_path: a full path to a model
-        :param epoch: if we need save epoch
-        :param step:  if we need save last step
+        :param epoch: Optional current epoch. By default, epoch taken from a internal state
+        :param step:  Optional current step / iteration. By default, step taken from internal state
+        :param save_opt: Optional default True if trainer need save optimizer state.
         :return: nothing
         """
 
@@ -1154,23 +1157,24 @@ class Trainer(AbstractTrainer, ABC):
                         tqdm_update_dict = {'step': current_step,
                                             'loss': all_reduced_loss['loss'],
                                             'batch_loss': all_reduced_loss['loss'] // max(1, batch_idx + 1),
-                                            'avg loss': self.metric.total_train_mean_loss(),
+                                            'avg loss': self.metric.total_train_avg_loss(),
                                             'batch': f"{batch_idx}/{current_batch_size}",
                                             'diag': all_reduced_loss['diagonal_score'],
                                             'saved': self.state.saved_run}
 
+                        # append to tbar all loss terms
                         for k in all_reduced_loss:
                             tqdm_update_dict[k] = all_reduced_loss[k]
                         self.tqdm_iter.set_postfix(tqdm_update_dict)
 
+                batch_count += 1
                 # sum each loss term
                 for k in all_reduced_loss:
                     aggregated_loss_term[k] += all_reduced_loss[k]
-                batch_count += 1
 
-        # normalize at the update key
+        # normalize
         for k in aggregated_loss_term:
-            aggregated_loss_term[k] = (aggregated_loss_term[k] / (batch_idx + 1))
+            aggregated_loss_term[k] = (aggregated_loss_term[k] / (batch_count + 1))
 
         self._callbacks.validation_end()
         self.metric.on_prediction_batch_end()
@@ -1326,11 +1330,13 @@ class Trainer(AbstractTrainer, ABC):
                     schedulers: Optional[list[torch.optim.lr_scheduler._LRScheduler]] = None) -> None:
         """
         Train one step of epoch.
+
         :param model:  a model that we train.
         :param model_name: a model name that we train
         :param layer_name: a layer of model that we train.
         :param optimizer:  optimizer that bounded to this model.
-        :param schedulers: a schedulers that we use.
+        :param schedulers: a schedulers that we use. note train_epoch allow to pass list.
+                           for now in config we can define only one scheduler.
         :return:
         """
         device = self.state.device
@@ -1351,6 +1357,7 @@ class Trainer(AbstractTrainer, ABC):
         self.metric.update_bach_estimated(loader_data_size)
         self._callbacks.on_loader_begin()
         self.metric.on_batch_start()
+
         # ths main for debug for ray if something went very wrong we can check here.
         if self.state.is_hyper_tunner:
             print(f"Entering train epoch loop: "
@@ -1361,10 +1368,8 @@ class Trainer(AbstractTrainer, ABC):
 
         grad_norm = None
         batch_counter = 0
-
         for batch_idx, batch in enumerate(self._train_loader):
             self._callbacks.on_batch_begin()
-
             model.zero_grad(set_to_none=True)
             with torch.cuda.amp.autocast(enabled=self.state.is_amp):
 
@@ -1375,13 +1380,11 @@ class Trainer(AbstractTrainer, ABC):
                 #     reduced_loss = dist.reduce_tensor(loss.data, n_gpus).item()
 
                 criterion_out = self.criterion(y_pred, y)
+                loss = criterion_out['loss']
                 mel_loss = criterion_out['mel_loss']
                 gate_loss = criterion_out['gate_loss']
-                # spectral_loss = criterion_out['spectral_loss']
-                loss = criterion_out['loss']
                 diag_score = criterion_out['diagonal_score']
                 stft_err = criterion_out['abs_error']
-                assert loss.dtype is torch.float32
                 normal_loss = loss.item()
 
             # here we have scaled loss
@@ -1418,7 +1421,7 @@ class Trainer(AbstractTrainer, ABC):
                     self.state.step = current_step
                     self.tqdm_iter.set_postfix({'step': current_step,
                                                 'grad_loss': grad_norm.item(),
-                                                'batch_mean': self.metric.batch_grad_loss.mean(),
+                                                'mean': self.metric.batch_grad_loss.mean(),
                                                 'loss': normal_loss,
                                                 'diag': diag_score,
                                                 'stft_err': stft_err.item(),
@@ -1512,15 +1515,10 @@ class Trainer(AbstractTrainer, ABC):
         gate_padded = to_gpu(gate_padded, device).float()
         output_lengths = to_gpu(output_lengths, device).long()
 
+        # this only make sense with cuda otherwise.
         if self.spectogram_spec.is_stft_loss_enabled():
             mel_padded = mel_padded.contiguous().cuda(non_blocking=True)
             stft_padded = stft.contiguous().cuda(non_blocking=True)
-
-            # sf = stft.contiguous()
-            # if torch.cuda.is_available():
-            #     sf = sf.cuda(non_blocking=True)
-            #     sf.requires_grad = False
-
             return (text_padded, input_lengths, mel_padded, max_len, output_lengths), \
                    (mel_padded, gate_padded, stft_padded)
 
@@ -1550,6 +1548,19 @@ class Trainer(AbstractTrainer, ABC):
         rt /= n_gpus
         return rt
 
+    def get_scheduler(self, model_name: str, layer_name: str):
+        """
+
+        :param model_name:
+        :param layer_name:
+        :return:
+        """
+        if model_name in self._schedulers:
+            if layer_name in self._schedulers[model_name]:
+                return self._schedulers[model_name][layer_name]
+
+        return None
+
     def prepare_trainer(self, model_name: str, layer_name: str):
         """
 
@@ -1578,15 +1589,8 @@ class Trainer(AbstractTrainer, ABC):
         self.tqdm_iter = self.trainer_iterator(model_name, layer_name)
 
         assert model_name in self._optimizers
-        # assert layer_name in self._optimizers[model_name]
-
         optimizer = self._optimizers[model_name][layer_name]
-        scheduler = None
-
-        if model_name in self._schedulers:
-            if layer_name in self._schedulers:
-                logger.info("Model {} contains a scheduler".format(model_name))
-                scheduler = self._schedulers[model_name][layer_name]
+        scheduler = self.get_scheduler(model_name, layer_name)
 
         # if self.state.trainer_spec.is_distributed_run():
         #     logger.info("Running in distributed model. applying gradient reduce.".format(model_name))
@@ -1642,9 +1646,10 @@ class Trainer(AbstractTrainer, ABC):
             print(f"Training in hyperparameter tunner mode.")
 
         epochs_loss_terms = defaultdict(float)
-        loader_data_size = len(self._train_loader)
-        print("loader data_size", loader_data_size)
-        scheduler_1 = lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=loader_data_size)
+
+        schedulers = None
+        if scheduler is not None:
+            schedulers = [scheduler]
 
         for epoch in self.tqdm_iter:
             if self.state.is_hyper_tunner:
@@ -1658,7 +1663,7 @@ class Trainer(AbstractTrainer, ABC):
                 dist.barrier()
             # train epoch's batch
             self.metric.on_epoch_begin()
-            self.train_epoch(model, model_name, layer_name, optimizer, schedulers=[scheduler_1])
+            self.train_epoch(model, model_name, layer_name, optimizer, schedulers=schedulers)
             self.metric.on_epoch_end()
             # if self._brake_epoch_loop == epoch:
             #     sys.exit(1)            # if self._brake_epoch_loop == epoch:
@@ -1673,8 +1678,6 @@ class Trainer(AbstractTrainer, ABC):
         self._callbacks.on_end()
         self.metric.on_end()
 
-        self._callbacks.on_epoch_end()
-        self.metric.total_train_mean_loss()
         return
 
     def train(self, model_name=None, config=None, checkpoint_dir=None):

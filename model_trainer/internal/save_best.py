@@ -36,10 +36,10 @@ class CheckpointBest(Callback):
         mode = ReduceMode(mode)
         if mode == ReduceMode.MIN:
             self.best = np.inf
-            self.monitor_op = np.less
+            self.monitor_callback = np.less
         elif mode == ReduceMode.MAX:
             self.best = -np.inf
-            self.monitor_op = np.greater
+            self.monitor_callback = np.greater
         self.verbose = verbose
 
     def on_begin(self):
@@ -49,22 +49,24 @@ class CheckpointBest(Callback):
         if self.save_dir is not None:
             os.makedirs(self.save_dir, exist_ok=True)
 
-    def on_epoch_end(self):
+    def on_epoch_end(self) -> None:
         """
+        Called at the end of epoch.  If value that callback monitor changed
+        based on monitor predicated.
         :return:
         """
         current = self.get_monitor_value()
-        if self.monitor_op(current, self.best):
-            ep = self.trainer.state.epoch
+        current_epoch = self.trainer.state.epoch
+        if self.monitor_callback(current, self.best):
             if self.verbose:
-                print(f"Epoch {ep:2d}: best {self.monitor} improved from {self.best:.4f} to {current:.4f}")
-                logger.info(f"Epoch {ep:2d}: best {self.monitor} improved from {self.best:.4f} to {current:.4f}")
+                print("")
+                print(f"Epoch {current_epoch:2d}: best {self.monitor} "
+                      f"improved from {self.best:.4f} to {current:.4f}")
+                logger.info(f"Epoch {current_epoch:2d}: best {self.monitor} "
+                            f"improved from {self.best:.4f} to {current:.4f}")
 
             self.best = current
             self.trainer.save()
-
-            # save_name = os.path.join(self.save_dir, self.save_name.format(ep=ep, metric=current))
-            # self._save_checkpoint(save_name)
 
     def _save_checkpoint(self, path):
         """
@@ -84,6 +86,6 @@ class CheckpointBest(Callback):
             value = self.metric.get_metric_value(self.monitor)
 
         if value is None:
-            raise ValueError(f"CheckpointSaver can't find {self.monitor} value to monitor")
+            raise ValueError(f"CheckpointSaver can't find {self.monitor} value to monitor.")
 
         return value

@@ -2,7 +2,10 @@ import torch
 from .call_interface import Callback
 
 
-class BatchOverfit(Callback):
+class BatchOverfiter(Callback):
+    """
+
+    """
     def __init__(self, save=False):
         """
         First batch and tries to overfit it.

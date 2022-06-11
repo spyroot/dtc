@@ -175,26 +175,22 @@ settings:
         pin_memory: True
         shuffle: False
   small:
-    epochs: 600
+    epochs: 700
     batch_size: 64
     grad_clipping: True
     grad_max_norm : 1.0
-    tensorboard_update: 100       # update rate for tensorboard
-    early_stopping: True          # early stopping
-    console_log_rate: 5           # when to log to console
-    # when to start run a test
-    start_test: 20
-    # predict to start predict , validate
-    predict: 50                   # will do validation , prediction every 10 iteration .(re-scale based on ds/batch size)
-    # use epoch or iteration counter, in large batch size we might want to see progress.
-    predict_per_iteration: False
-    # when to save
-    epochs_save: 1
-    save_per_iteration: False
+    tensorboard_update: 100           # update rate for tensorboard
+    early_stopping: True              # early stopping
+    console_log_rate: 5               # when to log to console
+    start_test: 20                    # no op
+    predict: 50                       # will do validation, prediction every 10 iteration .(re-scale based on ds/batch size)
+    predict_per_iteration: False      # use epoch or iteration counter, large batch size we might want to see progress.
+    epochs_save: 1                    # when to save
+    save_per_iteration: False         # save per iteration or per epoch
     seed: 1234
-    fp16: False                      # fp16 run
-    distributed: False               # what distributed backend uses.
-    backend: "nccl"                  # backend: "gloo"
+    fp16: False                       # fp16 run
+    distributed: False                # what distributed backend uses.
+    backend: "nccl"                   # backend: "gloo"
     url: "tcp://localhost:54321"
     master_address: localhost
     master_port: 54321
@@ -251,6 +247,8 @@ lr_schedulers:
     - type: CosineAnnealingLR
       name: cosine_annealing
       t_max: 100000
+    - type: CosineAnnealingWarmRestarts
+      name: cosine_annealing_warm
 
 #
 # Training strategy
@@ -275,7 +273,7 @@ models:
     spectrogram_layer:
       model: tacotron25
       optimizer: dtc_optimizer
-#      lr_scheduler: main_lr_scheduler
+      lr_scheduler: cosine_annealing_warm
       reverse_decoder: False
       has_input: True
       has_output: True
@@ -328,7 +326,7 @@ models:
     spectrogram_layer:
       model: tacotron3
       optimizer: dtc_optimizer
-      #lr_scheduler: cosine_annealing
+      lr_scheduler: cosine_annealing_warm
       reverse_decoder: False
       enable_stft_loss: True
       has_input: True

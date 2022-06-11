@@ -1431,6 +1431,46 @@ class ExperimentSpecs:
 
         return False
 
+    def t_0(self, alias_name: str) -> float:
+        """
+        CosineAnnealingWarmRestarts t_o.
+        :param alias_name: a name alias defined in config.
+        :return: 0 or value indicate in spec.
+        """
+        scheduler_spec = self.lr_scheduler(alias_name)
+        if scheduler_spec is not None:
+            if 'T_0' in scheduler_spec:
+                return float(scheduler_spec['t_0'])
+        return float(0)
+
+    def t_mult(self, alias_name: str) -> int:
+        """
+        CosineAnnealingWarmRestarts t_mult.  A factor increases
+        T_{i}T after a restart. Default: 1.
+
+        :param alias_name: a name alias defined in config.
+        :return: 0 or value indicate in spec.
+        """
+        scheduler_spec = self.lr_scheduler(alias_name)
+        if scheduler_spec is not None:
+            if 't_mult' in scheduler_spec:
+                return int(scheduler_spec['t_mult'])
+        return 1
+
+    def scheduler_last_epoch(self, alias_name: str) -> int:
+        """
+        CosineAnnealingWarmRestarts t_mult.  A factor increases
+        T_{i}T after a restart. Default: 1.
+
+        :param alias_name: a name alias defined in config.
+        :return: 0 or value indicate in spec.
+        """
+        scheduler_spec = self.lr_scheduler(alias_name)
+        if scheduler_spec is not None:
+            if 'last_epoch' in scheduler_spec:
+                return float(scheduler_spec['last_epoch'])
+        return float(-1)
+
     def eta_min(self, alias_name: str) -> float:
         """
         CosineAnnealingLR Minimum learning rate. Default: 0
