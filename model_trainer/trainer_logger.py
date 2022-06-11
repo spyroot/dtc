@@ -122,7 +122,6 @@ class TensorboardTrainerLogger(SummaryWriter):
 
         if hparams is not None and metrics is not None:
             self.add_hparams_and_step(hparams, metrics, run_name=self.run_name, global_step=step)
-           # self.add_hparams(hparams, metrics, run_name=self.run_name)
 
         if extra_data is not None:
             for k in extra_data:
@@ -144,7 +143,9 @@ class TensorboardTrainerLogger(SummaryWriter):
     def log_validation(self, criterions: dict, model: nn.Module, y, y_pred, step=None,
                        mel_filter=True, v3=True) -> None:
         """
-        Log validation step.
+        Log validation step, each step we serialize prediction spectrogram loss counter
+        from a criterions' dict.
+
         :param criterions: dict that must hold all loss metric.
         :param model: nn.Module
         :param y:
@@ -202,7 +203,8 @@ class TensorboardTrainerLogger(SummaryWriter):
 
         self.add_image(
                 "mel/mel_predicted",
-                plot_spectrogram_to_numpy(mel_outputs[idx].data.cpu().numpy()), step, dataformats='HWC')
+                plot_spectrogram_to_numpy(mel_outputs[idx].data.cpu().numpy()),
+                step, dataformats='HWC')
 
         # if v3:
         #     self.add_image(
@@ -223,9 +225,11 @@ class TensorboardTrainerLogger(SummaryWriter):
                         gate_targets[idx].data.cpu().numpy(),
                         torch.sigmoid(gate_outputs[idx]).data.cpu().numpy()),
                 step, dataformats='HWC')
+
         if self.is_reverse_decoder and gate_out_rev is not None:
             self.add_image(
                     "gate/gate_rev",
                     plot_gate_outputs_to_numpy(
                             gate_targets[idx].data.cpu().numpy(),
-                            torch.sigmoid(gate_out_rev[idx]).data.cpu().numpy()), step, dataformats='HWC')
+                            torch.sigmoid(gate_out_rev[idx]).data.cpu().numpy()),
+                    step, dataformats='HWC')
