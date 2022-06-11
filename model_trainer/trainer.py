@@ -55,14 +55,6 @@ from text import text_to_sequence
 # from torch.autograd import Variable
 # import numpy as np
 
-# try:
-#     import ray
-#     from ray import tune
-#     from ray.tune.schedulers import ASHAScheduler
-# except ImportError:
-#     logger.info("ray not found")
-#     pass
-
 
 @AbstractTrainer.register
 class Trainer(AbstractTrainer, ABC):
@@ -1090,7 +1082,7 @@ class Trainer(AbstractTrainer, ABC):
         """
         Validation epoch
 
-        :param model:  model we are training.
+        :param model: model we are training.
         :param model_name:  model_name a model we are training.
         :param layer_name:  layer in that model we are training.
         :param step: optional,  if we do validation in some n step before
@@ -1101,6 +1093,11 @@ class Trainer(AbstractTrainer, ABC):
         # take a batch.
         self._callbacks.validation_start()
         take_batch = self._batch_loader[model_name][layer_name]
+
+        if step is not None:
+            current_step = step
+        else:
+            current_step = self.state.step
 
         model.eval()
         self.metric.update_bach_estimated(len(self._validation_loader))
@@ -1135,7 +1132,7 @@ class Trainer(AbstractTrainer, ABC):
 
                 if not self.state.is_hyper_tunner:
                     if self.state.rank == 0 and batch_idx % self.state.tbar_update_rate == 0:
-                        tqdm_update_dict = {'step': self.state.step,
+                        tqdm_update_dict = {'step': current_step,
                                             'loss': all_reduced_loss['loss'],
                                             'batch_loss': all_reduced_loss['loss'] // max(1, batch_idx + 1),
                                             'avg loss': self.metric.total_train_mean_loss(),

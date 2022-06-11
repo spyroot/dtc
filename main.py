@@ -91,8 +91,6 @@ def convert_mel_to_data(encoder_spec: SpectrogramLayerSpec,
     """
     Convert audio dataset to MEL tensor representation.
 
-    TODO add meta v2/v3 and detect during data loader creation.
-
     :param version:
     :param encoder_spec:  all parameter for SFTS encoder
     :param dataset: list.
@@ -1239,7 +1237,6 @@ if __name__ == '__main__':
 
     try:
         set_logger(args.verbose)
-        # trainer_spec = ExperimentSpecs(spec_config=args.config, verbose=args.verbose)
         main(args)
         # setup_handler(cleanup(is_distributed))
     except FileNotFoundError as file_error:
