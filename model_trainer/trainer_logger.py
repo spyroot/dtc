@@ -82,7 +82,7 @@ class TensorboardTrainerLogger(SummaryWriter):
         torch._C._log_api_usage_once("tensorboard.logging.add_hparams")
         if type(hparam_dict) is not dict or type(metric_dict) is not dict:
             raise TypeError('hparam_dict and metric_dict should be dictionary.')
-        exp, ssi, sei = self.hparams(hparam_dict, metric_dict, hparam_domain_discrete)
+        exp, ssi, sei = torch.utils.tensorboard.summary.hparams(hparam_dict, metric_dict, hparam_domain_discrete)
 
         if not run_name:
             if epoch is not None:
@@ -122,6 +122,7 @@ class TensorboardTrainerLogger(SummaryWriter):
 
         if hparams is not None and metrics is not None:
             self.add_hparams_and_step(hparams, metrics, run_name=self.run_name, global_step=step)
+           # self.add_hparams(hparams, metrics, run_name=self.run_name)
 
         if extra_data is not None:
             for k in extra_data:
