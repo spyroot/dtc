@@ -50,7 +50,7 @@ class TensorboardTrainerLogger(SummaryWriter):
         if self.update_rate == 0 or step % self.update_rate != 0:
             return
 
-        print("logging at step {}", step)
+        print(f"logging at step {step}")
         # make sure key not overlap with validation.
         for k in criterions:
             self.add_scalar(k, criterions[k], step)

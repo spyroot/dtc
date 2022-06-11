@@ -140,7 +140,7 @@ settings:
     early_stopping: True          # early stopping
     console_log_rate: 20          # when to log to console
     start_test: 20
-    predict: 64                   # will do validation , prediction every 64-th iteration .(re-scale based on ds/batch size)
+    predict: 42                   # will do validation , prediction every 64-th iteration .(re-scale based on ds/batch size)
     predict_per_iteration: True   # use epoch or iteration counter, in large batch size we might want to see progress.
     epochs_save: 1                # when we save
     save_per_iteration: False
