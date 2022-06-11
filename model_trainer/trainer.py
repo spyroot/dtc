@@ -1354,6 +1354,7 @@ class Trainer(AbstractTrainer, ABC):
         self.tqdm_iter.set_description(f"Training in progress, {self.state.device}")
 
         current_epoch, current_step = self.current_running_state()
+        print(f"Loaded step epoch {current_epoch} step {current_step}")
         loader_data_size = len(self._train_loader)
         self.metric.update_bach_estimated(loader_data_size)
         self._callbacks.on_loader_begin()
@@ -1603,7 +1604,7 @@ class Trainer(AbstractTrainer, ABC):
             print("Model trainer, warm up validation pass.")
             self.validate_epoch(model, model_name, layer_name, warmup=True)
 
-       # self.state.step = last_step
+        # self.state.step = last_step
         # TODO add option if epoch changed after save
         self.metric.set_num_iteration(self.state.trainer_spec.epochs() * self.total_batches)
         self.metric.init()
@@ -1670,7 +1671,7 @@ class Trainer(AbstractTrainer, ABC):
             self.metric.on_epoch_end()
             # if self._brake_epoch_loop == epoch:
             #     sys.exit(1)            # if self._brake_epoch_loop == epoch:
-            aggregate_loss = self.validate_epoch(model, model_name, layer_name, epoch)
+            aggregate_loss = self.validate_epoch(model, model_name, layer_name, step=self.state.step)
             for k in aggregate_loss:
                 epochs_loss_terms[k] += aggregate_loss[k]
             self._callbacks.on_epoch_end()
