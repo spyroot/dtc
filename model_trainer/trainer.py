@@ -931,7 +931,6 @@ class Trainer(AbstractTrainer, ABC):
             T_0 = self.state.trainer_spec.t_0(alias_name)
             if T_0 == 0.0:
                 T_0 = len(self._train_loader)
-
             T_mult = self.state.trainer_spec.t_mult(alias_name)
             eta_min = self.state.trainer_spec.eta_min(alias_name)
             last_epoch = self.state.trainer_spec.scheduler_last_epoch(alias_name)
@@ -965,9 +964,9 @@ class Trainer(AbstractTrainer, ABC):
 
     def create_lr_schedulers(self) -> None:
         """
-        Create all schedulers and bind each to respected models  sub-layer optimizer.
+        Create all schedulers and binds each scheduler to respected models sub-layer optimizer.
         Note each model's sublayer bounded to single optimizer.
-        :return:
+        :return: None
         """
         model_name = self.state.trainer_spec.get_active_model_name()
         if model_name not in self._optimizers:
@@ -1019,7 +1018,9 @@ class Trainer(AbstractTrainer, ABC):
                 raise TrainerError(f"Model contains {len(self._models[m])} layers, "
                                    f"each sub-layer must have must have one file per model.")
 
-    def save_model_layer(self, layer_name: str, file_path: str) -> None:
+    def save_model_layer(self,
+                         layer_name: str,
+                         file_path: str) -> None:
         """
         Save's specific model's layer to a file_path.
 
@@ -1030,7 +1031,9 @@ class Trainer(AbstractTrainer, ABC):
         for m in self._models:
             for layer in self._models[m]:
                 if layer_name == layer:
-                    self._save_model(model_name=m, layer_name=layer, file_path=file_path)
+                    self._save_model(model_name=m,
+                                     layer_name=layer,
+                                     file_path=file_path)
 
     def _save_model(self,
                     model_name: str,
@@ -1149,8 +1152,11 @@ class Trainer(AbstractTrainer, ABC):
 
         return False
 
-    def validate_epoch(self, model: nn.Module, model_name: str,
-                       layer_name: str, step: Optional[int] = None,
+    def validate_epoch(self,
+                       model: nn.Module,
+                       model_name: str,
+                       layer_name: str,
+                       step: Optional[int] = None,
                        warmup: Optional[bool] = False):
         """
         Validation epoch, run without grad.
@@ -1192,24 +1198,27 @@ class Trainer(AbstractTrainer, ABC):
                 for loss_term_key in criterion_out:
                     loss_tensor = criterion_out[loss_term_key]
                     if self.state.trainer_spec.is_distributed_run():
-                        all_reduced_loss[loss_term_key] = self.split_tensor(loss_tensor.data, self.state.n_gpus).item()
+                        all_reduced_loss[loss_term_key] = \
+                            self.split_tensor(loss_tensor.data, self.state.n_gpus).item()
                     else:
                         if isinstance(loss_tensor, float):
                             all_reduced_loss[loss_term_key] = loss_tensor
                         else:
                             all_reduced_loss[loss_term_key] = loss_tensor.item()
 
-                self.metric.update(batch_idx, self.state.step, all_reduced_loss['loss'], validation=True)
+                self.metric.update(batch_idx, self.state.step,
+                                   all_reduced_loss['loss'], validation=True)
                 if not self.state.is_hyper_tunner:
                     if self.state.rank == 0 and batch_idx % self.state.tbar_update_rate == 0:
-                        tqdm_update_dict = {'step': current_step,
-                                            'loss': all_reduced_loss['loss'],
-                                            'batch_loss': all_reduced_loss['loss'] // max(1, batch_idx + 1),
-                                            'avg loss': self.metric.total_train_avg_loss(),
-                                            'batch': f"{batch_idx}/{current_batch_size}",
-                                            'diag': all_reduced_loss['diagonal_score'],
-                                            'saved': self.state.saved_run}
-
+                        tqdm_update_dict = \
+                            {'step': current_step,
+                             'loss': all_reduced_loss['loss'],
+                             'batch_loss': all_reduced_loss['loss'] // max(1, batch_idx + 1),
+                             'avg loss': self.metric.total_train_avg_loss(),
+                             'batch': f"{batch_idx}/{current_batch_size}",
+                             'diag': all_reduced_loss['diagonal_score'],
+                             'saved': self.state.saved_run
+                             }
                         # append to tbar all loss terms
                         for k in all_reduced_loss:
                             tqdm_update_dict[k] = all_reduced_loss[k]
@@ -1238,7 +1247,9 @@ class Trainer(AbstractTrainer, ABC):
 
         return aggregated_loss_term
 
-    def update_running_state(self, model_name: str, layer_name: str) -> tuple[int, int]:
+    def update_running_state(self,
+                             model_name: str,
+                             layer_name: str) -> tuple[int, int]:
         """
          Return last iterator,  for a given model and layer.
          During a model save each model might have own iterator counter
@@ -1273,18 +1284,20 @@ class Trainer(AbstractTrainer, ABC):
 
         return last_epoch, last_step
 
-    def inference(self, input_seq=None, model_name='dtc', plot=True,
-                  mel_output_path="mel_out.png",
-                  mel_post_path="mel_post.png",
-                  mel_alignment_path="mel_alignment.png"):
+    def inference(self, input_seq=None,
+                  model_name: Optional[str] = 'dtc',
+                  plot: Optional[bool] = True,
+                  mel_output_path: Optional[str] = "mel_out.png",
+                  mel_post_path: Optional[str] = "mel_post.png",
+                  mel_alignment_path: Optional[str] = "mel_alignment.png"):
         """
         Perform inference on input.
-        :param plot:
-        :param mel_alignment_path:
-        :param mel_output_path:
-        :param mel_post_path:
+        :param model_name: model name, default dtc
+        :param mel_alignment_path: if plot flag set to true, will generate alignment plot
+        :param mel_output_path: if plot flag set to true, will generate mel
+        :param mel_post_path: if plot flag set to true, will generate mel from post
         :param input_seq:
-        :param model_name:
+        :param plot:
         :return:
         """
         # model returns  outputs
@@ -1349,7 +1362,11 @@ class Trainer(AbstractTrainer, ABC):
         return self.state.epoch, self.state.step
 
     @staticmethod
-    def adjust_learning_rate(epoch, optimizer, learning_rate, anneal_steps, anneal_factor):
+    def adjust_learning_rate(epoch,
+                             optimizer,
+                             learning_rate,
+                             anneal_steps,
+                             anneal_factor):
         """
         Adjusts learning rate base on the initial setting anneal step and factor.
 
@@ -1374,7 +1391,10 @@ class Trainer(AbstractTrainer, ABC):
         for param_group in optimizer.param_groups:
             param_group["lr"] = lr
 
-    def train_epoch(self, model, model_name: str, layer_name: str, optimizer,
+    def train_epoch(self, model,
+                    model_name: str,
+                    layer_name: str,
+                    optimizer,
                     schedulers: Optional[list[torch.optim.lr_scheduler._LRScheduler]] = None) -> None:
         """
         Train one step of epoch.
@@ -1442,14 +1462,17 @@ class Trainer(AbstractTrainer, ABC):
 
             # loss.backward()
             if self.clip_grad:
-                grad_norm = clip_grad_norm_(model.parameters(), self.state.trainer_spec.grad_clip_thresh())
+                grad_norm = clip_grad_norm_(model.parameters(),
+                                            self.state.trainer_spec.grad_clip_thresh())
                 grad_loss = grad_norm.item()
-                self.metric.update(batch_idx, current_epoch, loss=normal_loss, grad_norm=grad_loss, validation=False)
+                self.metric.update(batch_idx, current_epoch,
+                                   loss=normal_loss, grad_norm=grad_loss, validation=False)
                 current_total_loss += normal_loss
                 current_grad_norm_loss += grad_norm
             else:
                 current_total_loss += normal_loss
-                self.metric.update(batch_idx, current_epoch, normal_loss, grad_norm=None, validation=False)
+                self.metric.update(batch_idx, current_epoch,
+                                   normal_loss, grad_norm=None, validation=False)
 
             self.scaler.step(optimizer)
             self.scaler.update()
@@ -1459,27 +1482,30 @@ class Trainer(AbstractTrainer, ABC):
             # run lr_scheduler
             if schedulers is not None:
                 for scheduler in schedulers:
-                    if isinstance(scheduler, torch.optim.lr_scheduler.CosineAnnealingWarmRestarts):
+                    if isinstance(scheduler, lr_scheduler.CosineAnnealingWarmRestarts):
                         next_step = self.state.epoch + batch_idx / loader_data_size
                         scheduler.step(next_step)
                     else:
                         scheduler.step()
 
             if not self.state.is_hyper_tunner:
-                if self.state.rank == 0 and current_step != 0 and current_step % self.state.tbar_update_rate == 0:
+                if self.state.rank == 0 and current_step != 0 and \
+                        current_step % self.state.tbar_update_rate == 0:
                     self.state.step = current_step
-                    self.tqdm_iter.set_postfix({'step': current_step,
-                                                'grad_loss': grad_norm.item(),
-                                                'mean': self.metric.batch_grad_loss.mean(),
-                                                'loss': normal_loss,
-                                                'diag': diag_score,
-                                                'stft_err': stft_err.item(),
-                                                'epoch': self.metric.epoch_train_gn_loss.mean(),
-                                                'mel': mel_loss.item(),
-                                                'gate': gate_loss.item(),
-                                                'batch': f"{batch_idx}/{loader_data_size}",
-                                                'lr': optimizer.param_groups[0]['lr'],
-                                                'saved': self.state.saved_run})
+                    self.tqdm_iter.set_postfix(
+                            {'step': current_step,
+                             'grad_loss': grad_norm.item(),
+                             'mean': self.metric.batch_grad_loss.mean(),
+                             'loss': normal_loss,
+                             'diag': diag_score,
+                             'stft_err': stft_err.item(),
+                             'epoch': self.metric.epoch_train_gn_loss.mean(),
+                             'mel': mel_loss.item(),
+                             'gate': gate_loss.item(),
+                             'batch': f"{batch_idx}/{loader_data_size}",
+                             'lr': optimizer.param_groups[0]['lr'],
+                             'saved': self.state.saved_run
+                             })
             # run prediction only if we need to.
             if self.state.trainer_spec.predict_per_iteration():
                 if current_step != 0 and current_step % self.state.trainer_spec.predict() == 0:
@@ -1655,8 +1681,11 @@ class Trainer(AbstractTrainer, ABC):
         # TODO add option if epoch changed after save
         self.metric.set_num_iteration(self.state.trainer_spec.epochs() * self.total_batches)
         self.metric.init()
-        logger.info("Staring training num epochs {}, epoch trained {} num batches {} expected total iteration {}",
-                    self.state.trainer_spec.epochs(), self._last_ckt_epochs, len(self._train_loader),
+        logger.info("Staring training num epochs {},"
+                    " epoch trained {} num batches {},"
+                    " expected total iteration {}",
+                    self.state.trainer_spec.epochs(),
+                    self._last_ckt_epochs, len(self._train_loader),
                     self.state.trainer_spec.epochs() * len(self._train_loader))
 
         # re-adjust last step
@@ -1704,9 +1733,12 @@ class Trainer(AbstractTrainer, ABC):
 
         for epoch in self.tqdm_iter:
             if self.state.is_hyper_tunner:
-                print(f"Training in hyperparameter tunner mode. {epoch} max epoch {len(self.tqdm_iter)}")
+                print(f"Training in hyperparameter tunner mode. "
+                      f"{epoch} max epoch {len(self.tqdm_iter)}")
+                #
                 for param_group in self._optimizers[model_name][layer_name].param_groups:
-                    print(f"Training lr {param_group['lr']} batch_size {self.state.batch_size}")
+                    print(f"Training lr {param_group['lr']} "
+                          f"batch_size {self.state.batch_size}")
 
             self.state.epoch = epoch
             self._callbacks.on_epoch_begin()
